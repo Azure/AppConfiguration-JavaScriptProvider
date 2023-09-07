@@ -396,3 +396,13 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# bundled folder
+dist/
+dist-esm/
+
+# dotenv
+.env
+
+# npm pack
+*.tgz
