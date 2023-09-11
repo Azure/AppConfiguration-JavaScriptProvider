@@ -49,6 +49,6 @@
   },
   "dependencies": {
     "@azure/app-configuration": "^1.4.1",
-    "@azure/identity": "^3.2.3"
+    "@azure/identity": "^3.3.0"
   }
 }

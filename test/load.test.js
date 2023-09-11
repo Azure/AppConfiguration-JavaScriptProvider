@@ -59,10 +59,19 @@ describe("load", function () {
         expect(settings.get("app.settings.fontSize")).eq("40");
     });
 
-    it("should load data from config store with aad", async () => {
+    it("should load data from config store with aad + endpoint URL", async () => {
         const endpoint = createMockedEnpoint();
         const credential = createMockedTokenCredential();
         const settings = await load(new URL(endpoint), credential);
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+    });
+
+    it("should load data from config store with aad + endpoint string", async () => {
+        const endpoint = createMockedEnpoint();
+        const credential = createMockedTokenCredential();
+        const settings = await load(endpoint, credential);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");

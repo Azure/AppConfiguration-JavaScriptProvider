@@ -16,7 +16,7 @@ export async function load(
 ): Promise<AzureAppConfiguration> {
     let client: AppConfigurationClient;
     let options: AzureAppConfigurationOptions | undefined;
-    if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(options)) {
+    if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
         const connectionString = connectionStringOrEndpoint;
         options = credentialOrOptions as AzureAppConfigurationOptions;
         const clientOptions = getClientOptions(options);
