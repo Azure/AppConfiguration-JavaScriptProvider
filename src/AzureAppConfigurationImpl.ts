@@ -63,16 +63,15 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     private async resolveKeyVaultReference(setting: ConfigurationSetting<string>) {
         // TODO: cache results to save requests.
         if (!this.options?.keyVaultOptions) {
-            throw new Error("Need key vault options to resolve reference.");
+            throw new Error("Configure keyVaultOptions to resolve Key Vault Reference(s).");
         }
 
         // precedence: secret clients > credential > secret resolver
-        const parsedSecretReference = parseSecretReference(setting);
         const { name: secretName, vaultUrl, sourceId } = parseKeyVaultSecretIdentifier(
-            parsedSecretReference.value.secretId
+            parseSecretReference(setting).value.secretId
         );
 
-        const client = this.getSecretClient(vaultUrl);
+        const client = this.getSecretClient(new URL(vaultUrl));
         if (client) {
             // TODO: what if error occurs when reading a key vault value? Now it breaks the whole load.
             const secret = await client.getSecret(secretName);
@@ -86,7 +85,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         throw new Error("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
     }
 
-    private getSecretClient(vaultUrl: string): SecretClient | undefined {
+    private getSecretClient(vaultUrl: URL): SecretClient | undefined {
         if (this.secretClients === undefined) {
             this.secretClients = new Map();
             for (const c of this.options?.keyVaultOptions?.secretClients ?? []) {
@@ -95,14 +94,14 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
 
         let client: SecretClient | undefined;
-        client = this.secretClients.get(getHost(vaultUrl));
+        client = this.secretClients.get(vaultUrl.host);
         if (client !== undefined) {
             return client;
         }
 
         if (this.options?.keyVaultOptions?.credential) {
-            client = new SecretClient(vaultUrl, this.options.keyVaultOptions.credential);
-            this.secretClients.set(vaultUrl, client);
+            client = new SecretClient(vaultUrl.toString(), this.options.keyVaultOptions.credential);
+            this.secretClients.set(vaultUrl.host, client);
             return client;
         }
 
