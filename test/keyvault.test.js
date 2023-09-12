@@ -15,6 +15,7 @@ const { SecretClient } = require("@azure/keyvault-secrets");
 const mockedData = [
     // key, secretUri, value
     ["TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName", "SecretValue"],
+    ["TestKeyFixedVersion", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName/741a0fc52610449baffd6e1c55b9d459", "OldSecretValue"],
     ["TestKey2", "https://fake-vault-name2.vault.azure.net/secrets/fakeSecretName2", "SecretValue2"]
 ];
 
@@ -48,6 +49,7 @@ describe("key vault reference", function () {
         });
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("SecretValue");
+        expect(settings.get("TestKeyFixedVersion")).eq("OldSecretValue");
     });
 
     it("should resolve key vault reference with secret resolver", async () => {

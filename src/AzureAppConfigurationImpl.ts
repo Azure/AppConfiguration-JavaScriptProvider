@@ -67,14 +67,14 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
 
         // precedence: secret clients > credential > secret resolver
-        const { name: secretName, vaultUrl, sourceId } = parseKeyVaultSecretIdentifier(
+        const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
             parseSecretReference(setting).value.secretId
         );
 
         const client = this.getSecretClient(new URL(vaultUrl));
         if (client) {
             // TODO: what if error occurs when reading a key vault value? Now it breaks the whole load.
-            const secret = await client.getSecret(secretName);
+            const secret = await client.getSecret(secretName, { version });
             return secret.value;
         }
 

@@ -24,9 +24,12 @@ function mockSecretClientGetSecret(uriValueList) {
         dict.set(uri, value);
     }
 
-    sinon.stub(SecretClient.prototype, "getSecret").callsFake(function (secretName) {
+    sinon.stub(SecretClient.prototype, "getSecret").callsFake(function (secretName, options) {
         const url = new URL(this.vaultUrl);
         url.pathname = `/secrets/${secretName}`;
+        if (options?.version) {
+            url.pathname += `/${options.version}`;
+        }
         return { value: dict.get(url.toString()) };
     })
 }
