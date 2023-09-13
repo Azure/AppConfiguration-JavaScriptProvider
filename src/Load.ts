@@ -7,6 +7,7 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 import * as RequestTracing from "./RequestTracing";
+import { CorrelationContextPolicy } from "./CorrelationContextPolicy";
 
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
@@ -60,17 +61,23 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
     if (userAgentOptions?.userAgentPrefix) {
         userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
     }
-    // TODO: set correlation context using additional policies
+
+    // additional policies
+    const additionalPolicies = options?.clientOptions?.additionalPolicies ?? [];
+    additionalPolicies.push({ policy: new CorrelationContextPolicy(options), position: "perCall" });
+
     // retry options
     const defaultRetryOptions = {
         maxRetries: MaxRetries,
         maxRetryDelayInMs: MaxRetryDelayInMs,
     }
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
+
     return Object.assign({}, options?.clientOptions, {
         retryOptions,
         userAgentOptions: {
             userAgentPrefix
-        }
+        },
+        additionalPolicies
     });
 }
