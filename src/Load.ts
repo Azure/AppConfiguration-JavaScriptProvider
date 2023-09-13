@@ -6,6 +6,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
+import * as RequestTracing from "./RequestTracing";
 
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
@@ -53,7 +54,12 @@ function instanceOfTokenCredential(obj: unknown) {
 }
 
 function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
-    // TODO: user-agent
+    // user-agent
+    let userAgentPrefix = RequestTracing.UserAgentPrefix; // Default UA for JavaScript Provider
+    const userAgentOptions = options?.clientOptions?.userAgentOptions;
+    if (userAgentOptions?.userAgentPrefix) {
+        userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
+    }
     // TODO: set correlation context using additional policies
     // retry options
     const defaultRetryOptions = {
@@ -62,6 +68,9 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
     }
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
     return Object.assign({}, options?.clientOptions, {
-        retryOptions
+        retryOptions,
+        userAgentOptions: {
+            userAgentPrefix
+        }
     });
 }
