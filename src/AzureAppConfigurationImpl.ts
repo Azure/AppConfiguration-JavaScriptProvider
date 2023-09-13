@@ -1,18 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
+import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
-import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { AzureKeyVaultReferenceAdapter } from "./keyvault/AzureKeyVaultReferenceAdapter";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
-    /**
-     * Map vault hostname to corresponding secret client.
-     */
-    private secretClients: Map<string, SecretClient>;
+    private adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
      * Since multiple prefixes could start with the same characters, we need to trim the longest prefix first.
@@ -27,6 +25,9 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         if (options?.trimKeyPrefixes) {
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
+        // TODO: should add more adapters to process different type of values
+        // feature flag, json, others
+        this.adapters.push(new AzureKeyVaultReferenceAdapter(options?.keyVaultOptions));
     }
 
     public async load() {
@@ -40,8 +41,8 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
             for await (const setting of settings) {
                 if (setting.key && setting.value) {
-                    const trimmedKey = this.keyWithPrefixesTrimmed(setting.key);
-                    const value = await this.processKeyValue(setting);
+                    const [key, value] = await this.processAdapters(setting);
+                    const trimmedKey = this.keyWithPrefixesTrimmed(key);
                     keyValues.push([trimmedKey, value]);
                 }
             }
@@ -51,61 +52,13 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
     }
 
-    private async processKeyValue(setting: ConfigurationSetting<string>) {
-        // TODO: should process different type of values
-        // feature flag, json, others
-        if (isSecretReference(setting)) {
-            return this.resolveKeyVaultReference(setting);
-        }
-        return setting.value;
-    }
-
-    private async resolveKeyVaultReference(setting: ConfigurationSetting<string>) {
-        // TODO: cache results to save requests.
-        if (!this.options?.keyVaultOptions) {
-            throw new Error("Configure keyVaultOptions to resolve Key Vault Reference(s).");
-        }
-
-        // precedence: secret clients > credential > secret resolver
-        const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
-            parseSecretReference(setting).value.secretId
-        );
-
-        const client = this.getSecretClient(new URL(vaultUrl));
-        if (client) {
-            // TODO: what if error occurs when reading a key vault value? Now it breaks the whole load.
-            const secret = await client.getSecret(secretName, { version });
-            return secret.value;
-        }
-
-        if (this.options.keyVaultOptions.secretResolver) {
-            return await this.options.keyVaultOptions.secretResolver(new URL(sourceId))
-        }
-
-        throw new Error("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
-    }
-
-    private getSecretClient(vaultUrl: URL): SecretClient | undefined {
-        if (this.secretClients === undefined) {
-            this.secretClients = new Map();
-            for (const c of this.options?.keyVaultOptions?.secretClients ?? []) {
-                this.secretClients.set(getHost(c.vaultUrl), c);
+    private async processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        for(const adapter of this.adapters) {
+            if (adapter.canProcess(setting)) {
+                return adapter.processKeyValue(setting);
             }
         }
-
-        let client: SecretClient | undefined;
-        client = this.secretClients.get(vaultUrl.host);
-        if (client !== undefined) {
-            return client;
-        }
-
-        if (this.options?.keyVaultOptions?.credential) {
-            client = new SecretClient(vaultUrl.toString(), this.options.keyVaultOptions.credential);
-            this.secretClients.set(vaultUrl.host, client);
-            return client;
-        }
-
-        return undefined;
+        return [setting.key, setting.value];
     }
 
     private keyWithPrefixesTrimmed(key: string): string {
@@ -118,8 +71,4 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
         return key;
     }
-}
-
-function getHost(url: string) {
-    return new URL(url).host;
 }
