@@ -5,7 +5,7 @@ import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/ap
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
+import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
@@ -52,9 +52,16 @@ function instanceOfTokenCredential(obj: unknown) {
     return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }
 
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined{
+function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
     // TODO: user-agent
     // TODO: set correlation context using additional policies
-    // TODO: allow override default retry options
-    return options?.clientOptions;
+    // retry options
+    const defaultRetryOptions = {
+        maxRetries: MaxRetries,
+        maxRetryDelayInMs: MaxRetryDelayInMs,
+    }
+    const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
+    return Object.assign({}, options?.clientOptions, {
+        retryOptions
+    });
 }
