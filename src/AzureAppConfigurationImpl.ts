@@ -4,10 +4,13 @@
 import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
+import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
+    private adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
      * Since multiple prefixes could start with the same characters, we need to trim the longest prefix first.
@@ -22,6 +25,9 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         if (options?.trimKeyPrefixes) {
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
+        // TODO: should add more adapters to process different type of values
+        // feature flag, json, others
+        this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
     }
 
     public async load() {
@@ -35,8 +41,8 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
             for await (const setting of settings) {
                 if (setting.key && setting.value) {
-                    const trimmedKey = this.keyWithPrefixesTrimmed(setting.key);
-                    const value = await this.processKeyValue(setting);
+                    const [key, value] = await this.processAdapters(setting);
+                    const trimmedKey = this.keyWithPrefixesTrimmed(key);
                     keyValues.push([trimmedKey, value]);
                 }
             }
@@ -46,10 +52,13 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
     }
 
-    private async processKeyValue(setting: ConfigurationSetting<string>) {
-        // TODO: should process different type of values
-        // keyvault reference, feature flag, json, others
-        return setting.value;
+    private async processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        for(const adapter of this.adapters) {
+            if (adapter.canProcess(setting)) {
+                return adapter.processKeyValue(setting);
+            }
+        }
+        return [setting.key, setting.value];
     }
 
     private keyWithPrefixesTrimmed(key: string): string {
