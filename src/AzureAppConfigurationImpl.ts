@@ -7,7 +7,7 @@ import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
-import { AzureKeyVaultReferenceAdapter } from "./keyvault/AzureKeyVaultReferenceAdapter";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -27,7 +27,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
         // TODO: should add more adapters to process different type of values
         // feature flag, json, others
-        this.adapters.push(new AzureKeyVaultReferenceAdapter(options?.keyVaultOptions));
+        this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
     }
 
     public async load() {

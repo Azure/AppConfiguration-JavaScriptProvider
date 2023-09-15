@@ -6,7 +6,7 @@ import { IKeyValueAdapter } from "../IKeyValueAdapter";
 import { AzureAppConfigurationKeyVaultOptions } from "./AzureAppConfigurationKeyVaultOptions";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
-export class AzureKeyVaultReferenceAdapter implements IKeyValueAdapter {
+export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     /**
      * Map vault hostname to corresponding secret client.
     */
