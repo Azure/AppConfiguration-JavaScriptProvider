@@ -40,7 +40,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             });
 
             for await (const setting of settings) {
-                if (setting.key && setting.value) {
+                if (setting.key) {
                     const [key, value] = await this.processAdapters(setting);
                     const trimmedKey = this.keyWithPrefixesTrimmed(key);
                     keyValues.push([trimmedKey, value]);
