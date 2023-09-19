@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+export const RequestTracingDisabledEnvironmentVariable = "AZURE_APP_CONFIGURATION_TRACING_DISABLED";
+
 // User Agent
 export const Version = "0.1.0-preview";
 export const UserAgentPrefix = `javascript-appconfiguration-provider/${Version}`;
@@ -28,8 +30,6 @@ export const AzureFunctionEnvironmentVariable = "FUNCTIONS_EXTENSION_VERSION";
 export const AzureWebAppEnvironmentVariable = "WEBSITE_SITE_NAME";
 export const ContainerAppEnvironmentVariable = "CONTAINER_APP_NAME";
 export const KubernetesEnvironmentVariable = "KUBERNETES_PORT";
-export const AspNetCoreEnvironmentVariable = "ASPNETCORE_ENVIRONMENT";
-export const DotNetCoreEnvironmentVariable = "DOTNET_ENVIRONMENT";
 export const ServiceFabricEnvironmentVariable = "Fabric_NodeName"; // See: https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-environment-variables-reference
 
 // Request Type

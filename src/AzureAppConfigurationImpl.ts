@@ -8,6 +8,8 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
+import { CorrelationContextHeaderName, RequestTracingDisabledEnvironmentVariable } from "./requestTracing/constants";
+import { createCorrelationContextHeader } from "./requestTracing/utils";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -16,12 +18,22 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
      * Since multiple prefixes could start with the same characters, we need to trim the longest prefix first.
      */
     private sortedTrimKeyPrefixes: string[] | undefined;
+    private readonly requestTracingEnabled: boolean;
+    private correlationContextHeader: string | undefined;
 
     constructor(
         private client: AppConfigurationClient,
         private options: AzureAppConfigurationOptions | undefined
     ) {
         super();
+        // Enable request tracing if not opt-out
+        if (process.env[RequestTracingDisabledEnvironmentVariable] === "True" || process.env[RequestTracingDisabledEnvironmentVariable] === "1") {
+            this.requestTracingEnabled = false;
+        } else {
+            this.requestTracingEnabled = true;
+            this.enableRequestTracing();
+        }
+
         if (options?.trimKeyPrefixes) {
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
@@ -36,7 +48,10 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         for (const selector of selectors) {
             const settings = this.client.listConfigurationSettings({
                 keyFilter: selector.keyFilter,
-                labelFilter: selector.labelFilter
+                labelFilter: selector.labelFilter,
+                requestOptions: {
+                    customHeaders: this.customHeaders()
+                }
             });
 
             for await (const setting of settings) {
@@ -53,7 +68,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     }
 
     private async processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
-        for(const adapter of this.adapters) {
+        for (const adapter of this.adapters) {
             if (adapter.canProcess(setting)) {
                 return adapter.processKeyValue(setting);
             }
@@ -70,5 +85,19 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             }
         }
         return key;
+    }
+
+    private enableRequestTracing() {
+        this.correlationContextHeader = createCorrelationContextHeader(this.options);
+    }
+
+    private customHeaders() {
+        if (!this.requestTracingEnabled) {
+            return undefined;
+        }
+
+        const headers = {};
+        headers[CorrelationContextHeaderName] = this.correlationContextHeader;
+        return headers;
     }
 }

@@ -6,8 +6,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
-import * as RequestTracing from "./RequestTracing";
-import { CorrelationContextPolicy } from "./CorrelationContextPolicy";
+import * as RequestTracing from "./requestTracing/constants";
 
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
@@ -40,7 +39,7 @@ export async function load(
         const credential = credentialOrOptions as TokenCredential;
         options = appConfigOptions;
         const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(endpoint.toString(), credential, clientOptions)
+        client = new AppConfigurationClient(endpoint.toString(), credential, clientOptions);
     } else {
         throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
     }
@@ -62,10 +61,6 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
         userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
     }
 
-    // additional policies
-    const additionalPolicies = options?.clientOptions?.additionalPolicies ?? [];
-    additionalPolicies.push({ policy: new CorrelationContextPolicy(options), position: "perCall" });
-
     // retry options
     const defaultRetryOptions = {
         maxRetries: MaxRetries,
@@ -77,7 +72,6 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
         retryOptions,
         userAgentOptions: {
             userAgentPrefix
-        },
-        additionalPolicies
+        }
     });
 }
