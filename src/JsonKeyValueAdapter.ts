@@ -29,15 +29,29 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         try {
             parsedValue = JSON.parse(setting.value);
         } catch (error) {
-            throw new Error("Failed to parse JSON string.", { cause: error })
+            parsedValue = setting.value;
         }
         return [setting.key, parsedValue];
     }
 }
 
-function isJsonContentType(contentType: string) {
-    contentType = contentType.trim().toLowerCase();
-    const mimeType = contentType.split(";")[0].trim();
-    const [mainType, subTypes, ...restParts] = mimeType.split("/");
-    return restParts.length === 0 && mainType === "application" && subTypes.split("+").includes("json");
+// Determine whether a content type string is a valid JSON content type.
+// https://docs.microsoft.com/en-us/azure/azure-app-configuration/howto-leverage-json-content-type
+function isJsonContentType(contentTypeValue: string): boolean {
+    if (!contentTypeValue) {
+        return false;
+    }
+
+    let contentTypeNormalized: string = contentTypeValue.trim().toLowerCase();
+    let mimeType: string = contentTypeNormalized.split(";", 1)[0].trim();
+    let typeParts: string[] = mimeType.split("/");
+    if (typeParts.length !== 2) {
+        return false;
+    }
+
+    if (typeParts[0] !== "application") {
+        return false;
+    }
+
+    return typeParts[1].split("+").includes("json");
 }
