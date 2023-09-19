@@ -41,6 +41,24 @@ const mockedKVs = [{
     tags: {},
     etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
     isReadOnly: false
+}, {
+    value: null,
+    key: 'KeyForNullValue',
+    label: '',
+    contentType: '',
+    lastModified: '2023-05-04T04:32:56.000Z',
+    tags: {},
+    etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
+    isReadOnly: false
+}, {
+    value: "",
+    key: 'KeyForEmptyValue',
+    label: '',
+    contentType: '',
+    lastModified: '2023-05-04T04:32:56.000Z',
+    tags: {},
+    etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
+    isReadOnly: false
 }];
 
 describe("load", function () {
@@ -120,5 +138,15 @@ describe("load", function () {
         expect(settings.get("fontSize")).eq("40");
         expect(settings.has("Key")).eq(true);
         expect(settings.get("Key")).eq("TestValue");
+    });
+
+    it("should support null/empty value", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.has("KeyForNullValue")).eq(true);
+        expect(settings.get("KeyForNullValue")).eq(null);
+        expect(settings.has("KeyForEmptyValue")).eq(true);
+        expect(settings.get("KeyForEmptyValue")).eq("");
     });
 })
