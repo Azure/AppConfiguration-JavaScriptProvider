@@ -25,7 +25,7 @@ export enum HostType {
     ServiceFabric = "ServiceFabric"
 }
 
-// Environment vairables to identify Host type.
+// Environment variables to identify Host type.
 export const AzureFunctionEnvironmentVariable = "FUNCTIONS_EXTENSION_VERSION";
 export const AzureWebAppEnvironmentVariable = "WEBSITE_SITE_NAME";
 export const ContainerAppEnvironmentVariable = "CONTAINER_APP_NAME";
