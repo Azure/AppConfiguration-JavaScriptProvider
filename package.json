@@ -21,7 +21,8 @@
     "build-esm": "tsc -p ./",
     "clean": "rimraf dist dist-esm",
     "dev": "rollup --config --watch",
-    "lint": "eslint",
+    "lint": "eslint src/ test/",
+    "fix-lint": "eslint src/ test/ --fix",
     "test": "mocha --timeout 10000"
   },
   "repository": {
