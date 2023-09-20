@@ -7,7 +7,7 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 const { load } = require("../dist/index");
 const { createMockedConnectionString } = require("./utils/testHelper");
-const nock = require('nock');
+const nock = require("nock");
 
 class HttpRequestCountPolicy {
     constructor() {
@@ -21,7 +21,7 @@ class HttpRequestCountPolicy {
     resetCount() {
         this.count = 0;
     }
-};
+}
 
 describe("custom client options", function () {
     const fakeEndpoint = "https://azure.azconfig.io";

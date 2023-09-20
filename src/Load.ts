@@ -28,7 +28,7 @@ export async function load(
             try {
                 endpoint = new URL(endpoint);
             } catch (error) {
-                if (error.code === 'ERR_INVALID_URL') {
+                if (error.code === "ERR_INVALID_URL") {
                     throw new Error("Invalid Endpoint URL.", { cause: error });
                 } else {
                     throw error;

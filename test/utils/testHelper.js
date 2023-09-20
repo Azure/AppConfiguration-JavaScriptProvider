@@ -52,7 +52,7 @@ const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_
 
 const createMockedKeyVaultReference = (key, vaultUri) => ({
     // https://${vaultName}.vault.azure.net/secrets/${secretName}
-    value: `{\"uri\":\"${vaultUri}\"}`,
+    value: `{"uri":"${vaultUri}"}`,
     key,
     label: null,
     contentType: "application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8",
