@@ -12,6 +12,7 @@ export const CorrelationContextHeaderName = "Correlation-Context";
 
 // Env
 export const NodeJSEnvironmentVariable = "NODE_ENV";
+export const NodeJSDevEnvironmentVariableValue = "development";
 export const EnvironmentKey = "Env";
 export const DevEnvironmentValue = "Dev";
 

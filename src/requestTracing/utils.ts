@@ -2,7 +2,21 @@
 // Licensed under the MIT license.
 
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
-import * as Constants from "./constants";
+import {
+    AzureFunctionEnvironmentVariable,
+    AzureWebAppEnvironmentVariable,
+    ContainerAppEnvironmentVariable,
+    DevEnvironmentValue,
+    EnvironmentKey,
+    HostType, HostTypeKey,
+    KeyVaultConfiguredTag,
+    KubernetesEnvironmentVariable,
+    NodeJSDevEnvironmentVariableValue,
+    NodeJSEnvironmentVariable,
+    RequestType,
+    RequestTypeKey,
+    ServiceFabricEnvironmentVariable
+} from "./constants";
 
 // Utils
 export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined): string {
@@ -13,15 +27,15 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     UsersKeyVault
     */
     const keyValues = new Map<string, string | undefined>();
-    keyValues.set(Constants.RequestTypeKey, Constants.RequestType.Startup); // TODO: now always "Startup", until refresh is supported.
-    keyValues.set(Constants.HostTypeKey, getHostType());
-    keyValues.set(Constants.EnvironmentKey, isDevEnvironment() ? Constants.DevEnvironmentValue : undefined);
+    keyValues.set(RequestTypeKey, RequestType.Startup); // TODO: now always "Startup", until refresh is supported.
+    keyValues.set(HostTypeKey, getHostType());
+    keyValues.set(EnvironmentKey, isDevEnvironment() ? DevEnvironmentValue : undefined);
 
     const tags: string[] = [];
     if (options?.keyVaultOptions) {
         const { credential, secretClients, secretResolver } = options.keyVaultOptions;
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
-            tags.push(Constants.KeyVaultConfiguredTag);
+            tags.push(KeyVaultConfiguredTag);
         }
     }
 
@@ -40,23 +54,23 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
 
 function getHostType(): string | undefined {
     let hostType: string | undefined;
-    if (process.env[Constants.AzureFunctionEnvironmentVariable]) {
-        hostType = Constants.HostType.AzureFunction;
-    } else if (process.env[Constants.AzureWebAppEnvironmentVariable]) {
-        hostType = Constants.HostType.AzureWebApp;
-    } else if (process.env[Constants.ContainerAppEnvironmentVariable]) {
-        hostType = Constants.HostType.ContainerApp;
-    } else if (process.env[Constants.KubernetesEnvironmentVariable]) {
-        hostType = Constants.HostType.Kubernetes;
-    } else if (process.env[Constants.ServiceFabricEnvironmentVariable]) {
-        hostType = Constants.HostType.ServiceFabric;
+    if (process.env[AzureFunctionEnvironmentVariable]) {
+        hostType = HostType.AzureFunction;
+    } else if (process.env[AzureWebAppEnvironmentVariable]) {
+        hostType = HostType.AzureWebApp;
+    } else if (process.env[ContainerAppEnvironmentVariable]) {
+        hostType = HostType.ContainerApp;
+    } else if (process.env[KubernetesEnvironmentVariable]) {
+        hostType = HostType.Kubernetes;
+    } else if (process.env[ServiceFabricEnvironmentVariable]) {
+        hostType = HostType.ServiceFabric;
     }
     return hostType;
 }
 
 function isDevEnvironment(): boolean {
-    const envType = process.env[Constants.NodeJSEnvironmentVariable];
-    if ("development" === envType?.toLowerCase()) {
+    const envType = process.env[NodeJSEnvironmentVariable];
+    if (NodeJSDevEnvironmentVariableValue === envType?.toLowerCase()) {
         return true;
     }
     return false;
