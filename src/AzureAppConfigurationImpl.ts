@@ -8,6 +8,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
+import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -26,8 +27,9 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
         // TODO: should add more adapters to process different type of values
-        // feature flag, json, others
+        // feature flag, others
         this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        this.adapters.push(new JsonKeyValueAdapter());
     }
 
     public async load() {
