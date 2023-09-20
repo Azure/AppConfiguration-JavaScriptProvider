@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
@@ -48,13 +48,17 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         const keyValues: [key: string, value: unknown][] = [];
         const selectors = this.options?.selectors ?? [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
         for (const selector of selectors) {
-            const settings = this.client.listConfigurationSettings({
+            const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: selector.keyFilter,
-                labelFilter: selector.labelFilter,
-                requestOptions: {
+                labelFilter: selector.labelFilter
+            };
+            if (this.requestTracingEnabled) {
+                listOptions.requestOptions = {
                     customHeaders: this.customHeaders()
                 }
-            });
+            }
+
+            const settings = this.client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
                 if (setting.key) {
