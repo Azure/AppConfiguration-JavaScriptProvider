@@ -2,6 +2,36 @@
 
 The [Azure App Configuration](https://docs.microsoft.com/en-us/azure/azure-app-configuration/overview) provider for JavaScript enables developers to configure their applications using centralized configuration located in Azure App Configuration. 
 
+## Getting started
+
+### Prerequisites
+
+- An [Azure Subscription](https://azure.microsoft.com)
+- An [App Configuration](https://docs.microsoft.com/azure/azure-app-configuration/) resource
+
+### Install the package
+
+```bash
+npm install @azure/app-configuration-provider
+```
+
+### Use the API
+
+```js
+import { load } from "@azure/app-configuration-provider";
+
+// Load settings from App Configuration as a readonly Map.
+const settings = await load("<app-configuration-connection-string>");
+
+// Consume the settings by calling `get(key)`, e.g.
+const value = settings.get("<key-of-a-config>");
+```
+
+
+## Examples
+
+See code snippets under [examples/](./examples/) folder.
+
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
