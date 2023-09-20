@@ -15,31 +15,49 @@ const {
 } = require("./utils/testHelper");
 
 const mockedKVs = [{
-    value: 'red',
-    key: 'app.settings.fontColor',
+    value: "red",
+    key: "app.settings.fontColor",
     label: null,
-    contentType: '',
-    lastModified: '2023-05-04T04:34:24.000Z',
+    contentType: "",
+    lastModified: "2023-05-04T04:34:24.000Z",
     tags: {},
-    etag: '210fjkPIWZMjFTi_qyEEmmsJjtUjj0YQl-Y3s1m6GLw',
+    etag: "210fjkPIWZMjFTi_qyEEmmsJjtUjj0YQl-Y3s1m6GLw",
     isReadOnly: false
 }, {
-    value: '40',
-    key: 'app.settings.fontSize',
+    value: "40",
+    key: "app.settings.fontSize",
     label: null,
-    contentType: '',
-    lastModified: '2023-05-04T04:32:56.000Z',
+    contentType: "",
+    lastModified: "2023-05-04T04:32:56.000Z",
     tags: {},
-    etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
     isReadOnly: false
 }, {
-    value: 'TestValue',
-    key: 'TestKey',
-    label: 'Test',
-    contentType: '',
-    lastModified: '2023-05-04T04:32:56.000Z',
+    value: "TestValue",
+    key: "TestKey",
+    label: "Test",
+    contentType: "",
+    lastModified: "2023-05-04T04:32:56.000Z",
     tags: {},
-    etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
+    isReadOnly: false
+}, {
+    value: null,
+    key: "KeyForNullValue",
+    label: "",
+    contentType: "",
+    lastModified: "2023-05-04T04:32:56.000Z",
+    tags: {},
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
+    isReadOnly: false
+}, {
+    value: "",
+    key: "KeyForEmptyValue",
+    label: "",
+    contentType: "",
+    lastModified: "2023-05-04T04:32:56.000Z",
+    tags: {},
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
     isReadOnly: false
 }];
 
@@ -120,5 +138,15 @@ describe("load", function () {
         expect(settings.get("fontSize")).eq("40");
         expect(settings.has("Key")).eq(true);
         expect(settings.get("Key")).eq("TestValue");
+    });
+
+    it("should support null/empty value", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.has("KeyForNullValue")).eq(true);
+        expect(settings.get("KeyForNullValue")).eq(null);
+        expect(settings.has("KeyForEmptyValue")).eq(true);
+        expect(settings.get("KeyForEmptyValue")).eq("");
     });
 })

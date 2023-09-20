@@ -5,6 +5,7 @@ import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configu
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
+import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
@@ -38,8 +39,9 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
         // TODO: should add more adapters to process different type of values
-        // feature flag, json, others
+        // feature flag, others
         this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        this.adapters.push(new JsonKeyValueAdapter());
     }
 
     public async load() {
@@ -55,7 +57,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             });
 
             for await (const setting of settings) {
-                if (setting.key && setting.value) {
+                if (setting.key) {
                     const [key, value] = await this.processAdapters(setting);
                     const trimmedKey = this.keyWithPrefixesTrimmed(key);
                     keyValues.push([trimmedKey, value]);

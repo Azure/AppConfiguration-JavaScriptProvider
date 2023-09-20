@@ -1,16 +1,16 @@
-module.exports = {
+{
     "env": {
         "browser": true,
         "commonjs": true,
         "es2021": true,
-        "node": true
+        "node": true,
+        "mocha": true
     },
     "extends": [
         "eslint:recommended",
         "plugin:@typescript-eslint/recommended"
     ],
     "ignorePatterns": [
-        "test/**/*.js"
     ],
     "overrides": [
         {
@@ -33,5 +33,12 @@ module.exports = {
         "@typescript-eslint"
     ],
     "rules": {
+        "quotes": [
+            "error",
+            "double",
+            {
+                "avoidEscape": true
+            }
+        ],
     },
 }
