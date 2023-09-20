@@ -15,12 +15,12 @@ const {
 
 const jsonKeyValue = {
     value: '{"Test":{"Level":"Debug"},"Prod":{"Level":"Warning"}}',
-    key: 'json.settings.logging',
+    key: "json.settings.logging",
     label: null,
-    contentType: 'application/json',
-    lastModified: '2023-05-04T04:32:56.000Z',
+    contentType: "application/json",
+    lastModified: "2023-05-04T04:32:56.000Z",
     tags: {},
-    etag: 'GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk',
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
     isReadOnly: false
 };
 const keyVaultKeyValue = createMockedKeyVaultReference("TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName");
