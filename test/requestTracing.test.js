@@ -98,4 +98,21 @@ describe("request tracing", function () {
         expect(correlationContext.includes("Host=AzureWebApp")).eq(true);
         delete process.env.WEBSITE_SITE_NAME;
     });
+
+    it("should disable request tracing when AZURE_APP_CONFIGURATION_TRACING_DISABLED is true", async() => {
+        for (const indicator of ["TRUE", "true"]) {
+            process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED = indicator;
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    clientOptions
+                });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).undefined;
+        }
+
+        // clean up
+        delete process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED;
+    });
 });
