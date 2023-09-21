@@ -25,7 +25,7 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         if (!setting.value) {
             throw new Error("Unexpected empty value for application/json content type.");
         }
-        let parsedValue: any;
+        let parsedValue: unknown;
         try {
             parsedValue = JSON.parse(setting.value);
         } catch (error) {
@@ -42,9 +42,9 @@ function isJsonContentType(contentTypeValue: string): boolean {
         return false;
     }
 
-    let contentTypeNormalized: string = contentTypeValue.trim().toLowerCase();
-    let mimeType: string = contentTypeNormalized.split(";", 1)[0].trim();
-    let typeParts: string[] = mimeType.split("/");
+    const contentTypeNormalized: string = contentTypeValue.trim().toLowerCase();
+    const mimeType: string = contentTypeNormalized.split(";", 1)[0].trim();
+    const typeParts: string[] = mimeType.split("/");
     if (typeParts.length !== 2) {
         return false;
     }
