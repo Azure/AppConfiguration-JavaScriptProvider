@@ -28,7 +28,8 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     ) {
         super();
         // Enable request tracing if not opt-out
-        if (process.env[RequestTracingDisabledEnvironmentVariable] === "True" || process.env[RequestTracingDisabledEnvironmentVariable] === "1") {
+        const requestTracingDisabledEnv = process.env[RequestTracingDisabledEnvironmentVariable];
+        if (requestTracingDisabledEnv && requestTracingDisabledEnv.toLowerCase() === "true") {
             this.requestTracingEnabled = false;
         } else {
             this.requestTracingEnabled = true;

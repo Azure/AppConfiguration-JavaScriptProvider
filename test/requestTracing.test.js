@@ -17,10 +17,10 @@ class HttpRequestHeadersPolicy {
         this.headers = req.headers;
         return next(req).then(resp => resp);
     }
-};
+}
 
-describe("custom client options", function () {
-    const fakeEndpoint = "https://127.0.0.1";
+describe("request tracing", function () {
+    const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
     const clientOptions = {
         retryOptions: {
@@ -41,7 +41,7 @@ describe("custom client options", function () {
     it("should have correct user agent prefix", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
-        } catch (e) { }
+        } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(headerPolicy.headers.get("User-Agent")).satisfy(ua => ua.startsWith("javascript-appconfiguration-provider"));
     });
@@ -51,7 +51,7 @@ describe("custom client options", function () {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions
             });
-        } catch (e) { }
+        } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(headerPolicy.headers.get("Correlation-Context")).eq("RequestType=Startup");
     });
@@ -64,7 +64,7 @@ describe("custom client options", function () {
                     credential: createMockedTokenCredential()
                 }
             });
-        } catch (e) { }
+        } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -77,7 +77,7 @@ describe("custom client options", function () {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions
             });
-        } catch (e) { }
+        } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -91,12 +91,11 @@ describe("custom client options", function () {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions
             });
-        } catch (e) { }
+        } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("Host=AzureWebApp")).eq(true);
         delete process.env.WEBSITE_SITE_NAME;
     });
-
 });
