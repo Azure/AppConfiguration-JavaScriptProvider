@@ -16,6 +16,12 @@ export default [
     plugins: [
       typescript({
         compilerOptions: {
+          "lib": [
+            "DOM",
+            "WebWorker",
+            "ESNext"
+          ],
+          "skipDefaultLibCheck": true,
           "module": "ESNext",
           "moduleResolution": "Node",
           "target": "ES2022",

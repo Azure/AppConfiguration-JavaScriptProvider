@@ -65,6 +65,10 @@ function getHostType(): string | undefined {
         hostType = HostType.Kubernetes;
     } else if (process.env[ServiceFabricEnvironmentVariable]) {
         hostType = HostType.ServiceFabric;
+    } else if (isBrowser()) {
+        hostType = HostType.Browser;
+    } else if (isWebWorker()) {
+        hostType = HostType.WebWorker;
     }
     return hostType;
 }
@@ -75,4 +79,24 @@ function isDevEnvironment(): boolean {
         return true;
     }
     return false;
+}
+
+function isBrowser() {
+    // https://developer.mozilla.org/en-US/docs/Web/API/Window
+    const isWindowDefinedAsExpected = typeof window === "object" && typeof Window === "function" && window instanceof Window;
+    // https://developer.mozilla.org/en-US/docs/Web/API/Document
+    const isDocumentDefinedAsExpected = typeof document === "object" && typeof Document === "function" && document instanceof Document;
+
+    return isWindowDefinedAsExpected && isDocumentDefinedAsExpected;
+}
+
+function isWebWorker() {
+    // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
+    const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
+    // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
+    const isNavigatorDefinedAsExpected = typeof navigator === "object" && typeof WorkerNavigator !== "function" && navigator instanceof WorkerNavigator;
+    // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers#importing_scripts_and_libraries
+    const importScriptsAsGlobalFunction = typeof importScripts === "function";
+
+    return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }

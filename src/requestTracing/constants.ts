@@ -24,7 +24,10 @@ export enum HostType {
     AzureWebApp = "AzureWebApp",
     ContainerApp = "ContainerApp",
     Kubernetes = "Kubernetes",
-    ServiceFabric = "ServiceFabric"
+    ServiceFabric = "ServiceFabric",
+    // Client-side
+    Browser = "Web",
+    WebWorker = "WebWorker"
 }
 
 // Environment variables to identify Host type.
