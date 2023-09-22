@@ -9,8 +9,8 @@ import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { KeyFilter } from "./KeyFilter";
 import { LabelFilter } from "./LabelFilter";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
-import { CorrelationContextHeaderName, RequestTracingDisabledEnvironmentVariable } from "./requestTracing/constants";
-import { createCorrelationContextHeader } from "./requestTracing/utils";
+import { CorrelationContextHeaderName } from "./requestTracing/constants";
+import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -28,11 +28,8 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     ) {
         super();
         // Enable request tracing if not opt-out
-        const requestTracingDisabledEnv = process.env[RequestTracingDisabledEnvironmentVariable];
-        if (requestTracingDisabledEnv && requestTracingDisabledEnv.toLowerCase() === "true") {
-            this.requestTracingEnabled = false;
-        } else {
-            this.requestTracingEnabled = true;
+        this.requestTracingEnabled = requestTracingEnabled();
+        if (this.requestTracingEnabled) {
             this.enableRequestTracing();
         }
 

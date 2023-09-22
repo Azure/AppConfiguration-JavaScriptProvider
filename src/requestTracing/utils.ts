@@ -14,6 +14,7 @@ import {
     KubernetesEnvironmentVariable,
     NodeJSDevEnvironmentVariableValue,
     NodeJSEnvironmentVariable,
+    RequestTracingDisabledEnvironmentVariable,
     RequestType,
     RequestTypeKey,
     ServiceFabricEnvironmentVariable
@@ -53,17 +54,32 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     return contextParts.join(",");
 }
 
+export function requestTracingEnabled(): boolean {
+    const requestTracingDisabledEnv = getEnvironmentVariable(RequestTracingDisabledEnvironmentVariable);
+    const disabled = requestTracingDisabledEnv?.toLowerCase() === "true";
+    return !disabled;
+}
+
+function getEnvironmentVariable(name: string) {
+    // Make it compatible with non-Node.js runtime
+    if (typeof process?.env === "object") {
+        return process.env[name];
+    } else {
+        return undefined;
+    }
+}
+
 function getHostType(): string | undefined {
     let hostType: string | undefined;
-    if (process.env[AzureFunctionEnvironmentVariable]) {
+    if (getEnvironmentVariable(AzureFunctionEnvironmentVariable)) {
         hostType = HostType.AzureFunction;
-    } else if (process.env[AzureWebAppEnvironmentVariable]) {
+    } else if (getEnvironmentVariable(AzureWebAppEnvironmentVariable)) {
         hostType = HostType.AzureWebApp;
-    } else if (process.env[ContainerAppEnvironmentVariable]) {
+    } else if (getEnvironmentVariable(ContainerAppEnvironmentVariable)) {
         hostType = HostType.ContainerApp;
-    } else if (process.env[KubernetesEnvironmentVariable]) {
+    } else if (getEnvironmentVariable(KubernetesEnvironmentVariable)) {
         hostType = HostType.Kubernetes;
-    } else if (process.env[ServiceFabricEnvironmentVariable]) {
+    } else if (getEnvironmentVariable(ServiceFabricEnvironmentVariable)) {
         hostType = HostType.ServiceFabric;
     } else if (isBrowser()) {
         hostType = HostType.Browser;
@@ -74,7 +90,7 @@ function getHostType(): string | undefined {
 }
 
 function isDevEnvironment(): boolean {
-    const envType = process.env[NodeJSEnvironmentVariable];
+    const envType = getEnvironmentVariable(NodeJSEnvironmentVariable);
     if (NodeJSDevEnvironmentVariableValue === envType?.toLowerCase()) {
         return true;
     }
