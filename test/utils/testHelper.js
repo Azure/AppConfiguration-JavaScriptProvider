@@ -63,6 +63,17 @@ const createMockedKeyVaultReference = (key, vaultUri) => ({
     isReadOnly: false,
 });
 
+const createMockedJsonKeyValue = (key, value) => ({
+    value: value,
+    key: key,
+    label: null,
+    contentType: "application/json",
+    lastModified: "2023-05-04T04:32:56.000Z",
+    tags: {},
+    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
+    isReadOnly: false
+});
+
 module.exports = {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
@@ -73,4 +84,5 @@ module.exports = {
     createMockedConnectionString,
     createMockedTokenCredential,
     createMockedKeyVaultReference,
+    createMockedJsonKeyValue
 }
