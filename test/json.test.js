@@ -10,23 +10,15 @@ const {
     mockAppConfigurationClientListConfigurationSettings,
     restoreMocks,
     createMockedConnectionString,
-    createMockedKeyVaultReference
+    createMockedKeyVaultReference,
+    createMockedJsonKeyValue
 } = require("./utils/testHelper");
 
-const jsonKeyValue = {
-    value: '{"Test":{"Level":"Debug"},"Prod":{"Level":"Warning"}}',
-    key: "json.settings.logging",
-    label: null,
-    contentType: "application/json",
-    lastModified: "2023-05-04T04:32:56.000Z",
-    tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
-    isReadOnly: false
-};
+const jsonKeyValue = createMockedJsonKeyValue("json.settings.logging", '{"Test":{"Level":"Debug"},"Prod":{"Level":"Warning"}}');
 const keyVaultKeyValue = createMockedKeyVaultReference("TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName");
 
 describe("json", function () {
-    beforeEach(() => {   
+    beforeEach(() => {
     });
 
     afterEach(() => {
@@ -49,7 +41,7 @@ describe("json", function () {
 
     it("should not parse key-vault reference", async () => {
         mockAppConfigurationClientListConfigurationSettings([jsonKeyValue, keyVaultKeyValue]);
-        
+
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             keyVaultOptions: {
@@ -61,5 +53,43 @@ describe("json", function () {
         expect(resolvedSecret).not.undefined;
         expect(resolvedSecret.uri).undefined;
         expect(typeof resolvedSecret).eq("string");
+    });
+
+    it("should parse different kinds of legal values", async () => {
+        mockAppConfigurationClientListConfigurationSettings([
+            /**
+             * A JSON value MUST be an object, array, number, or string, false, null, true
+             * See https://www.ietf.org/rfc/rfc4627.txt
+             */
+            createMockedJsonKeyValue("json.settings.object", "{}"),
+            createMockedJsonKeyValue("json.settings.array", "[]"),
+            createMockedJsonKeyValue("json.settings.number", "8"),
+            createMockedJsonKeyValue("json.settings.string", "string"),
+            createMockedJsonKeyValue("json.settings.false", "false"),
+            createMockedJsonKeyValue("json.settings.true", "true"),
+            createMockedJsonKeyValue("json.settings.null", "null"),
+            createMockedJsonKeyValue("json.settings.literalNull", null), // possible value via Portal's advanced edit.
+            // Special tricky values related to JavaScript
+            // See https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean#boolean_coercion
+            createMockedJsonKeyValue("json.settings.zero", 0),
+            createMockedJsonKeyValue("json.settings.emptyString", ""), // should fail JSON.parse and use string value as fallback
+            createMockedJsonKeyValue("json.settings.illegalString", "[unclosed"), // should fail JSON.parse
+
+        ]);
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(typeof settings.get("json.settings.object")).eq("object", "is object");
+        expect(Object.keys(settings.get("json.settings.object")).length).eq(0, "is empty object");
+        expect(Array.isArray(settings.get("json.settings.array"))).eq(true, "is array");
+        expect(settings.get("json.settings.number")).eq(8, "is number");
+        expect(settings.get("json.settings.string")).eq("string", "is string");
+        expect(settings.get("json.settings.false")).eq(false, "is false");
+        expect(settings.get("json.settings.true")).eq(true, "is true");
+        expect(settings.get("json.settings.null")).eq(null, "is null");
+        expect(settings.get("json.settings.literalNull")).eq(null, "is literal null");
+        expect(settings.get("json.settings.zero")).eq(0, "is zero");
+        expect(settings.get("json.settings.emptyString")).eq("", "is empty string");
+        expect(settings.get("json.settings.illegalString")).eq("[unclosed", "is illegal string");
     });
 })
