@@ -22,9 +22,9 @@ To run the samples using the published version of the package:
 npm install
 ```
 
-2. Edit the file `.env.template`, adding the correct credentials to access the Azure service and run the samples. Then rename the file from `.env.template` to just `.env`. The sample programs will read this file automatically.
+2. Edit the file `.env.template`, adding the correct credentials to access the Azure service and rename the file from `.env.template` to just `.env`. Then run the samples, it will read this file automatically.
 
-3. Run whichever samples you like (note that some samples may require additional setup, see the table above):
+3. Run whichever samples you like:
 
 ```bash
 node helloworld.mjs
