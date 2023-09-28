@@ -5,7 +5,8 @@ import * as dotenv from "dotenv";
 dotenv.config()
 
 /**
- * This example retrives all settings starting with "app.settings.".
+ * This example retrives all settings with key following pattern "app.settings.*", i.e. starting with "app.settings.".
+ * With the option `trimKeyPrefixes`, it trims the prefix "app.settings." from keys for simplicity.
  * Value of config "app.settings.message" will be printed.
  *
  * Below environment variables are required for this example:
