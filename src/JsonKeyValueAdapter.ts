@@ -22,13 +22,14 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
     }
 
     public async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
-        if (!setting.value) {
-            throw new Error("Unexpected empty value for application/json content type.");
-        }
         let parsedValue: unknown;
-        try {
-            parsedValue = JSON.parse(setting.value);
-        } catch (error) {
+        if (setting.value !== undefined) {
+            try {
+                parsedValue = JSON.parse(setting.value);
+            } catch (error) {
+                parsedValue = setting.value;
+            }
+        } else {
             parsedValue = setting.value;
         }
         return [setting.key, parsedValue];
