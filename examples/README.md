@@ -6,11 +6,11 @@ These examples show how to use the JavaScript Provider for Azure App Configurati
 
 The sample programs are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
 
-You need [an Azure subscription][freesub] and the following Azure resources to run these sample programs:
+You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run these sample programs:
 
-- [Azure App Configuration account][createinstance_azureappconfigurationaccount]
+- [Azure App Configuration store](https://learn.microsoft.com/en-us/azure/azure-app-configuration/quickstart-azure-app-configuration-create?tabs=azure-portal)
 
-Samples retrieve credentials to access the service endpoint from environment variables. Alternatively, edit the source code to include the appropriate credentials. See each individual sample for details on which environment variables/credentials it requires to function.
+Samples retrieve credentials to accessyour App Configuration store from environment variables. Alternatively, edit the source code to include the appropriate credentials. See each individual sample for details on which environment variables/credentials it requires to function.
 
 ## Setup
 
@@ -35,6 +35,3 @@ Alternatively, run a single sample with the correct environment variables set (s
 ```bash
 npx cross-env APPCONFIG_CONNECTION_STRING="<appconfig connection string>" node helloworld.mjs
 ```
-
-[freesub]: https://azure.microsoft.com/free/
-[createinstance_azureappconfigurationaccount]: https://docs.microsoft.com/azure/azure-app-configuration/quickstart-aspnet-core-app?tabs=core5x#create-an-app-configuration-store
