@@ -26,7 +26,7 @@ To run the samples using the published version of the package:
 
 2. There are two ways to run the samples using correct credentials:
 
-- Edit the file `.env.template`, adding the correct credentials to access the Azure service and rename the file from `.env.template` to just `.env`.
+- Edit the file `.env.template`, adding the correct credentials to access your Azure App Configuration store and rename the file from `.env.template` to just `.env`.
 Then run the samples, it will read this file automatically.
     ```bash
     node helloworld.mjs
