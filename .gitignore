@@ -407,3 +407,6 @@ types/
 
 # npm pack
 *.tgz
+
+# examples
+examples/package-lock.json
