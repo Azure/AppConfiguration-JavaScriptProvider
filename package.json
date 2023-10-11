@@ -1,6 +1,6 @@
 {
   "name": "@azure/app-configuration-provider",
-  "version": "0.1.0-preview",
+  "version": "1.0.0-preview",
   "description": "The JavaScript configuration provider for Azure App Configuration",
   "main": "dist/index.js",
   "module": "./dist-esm/index.js",
