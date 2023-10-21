@@ -51,7 +51,7 @@
   },
   "dependencies": {
     "@azure/app-configuration": "^1.4.1",
-    "@azure/identity": "^3.3.0",
+    "@azure/identity": "^3.3.2",
     "@azure/keyvault-secrets": "^4.7.0"
   }
 }
