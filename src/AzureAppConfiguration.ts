@@ -1,6 +1,19 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { Disposable } from "./common/disposable";
+
 export type AzureAppConfiguration = {
-    // methods for advanced features, e.g. refresh()
-} & ReadonlyMap<string, unknown>;
+    /**
+     * API to trigger refresh operation.
+     */
+    refresh(): Promise<void>;
+
+    /**
+     * API to register callback listeners, which will be called only when a refresh operation successfully updates key-values.
+     *
+     * @param listener Callback funtion to be registered.
+     * @param thisArg Optional. Value to use as this when executing callback.
+     */
+    onRefresh(listener: () => any, thisArg?: any): Disposable;
+} & ReadonlyMap<string, any>;

@@ -28,6 +28,14 @@ function mockAppConfigurationClientListConfigurationSettings(kvList) {
     });
 }
 
+function mockAppConfigurationClientGetConfigurationSetting(kvList) {
+    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId) => {
+        const key = settingId.key;
+        const label = settingId.label ?? null;
+        return kvList.find(elem => elem.key === key && elem.label === label);
+    });
+}
+
 // uriValueList: [["<secretUri>", "value"], ...]
 function mockSecretClientGetSecret(uriValueList) {
     const dict = new Map();
@@ -99,6 +107,7 @@ const createMockedKeyValue = (props) => (Object.assign({
 module.exports = {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
+    mockAppConfigurationClientGetConfigurationSetting,
     mockSecretClientGetSecret,
     restoreMocks,
 

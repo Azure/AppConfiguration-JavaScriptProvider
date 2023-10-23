@@ -3,6 +3,7 @@
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationKeyVaultOptions } from "./keyvault/AzureAppConfigurationKeyVaultOptions";
+import { RefreshOptions } from "./RefreshOptions";
 
 export const MaxRetries = 2;
 export const MaxRetryDelayInMs = 60000;
@@ -31,4 +32,8 @@ export interface AzureAppConfigurationOptions {
     trimKeyPrefixes?: string[];
     clientOptions?: AppConfigurationClientOptions;
     keyVaultOptions?: AzureAppConfigurationKeyVaultOptions;
+    /**
+     * Specifies options for dynamic refresh key-values.
+     */
+    refreshOptions?: RefreshOptions;
 }
