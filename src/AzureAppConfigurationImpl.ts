@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
@@ -24,9 +24,10 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     private sortedTrimKeyPrefixes: string[] | undefined;
     private readonly requestTracingEnabled: boolean;
     // Refresh
-    private refreshIntervalInMs: number;
-    private onRefreshListeners: LinkedList<() => any>;
+    private refreshIntervalInMs: number | undefined;
+    private onRefreshListeners: LinkedList<() => any> | undefined;
     private lastUpdateTimestamp: number;
+    private sentinels: ConfigurationSettingId[] | undefined;
 
     constructor(
         private client: AppConfigurationClient,
@@ -52,6 +53,15 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
                     this.refreshIntervalInMs = refreshIntervalInMs;
                 }
             }
+
+            this.sentinels = options.refreshOptions.watchedSettings?.map(setting => {
+                const key = setting.key;
+                const label = setting.label;
+                if (key.includes("*") || label?.includes("*")) {
+                    throw new Error("Wildcard key or label filters are not supported for refresh.");
+                }
+                return { key, label };
+            });
         }
 
         // TODO: should add more adapters to process different type of values
@@ -84,6 +94,11 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
                     const keyValuePair = await this.processKeyValues(setting);
                     keyValues.push(keyValuePair);
                 }
+                // update etag of sentinels
+                const matchedSentinel = this.sentinels?.find(s => s.key === setting.key && (s.label ?? null) === setting.label); // Workaround: as undefined label represents the same with null.
+                if (matchedSentinel) {
+                    matchedSentinel.etag = setting.etag;
+                }
             }
         }
         for (const [k, v] of keyValues) {
@@ -94,7 +109,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
     public async refresh(): Promise<void> {
         // if no refreshOptions set, return
-        if (this.options?.refreshOptions === undefined || this.options.refreshOptions.watchedSettings.length === 0) {
+        if (this.sentinels === undefined || this.sentinels.length === 0 || this.refreshIntervalInMs === undefined) {
             return Promise.resolve();
         }
         // if still within refresh interval, return
@@ -104,12 +119,15 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
 
         // try refresh if any of watched settings is changed.
-        // TODO: watchedSettings as optional, etag based refresh if not specified.
         let needRefresh = false;
-        for (const watchedSetting of this.options.refreshOptions.watchedSettings) {
-            const response = await this.client.getConfigurationSetting(watchedSetting);
-            const [key, value] = await this.processKeyValues(response);
-            if (value !== this.get(key)) {
+        for (const sentinel of this.sentinels) {
+            const response = await this.client.getConfigurationSetting(sentinel, {
+                onlyIfChanged: true
+                // TODO: do we trace this request by adding custom headers?
+            });
+            if (response.statusCode !== 304) { // TODO: can be more robust, e.g. === 200?
+                // sentinel changed.
+                sentinel.etag = response.etag;// update etag of the sentinel
                 needRefresh = true;
                 break;
             }
@@ -117,13 +135,19 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         if (needRefresh) {
             await this.load(RequestType.Watch);
             // run callbacks in async
-            for (const listener of this.onRefreshListeners) {
-                listener();
+            if (this.onRefreshListeners !== undefined) {
+                for (const listener of this.onRefreshListeners) {
+                    listener();
+                }
             }
         }
     }
 
     public onRefresh(listener: () => any, thisArg?: any): Disposable {
+        if (this.onRefreshListeners === undefined) {
+            // TODO: Add unit tests
+            throw new Error("Illegal operation because refreshOptions is not provided on loading.");
+        }
         const boundedListener = listener.bind(thisArg);
         const remove = this.onRefreshListeners.push(boundedListener);
         return new Disposable(remove);

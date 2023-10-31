@@ -29,10 +29,17 @@ function mockAppConfigurationClientListConfigurationSettings(kvList) {
 }
 
 function mockAppConfigurationClientGetConfigurationSetting(kvList) {
-    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId) => {
+    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         const key = settingId.key;
         const label = settingId.label ?? null;
-        return kvList.find(elem => elem.key === key && elem.label === label);
+        const found = kvList.find(elem => elem.key === key && elem.label === label);
+        if (found) {
+            if (options?.onlyIfChanged && settingId.etag === found.etag) {
+                return { statusCode: 304 };
+            } else {
+                return { statusCode: 200, ...found };
+            }
+        }
     });
 }
 

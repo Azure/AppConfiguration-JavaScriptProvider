@@ -15,6 +15,7 @@ const {
 } = require("./utils/testHelper");
 const { promisify } = require("util")
 const sleepInMs = promisify(setTimeout);
+const uuid = require("uuid");
 
 let mockedKVs = [];
 
@@ -22,10 +23,11 @@ function updateSetting(key, value) {
     const setting = mockedKVs.find(elem => elem.key === key);
     if (setting) {
         setting.value = value;
+        setting.etag = uuid.v4();
     }
 }
 function addSetting(key, value) {
-    mockedKVs.push(createMockedKeyValue({key, value}));
+    mockedKVs.push(createMockedKeyValue({ key, value }));
 }
 
 describe("dynamic refresh", function () {
@@ -64,7 +66,7 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontColor")).eq("red");
 
         // after refreshInterval, should really refresh
-        await sleepInMs(2 * 1000);
+        await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
         expect(settings.get("app.settings.fontColor")).eq("blue");
     });
@@ -84,7 +86,7 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontSize")).eq("40");
 
         updateSetting("app.settings.fontSize", "50"); // unwatched setting
-        await sleepInMs(2 * 1000);
+        await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
         expect(settings.get("app.settings.fontSize")).eq("40");
     });
@@ -107,7 +109,7 @@ describe("dynamic refresh", function () {
         // change setting
         addSetting("app.settings.bgColor", "white");
         updateSetting("app.settings.fontSize", "50");
-        await sleepInMs(2 * 1000);
+        await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
         expect(settings.get("app.settings.fontSize")).eq("50");
         expect(settings.get("app.settings.bgColor")).eq("white");
@@ -130,7 +132,7 @@ describe("dynamic refresh", function () {
         await settings.refresh();
         expect(count).eq(0);
 
-        await sleepInMs(2000);
+        await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
         expect(count).eq(1);
 

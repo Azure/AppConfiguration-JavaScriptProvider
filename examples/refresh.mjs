@@ -31,6 +31,7 @@ const settings = await load(connectionString, {
 console.log("Update the `message` in your App Configuration store using Azure portal or CLI.")
 console.log("First, update the `message` value, and then update the `sentinel` key value.")
 
+// eslint-disable-next-line no-constant-condition
 while (true) {
     // Refreshing the configuration setting
     await settings.refresh();
