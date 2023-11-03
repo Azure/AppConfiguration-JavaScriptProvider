@@ -46,7 +46,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         const keyValues: [key: string, value: unknown][] = [];
 
         // validate selectors
-        const selectors = validatedSelectors(this.options?.selectors);
+        const selectors = getValidSelectors(this.options?.selectors);
 
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -109,7 +109,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     }
 }
 
-function validatedSelectors(selectors?: { keyFilter: string, labelFilter?: string }[]) {
+function getValidSelectors(selectors?: { keyFilter: string, labelFilter?: string }[]) {
     if (!selectors || selectors.length === 0) {
         // Default selector: key: *, label: \0
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
@@ -117,7 +117,7 @@ function validatedSelectors(selectors?: { keyFilter: string, labelFilter?: strin
     return selectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
-            throw new Error("Key filters cannot be empty.");
+            throw new Error("Key filter cannot be null or empty.");
         }
         if (!selector.labelFilter) {
             selector.labelFilter = LabelFilter.Null;
