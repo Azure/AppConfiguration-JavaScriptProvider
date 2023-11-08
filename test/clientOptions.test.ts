@@ -1,15 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const { createMockedConnectionString } = require("./utils/testHelper");
-const nock = require("nock");
+import { load } from "./exportedApi";
+import { createMockedConnectionString } from "./utils/testHelper";
+import * as nock from "nock";
 
 class HttpRequestCountPolicy {
+    count: number;
+    name: string;
+
     constructor() {
         this.count = 0;
         this.name = "HttpRequestCountPolicy";
@@ -58,7 +61,7 @@ describe("custom client options", function () {
 
     it("should override default retry options", async () => {
         const countPolicy = new HttpRequestCountPolicy();
-        const loadWithMaxRetries = (maxRetries) => {
+        const loadWithMaxRetries = (maxRetries: number) => {
             return load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions: {
                     additionalPolicies: [{
