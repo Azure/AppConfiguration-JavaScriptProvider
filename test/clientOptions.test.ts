@@ -96,10 +96,6 @@ describe("custom client options", function () {
         expect(countPolicy.count).eq(2);
     });
 
-    // Note:
-    // core-rest-pipeline skips the retry throwing `RestError: getaddrinfo ENOTFOUND azure.azconfig.io`
-    // See https://github.com/Azure/azure-sdk-for-js/issues/27037
-    // Fixed in @azure/core-rest-pipeline@1.2.2
     it("should retry on DNS failure", async () => {
         nock.restore(); // stop mocking with 500 error but sending real requests which will fail with ENOTFOUND
         const countPolicy = new HttpRequestCountPolicy();
