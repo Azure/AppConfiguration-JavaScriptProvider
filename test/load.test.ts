@@ -1,19 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const {
-    mockAppConfigurationClientListConfigurationSettings,
-    restoreMocks,
-    createMockedConnectionString,
-    createMockedEnpoint,
-    createMockedTokenCredential,
-    createMockedKeyValue,
-} = require("./utils/testHelper");
+import { load } from "./exportedApi";
+import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEnpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",

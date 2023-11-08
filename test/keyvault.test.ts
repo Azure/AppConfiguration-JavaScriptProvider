@@ -1,16 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const { sinon,
-    createMockedConnectionString,
-    createMockedTokenCredential,
-    mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } = require("./utils/testHelper");
-const { SecretClient } = require("@azure/keyvault-secrets");
+import { load } from "./exportedApi";
+import { sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } from "./utils/testHelper";
+import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 
 const mockedData = [
     // key, secretUri, value
@@ -72,9 +69,9 @@ describe("key vault reference", function () {
 
         // mock specific behavior per secret client
         const client1 = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
-        sinon.stub(client1, "getSecret").returns({ value: "SecretValueViaClient1" });
+        sinon.stub(client1, "getSecret").returns(Promise.resolve({value: "SecretValueViaClient1" } as KeyVaultSecret));
         const client2 = new SecretClient("https://fake-vault-name2.vault.azure.net", createMockedTokenCredential());
-        sinon.stub(client2, "getSecret").returns({ value: "SecretValueViaClient2" });
+        sinon.stub(client2, "getSecret").returns(Promise.resolve({value: "SecretValueViaClient2" } as KeyVaultSecret));
         const settings = await load(createMockedConnectionString(), {
             keyVaultOptions: {
                 secretClients: [

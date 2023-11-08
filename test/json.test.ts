@@ -1,18 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const {
-    mockAppConfigurationClientListConfigurationSettings,
-    restoreMocks,
-    createMockedConnectionString,
-    createMockedKeyVaultReference,
-    createMockedJsonKeyValue
-} = require("./utils/testHelper");
+import { load } from "./exportedApi";
+import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedKeyVaultReference, createMockedJsonKeyValue } from "./utils/testHelper";
 
 const jsonKeyValue = createMockedJsonKeyValue("json.settings.logging", '{"Test":{"Level":"Debug"},"Prod":{"Level":"Warning"}}');
 const keyVaultKeyValue = createMockedKeyVaultReference("TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName");

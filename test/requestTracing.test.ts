@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const { createMockedConnectionString, createMockedTokenCredential } = require("./utils/testHelper");
-
+import { createMockedConnectionString, createMockedTokenCredential } from "./utils/testHelper";
+import { load } from "./exportedApi";
 class HttpRequestHeadersPolicy {
+    headers: any;
+    name: string;
+
     constructor() {
         this.headers = {};
         this.name = "HttpRequestHeadersPolicy";
@@ -22,13 +24,14 @@ class HttpRequestHeadersPolicy {
 describe("request tracing", function () {
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
+    const position: "perCall" | "perRetry" = "perCall";
     const clientOptions = {
         retryOptions: {
             maxRetries: 0 // save time
         },
         additionalPolicies: [{
             policy: headerPolicy,
-            position: "perCall"
+            position
         }]
     };
 
@@ -43,7 +46,7 @@ describe("request tracing", function () {
             await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
-        expect(headerPolicy.headers.get("User-Agent")).satisfy(ua => ua.startsWith("javascript-appconfiguration-provider"));
+        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
     });
 
     it("should have request type in correlation-context header", async () => {
@@ -99,7 +102,7 @@ describe("request tracing", function () {
         delete process.env.WEBSITE_SITE_NAME;
     });
 
-    it("should disable request tracing when AZURE_APP_CONFIGURATION_TRACING_DISABLED is true", async() => {
+    it("should disable request tracing when AZURE_APP_CONFIGURATION_TRACING_DISABLED is true", async () => {
         for (const indicator of ["TRUE", "true"]) {
             process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED = indicator;
             try {
