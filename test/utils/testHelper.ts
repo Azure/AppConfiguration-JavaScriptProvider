@@ -7,9 +7,9 @@ import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
 
-const TEST_CLIENT_ID = "62e76eb5-218e-4f90-8261-000000000000";
-const TEST_TENANT_ID = "72f988bf-86f1-41af-91ab-000000000000";
-const TEST_CLIENT_SECRET = "Q158Q~2JtUwVbuq0Mzm9ocH2umTB000000000000";
+const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
+const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
 function mockAppConfigurationClientListConfigurationSettings(kvList: any[]) {
     function* testKvSetGnerator(kvs: any[]) {
