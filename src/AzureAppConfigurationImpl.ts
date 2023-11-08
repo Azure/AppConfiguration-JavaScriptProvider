@@ -44,7 +44,10 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
     public async load() {
         const keyValues: [key: string, value: unknown][] = [];
-        const selectors = this.options?.selectors ?? [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+
+        // validate selectors
+        const selectors = getValidSelectors(this.options?.selectors);
+
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: selector.keyFilter,
@@ -104,4 +107,24 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         headers[CorrelationContextHeaderName] = this.correlationContextHeader;
         return headers;
     }
+}
+
+function getValidSelectors(selectors?: { keyFilter: string, labelFilter?: string }[]) {
+    if (!selectors || selectors.length === 0) {
+        // Default selector: key: *, label: \0
+        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+    }
+    return selectors.map(selectorCandidate => {
+        const selector = { ...selectorCandidate };
+        if (!selector.keyFilter) {
+            throw new Error("Key filter cannot be null or empty.");
+        }
+        if (!selector.labelFilter) {
+            selector.labelFilter = LabelFilter.Null;
+        }
+        if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
+            throw new Error("The characters '*' and ',' are not supported in label filters.");
+        }
+        return selector;
+    });
 }

@@ -12,54 +12,30 @@ const {
     createMockedConnectionString,
     createMockedEnpoint,
     createMockedTokenCredential,
+    createMockedKeyValue,
 } = require("./utils/testHelper");
 
 const mockedKVs = [{
-    value: "red",
     key: "app.settings.fontColor",
-    label: null,
-    contentType: "",
-    lastModified: "2023-05-04T04:34:24.000Z",
-    tags: {},
-    etag: "210fjkPIWZMjFTi_qyEEmmsJjtUjj0YQl-Y3s1m6GLw",
-    isReadOnly: false
+    value: "red",
 }, {
-    value: "40",
     key: "app.settings.fontSize",
-    label: null,
-    contentType: "",
-    lastModified: "2023-05-04T04:32:56.000Z",
-    tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
-    isReadOnly: false
+    value: "40",
 }, {
-    value: "TestValue",
     key: "TestKey",
     label: "Test",
-    contentType: "",
-    lastModified: "2023-05-04T04:32:56.000Z",
-    tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
-    isReadOnly: false
+    value: "TestValue",
 }, {
-    value: null,
+    key: "TestKey",
+    label: "Prod",
+    value: "TestValueForProd",
+}, {
     key: "KeyForNullValue",
-    label: "",
-    contentType: "",
-    lastModified: "2023-05-04T04:32:56.000Z",
-    tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
-    isReadOnly: false
+    value: null,
 }, {
-    value: "",
     key: "KeyForEmptyValue",
-    label: "",
-    contentType: "",
-    lastModified: "2023-05-04T04:32:56.000Z",
-    tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
-    isReadOnly: false
-}];
+    value: "",
+}].map(createMockedKeyValue);
 
 describe("load", function () {
     before(() => {
@@ -118,8 +94,7 @@ describe("load", function () {
         expect(settings.get("fontColor")).eq("red");
         expect(settings.has("fontSize")).eq(true);
         expect(settings.get("fontSize")).eq("40");
-        expect(settings.has("TestKey")).eq(true);
-        expect(settings.get("TestKey")).eq("TestValue");
+        expect(settings.has("TestKey")).eq(false);
     });
 
     it("should trim longest key prefix first", async () => {
@@ -136,8 +111,7 @@ describe("load", function () {
         expect(settings.get("fontColor")).eq("red");
         expect(settings.has("fontSize")).eq(true);
         expect(settings.get("fontSize")).eq("40");
-        expect(settings.has("Key")).eq(true);
-        expect(settings.get("Key")).eq("TestValue");
+        expect(settings.has("TestKey")).eq(false);
     });
 
     it("should support null/empty value", async () => {
@@ -148,5 +122,40 @@ describe("load", function () {
         expect(settings.get("KeyForNullValue")).eq(null);
         expect(settings.has("KeyForEmptyValue")).eq(true);
         expect(settings.get("KeyForEmptyValue")).eq("");
+    });
+
+    it("should not support * or , in label filters", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithWildcardLabelFilter = load(connectionString, {
+            selectors: [{
+                keyFilter: "app.*",
+                labelFilter: "*"
+            }]
+        });
+        expect(loadWithWildcardLabelFilter).to.eventually.rejected;
+
+        const loadWithMultipleLabelFilter = load(connectionString, {
+            selectors: [{
+                keyFilter: "app.*",
+                labelFilter: "labelA,labelB"
+            }]
+        });
+        expect(loadWithMultipleLabelFilter).to.eventually.rejected;
+    });
+
+    it("should override config settings with same key but different label", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "Test*",
+                labelFilter: "Test"
+            }, {
+                keyFilter: "Test*",
+                labelFilter: "Prod"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(settings.has("TestKey")).eq(true);
+        expect(settings.get("TestKey")).eq("TestValueForProd");
     });
 })

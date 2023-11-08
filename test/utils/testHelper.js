@@ -5,16 +5,27 @@ const sinon = require("sinon");
 const { AppConfigurationClient } = require("@azure/app-configuration");
 const { ClientSecretCredential } = require("@azure/identity");
 const { SecretClient } = require("@azure/keyvault-secrets");
+const uuid = require("uuid");
 
 const TEST_CLIENT_ID = "62e76eb5-218e-4f90-8261-000000000000";
 const TEST_TENANT_ID = "72f988bf-86f1-41af-91ab-000000000000";
 const TEST_CLIENT_SECRET = "Q158Q~2JtUwVbuq0Mzm9ocH2umTB000000000000";
 
 function mockAppConfigurationClientListConfigurationSettings(kvList) {
-    function* testKvSetGnerator() {
-        yield* kvList;
+    function* testKvSetGnerator(kvs) {
+        yield* kvs;
     }
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake(() => testKvSetGnerator());
+    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+        const keyFilter = listOptions.keyFilter ?? "*";
+        const labelFilter = listOptions.labelFilter ?? "*";
+        const kvs = kvList.filter(kv => {
+            const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, keyFilter.length - 1)) : kv.key === keyFilter;
+            const labelMatched = labelFilter.endsWith("*") ? kv.label.startsWith(labelFilter.slice(0, labelFilter.length - 1))
+                : (labelFilter === "\0" ? kv.label === null : kv.label === labelFilter); // '\0' in labelFilter, null in config setting.
+            return keyMatched && labelMatched;
+        })
+        return testKvSetGnerator(kvs);
+    });
 }
 
 // uriValueList: [["<secretUri>", "value"], ...]
@@ -74,6 +85,17 @@ const createMockedJsonKeyValue = (key, value) => ({
     isReadOnly: false
 });
 
+const createMockedKeyValue = (props) => (Object.assign({
+    value: "TestValue",
+    key: "TestKey",
+    label: null,
+    contentType: "",
+    lastModified: new Date().toISOString(),
+    tags: {},
+    etag: uuid.v4(),
+    isReadOnly: false
+}, props));
+
 module.exports = {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
@@ -84,5 +106,6 @@ module.exports = {
     createMockedConnectionString,
     createMockedTokenCredential,
     createMockedKeyVaultReference,
-    createMockedJsonKeyValue
+    createMockedJsonKeyValue,
+    createMockedKeyValue
 }
