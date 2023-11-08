@@ -28,12 +28,12 @@ class HttpRequestCountPolicy {
 
 describe("custom client options", function () {
     const fakeEndpoint = "https://azure.azconfig.io";
-    before(() => {
+    beforeEach(() => {
         // Thus here mock it to reply 500, in which case the retry mechanism works.
         nock(fakeEndpoint).persist().get(() => true).reply(500);
     });
 
-    after(() => {
+    afterEach(() => {
         nock.restore();
     })
 
@@ -98,7 +98,28 @@ describe("custom client options", function () {
 
     // Note:
     // core-rest-pipeline skips the retry throwing `RestError: getaddrinfo ENOTFOUND azure.azconfig.io`
-    // Probably would be fixed in upstream libs.
     // See https://github.com/Azure/azure-sdk-for-js/issues/27037
-    it("should retry on DNS failure");
+    // Fixed in @azure/core-rest-pipeline@1.2.2
+    it("should retry on DNS failure", async () => {
+        nock.restore(); // stop mocking with 500 error but sending real requests which will fail with ENOTFOUND
+        const countPolicy = new HttpRequestCountPolicy();
+        const loadPromise = () => {
+            return load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions: {
+                    additionalPolicies: [{
+                        policy: countPolicy,
+                        position: "perRetry"
+                    }]
+                }
+            })
+        };
+        let error;
+        try {
+            await loadPromise();
+        } catch (e) {
+            error = e;
+        }
+        expect(error).not.undefined;
+        expect(countPolicy.count).eq(3);
+    });
 })
