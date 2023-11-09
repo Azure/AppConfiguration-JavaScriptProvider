@@ -1,30 +1,30 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const sinon = require("sinon");
-const { AppConfigurationClient } = require("@azure/app-configuration");
-const { ClientSecretCredential } = require("@azure/identity");
-const { SecretClient } = require("@azure/keyvault-secrets");
-const uuid = require("uuid");
+import * as sinon from "sinon";
+import { AppConfigurationClient } from "@azure/app-configuration";
+import { ClientSecretCredential } from "@azure/identity";
+import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
+import * as uuid from "uuid";
 
-const TEST_CLIENT_ID = "62e76eb5-218e-4f90-8261-000000000000";
-const TEST_TENANT_ID = "72f988bf-86f1-41af-91ab-000000000000";
-const TEST_CLIENT_SECRET = "Q158Q~2JtUwVbuq0Mzm9ocH2umTB000000000000";
+const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
+const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
-function mockAppConfigurationClientListConfigurationSettings(kvList) {
-    function* testKvSetGnerator(kvs) {
+function mockAppConfigurationClientListConfigurationSettings(kvList: any[]) {
+    function* testKvSetGnerator(kvs: any[]) {
         yield* kvs;
     }
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
-        const keyFilter = listOptions.keyFilter ?? "*";
-        const labelFilter = listOptions.labelFilter ?? "*";
+        const keyFilter = listOptions?.keyFilter ?? "*";
+        const labelFilter = listOptions?.labelFilter ?? "*";
         const kvs = kvList.filter(kv => {
             const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, keyFilter.length - 1)) : kv.key === keyFilter;
             const labelMatched = labelFilter.endsWith("*") ? kv.label.startsWith(labelFilter.slice(0, labelFilter.length - 1))
                 : (labelFilter === "\0" ? kv.label === null : kv.label === labelFilter); // '\0' in labelFilter, null in config setting.
             return keyMatched && labelMatched;
         })
-        return testKvSetGnerator(kvs);
+        return testKvSetGnerator(kvs) as any;
     });
 }
 
@@ -44,19 +44,22 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList) {
 }
 
 // uriValueList: [["<secretUri>", "value"], ...]
-function mockSecretClientGetSecret(uriValueList) {
+function mockSecretClientGetSecret(uriValueList: [string, string][]) {
     const dict = new Map();
     for (const [uri, value] of uriValueList) {
         dict.set(uri, value);
     }
 
-    sinon.stub(SecretClient.prototype, "getSecret").callsFake(function (secretName, options) {
+    sinon.stub(SecretClient.prototype, "getSecret").callsFake(async function (secretName, options) {
         const url = new URL(this.vaultUrl);
         url.pathname = `/secrets/${secretName}`;
         if (options?.version) {
             url.pathname += `/${options.version}`;
         }
-        return { value: dict.get(url.toString()) };
+        return {
+            name: secretName,
+            value: dict.get(url.toString())
+        } as KeyVaultSecret;
     })
 }
 
@@ -76,7 +79,7 @@ const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_
     return new ClientSecretCredential(tenantId, clientId, clientSecret);
 }
 
-const createMockedKeyVaultReference = (key, vaultUri) => ({
+const createMockedKeyVaultReference = (key: string, vaultUri: string) => ({
     // https://${vaultName}.vault.azure.net/secrets/${secretName}
     value: `{"uri":"${vaultUri}"}`,
     key,
@@ -89,7 +92,7 @@ const createMockedKeyVaultReference = (key, vaultUri) => ({
     isReadOnly: false,
 });
 
-const createMockedJsonKeyValue = (key, value) => ({
+const createMockedJsonKeyValue = (key: string, value: any) => ({
     value: value,
     key: key,
     label: null,
@@ -100,7 +103,7 @@ const createMockedJsonKeyValue = (key, value) => ({
     isReadOnly: false
 });
 
-const createMockedKeyValue = (props) => (Object.assign({
+const createMockedKeyValue = (props: {[key: string]: any}) => (Object.assign({
     value: "TestValue",
     key: "TestKey",
     label: null,
@@ -111,7 +114,7 @@ const createMockedKeyValue = (props) => (Object.assign({
     isReadOnly: false
 }, props));
 
-module.exports = {
+export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,

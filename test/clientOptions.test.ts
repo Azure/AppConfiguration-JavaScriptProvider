@@ -1,15 +1,18 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const { createMockedConnectionString } = require("./utils/testHelper");
-const nock = require("nock");
+import { load } from "./exportedApi";
+import { createMockedConnectionString } from "./utils/testHelper";
+import * as nock from "nock";
 
 class HttpRequestCountPolicy {
+    count: number;
+    name: string;
+
     constructor() {
         this.count = 0;
         this.name = "HttpRequestCountPolicy";
@@ -25,12 +28,12 @@ class HttpRequestCountPolicy {
 
 describe("custom client options", function () {
     const fakeEndpoint = "https://azure.azconfig.io";
-    before(() => {
+    beforeEach(() => {
         // Thus here mock it to reply 500, in which case the retry mechanism works.
         nock(fakeEndpoint).persist().get(() => true).reply(500);
     });
 
-    after(() => {
+    afterEach(() => {
         nock.restore();
     })
 
@@ -58,7 +61,7 @@ describe("custom client options", function () {
 
     it("should override default retry options", async () => {
         const countPolicy = new HttpRequestCountPolicy();
-        const loadWithMaxRetries = (maxRetries) => {
+        const loadWithMaxRetries = (maxRetries: number) => {
             return load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions: {
                     additionalPolicies: [{
@@ -93,9 +96,26 @@ describe("custom client options", function () {
         expect(countPolicy.count).eq(2);
     });
 
-    // Note:
-    // core-rest-pipeline skips the retry throwing `RestError: getaddrinfo ENOTFOUND azure.azconfig.io`
-    // Probably would be fixed in upstream libs.
-    // See https://github.com/Azure/azure-sdk-for-js/issues/27037
-    it("should retry on DNS failure");
+    it("should retry on DNS failure", async () => {
+        nock.restore(); // stop mocking with 500 error but sending real requests which will fail with ENOTFOUND
+        const countPolicy = new HttpRequestCountPolicy();
+        const loadPromise = () => {
+            return load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions: {
+                    additionalPolicies: [{
+                        policy: countPolicy,
+                        position: "perRetry"
+                    }]
+                }
+            })
+        };
+        let error;
+        try {
+            await loadPromise();
+        } catch (e) {
+            error = e;
+        }
+        expect(error).not.undefined;
+        expect(countPolicy.count).eq(3);
+    });
 })
