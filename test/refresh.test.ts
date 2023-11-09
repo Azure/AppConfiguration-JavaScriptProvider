@@ -1,32 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const chai = require("chai");
-const chaiAsPromised = require("chai-as-promised");
+import * as chai from "chai";
+import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-const { load } = require("../dist/index");
-const {
-    mockAppConfigurationClientListConfigurationSettings,
-    mockAppConfigurationClientGetConfigurationSetting,
-    restoreMocks,
-    createMockedConnectionString,
-    createMockedKeyValue,
-} = require("./utils/testHelper");
-const { promisify } = require("util")
+import { load } from "./exportedApi";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue } from "./utils/testHelper";
+import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
-const uuid = require("uuid");
+import * as uuid from "uuid";
 
-let mockedKVs = [];
+let mockedKVs: any[] = [];
 
-function updateSetting(key, value) {
+function updateSetting(key: string, value: any) {
     const setting = mockedKVs.find(elem => elem.key === key);
     if (setting) {
         setting.value = value;
         setting.etag = uuid.v4();
     }
 }
-function addSetting(key, value) {
+function addSetting(key: string, value: any) {
     mockedKVs.push(createMockedKeyValue({ key, value }));
 }
 
