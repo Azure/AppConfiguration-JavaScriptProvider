@@ -15,7 +15,7 @@ import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./Refres
 import { LinkedList } from "./common/linkedList";
 import { Disposable } from "./common/disposable";
 
-export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
+export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
@@ -25,7 +25,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     private readonly requestTracingEnabled: boolean;
     // Refresh
     private refreshIntervalInMs: number | undefined;
-    private onRefreshListeners: LinkedList<() => any> | undefined;
+    private onRefreshListeners: LinkedList<() => any> = new LinkedList();
     private lastUpdateTimestamp: number;
     private sentinels: ConfigurationSettingId[] | undefined;
 
@@ -41,26 +41,29 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
 
-        if (options?.refreshOptions) {
-            this.onRefreshListeners = new LinkedList();
-            this.refreshIntervalInMs = DefaultRefreshIntervalInMs;
+        if (options?.refreshOptions?.enabled) {
+            const { watchedSettings, refreshIntervalInMs } = options.refreshOptions;
+            // validate watched settings
+            if (watchedSettings === undefined || watchedSettings.length === 0) {
+                throw new Error("Refresh is enabled but no watched settings are specified.");
+            }
 
-            const refreshIntervalInMs = this.options?.refreshOptions?.refreshIntervalInMs;
+            // process refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
                     throw new Error(`The refresh interval time cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
                 } else {
                     this.refreshIntervalInMs = refreshIntervalInMs;
                 }
+            } else {
+                this.refreshIntervalInMs = DefaultRefreshIntervalInMs;
             }
 
-            this.sentinels = options.refreshOptions.watchedSettings?.map(setting => {
-                const key = setting.key;
-                const label = setting.label;
-                if (key.includes("*") || label?.includes("*")) {
-                    throw new Error("Wildcard key or label filters are not supported for refresh.");
+            this.sentinels = watchedSettings.map(setting => {
+                if (setting.key.includes("*") || setting.label?.includes("*")) {
+                    throw new Error("The character '*' is not supported in key or label.");
                 }
-                return { key, label };
+                return { ...setting };
             });
         }
 
@@ -68,6 +71,11 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         // feature flag, others
         this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
         this.adapters.push(new JsonKeyValueAdapter());
+    }
+
+
+    get _refreshEnabled(): boolean {
+        return !!this.options?.refreshOptions?.enabled;
     }
 
     public async load(requestType: RequestType = RequestType.Startup) {
@@ -144,10 +152,10 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
     }
 
     public onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (this.onRefreshListeners === undefined) {
-            // TODO: Add unit tests
-            throw new Error("Illegal operation because refreshOptions is not provided on loading.");
+        if (!this._refreshEnabled) {
+            throw new Error("Refresh is not enabled.");
         }
+
         const boundedListener = listener.bind(thisArg);
         const remove = this.onRefreshListeners.push(boundedListener);
         return new Disposable(remove);

@@ -8,6 +8,11 @@ export const MinimumRefreshIntervalInMs = 1 * 1000;
 
 export interface RefreshOptions {
     /**
+     * Specifies whether the provider should automatically refresh when the configuration is changed.
+     */
+    enabled: boolean;
+
+    /**
      * Specifies the interval for refresh to really update the values.
      * Default value is 30 seconds. Must be greater than 1 second.
      * Any refresh operation triggered will not update the value for a key until after the interval.
@@ -15,7 +20,8 @@ export interface RefreshOptions {
     refreshIntervalInMs?: number;
 
     /**
-     * Specifies settings to be watched, to determine whether the provider triggers a refresh.
+     * Specifies settings to be watched.
+     * Only if any of the settings is updated, the refresh will acutally update loaded configuration settings.
      */
-    watchedSettings: WatchedSetting[];
+    watchedSettings?: WatchedSetting[];
 }

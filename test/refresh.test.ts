@@ -38,10 +38,36 @@ describe("dynamic refresh", function () {
         restoreMocks();
     })
 
+    it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithEmptyWatchedSettings = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: []
+            }
+        });
+        const loadWithUndefinedWatchedSettings = load(connectionString, {
+            refreshOptions: {
+                enabled: true
+            }
+        });
+        return Promise.all([
+            expect(loadWithEmptyWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified."),
+            expect(loadWithUndefinedWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified.")
+        ]);
+    });
+
+    it("should throw error when calling onRefresh when refresh is not enabled", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled.");
+    });
+
     it("should only udpate values after refreshInterval", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             refreshOptions: {
+                enabled: true,
                 refreshIntervalInMs: 2000,
                 watchedSettings: [
                     { key: "app.settings.fontColor" }
@@ -69,6 +95,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             refreshOptions: {
+                enabled: true,
                 refreshIntervalInMs: 2000,
                 watchedSettings: [
                     { key: "app.settings.fontColor" }
@@ -89,6 +116,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             refreshOptions: {
+                enabled: true,
                 refreshIntervalInMs: 2000,
                 watchedSettings: [
                     { key: "app.settings.fontColor" },
@@ -113,6 +141,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             refreshOptions: {
+                enabled: true,
                 refreshIntervalInMs: 2000,
                 watchedSettings: [
                     { key: "app.settings.fontColor" }
