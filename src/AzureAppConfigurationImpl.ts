@@ -100,10 +100,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                     const keyValuePair = await this.processKeyValues(setting);
                     keyValues.push(keyValuePair);
                 }
-                // update etag of sentinels
-                const matchedSentinel = this._sentinels?.find(s => s.key === setting.key && (s.label ?? null) === setting.label); // Workaround: as undefined label represents the same with null.
-                if (matchedSentinel) {
-                    matchedSentinel.etag = setting.etag;
+                // update etag of sentinels if refresh is enabled
+                if (this._refreshEnabled) {
+                    const matchedSentinel = this._sentinels.find(s => s.key === setting.key && s.label === setting.label);
+                    if (matchedSentinel) {
+                        matchedSentinel.etag = setting.etag;
+                    }
                 }
             }
         }

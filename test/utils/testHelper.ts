@@ -6,6 +6,7 @@ import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configu
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
+import { RestError } from "@azure/core-rest-pipeline";
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -39,15 +40,15 @@ function mockAppConfigurationClientListConfigurationSettings(kvList: Configurati
 
 function mockAppConfigurationClientGetConfigurationSetting(kvList) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
-        const key = settingId.key;
-        const label = settingId.label ?? null;
-        const found = kvList.find(elem => elem.key === key && elem.label === label);
+        const found = kvList.find(elem => elem.key === settingId.key && elem.label === settingId.label);
         if (found) {
             if (options?.onlyIfChanged && settingId.etag === found.etag) {
                 return { statusCode: 304 };
             } else {
                 return { statusCode: 200, ...found };
             }
+        } else {
+            throw new RestError("", { statusCode: 404 });
         }
     });
 }
