@@ -55,6 +55,44 @@ describe("dynamic refresh", function () {
         ]);
     });
 
+    it("should not allow refresh interval less than 1 second", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithInvalidRefreshInterval = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "app.settings.fontColor" }
+                ],
+                refreshIntervalInMs: 999
+            }
+        });
+        return expect(loadWithInvalidRefreshInterval).eventually.rejectedWith("The refresh interval time cannot be less than 1000 milliseconds.");
+    });
+
+    it("should not allow '*' in key or label", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithInvalidKey = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "app.settings.*" }
+                ]
+            }
+        });
+        const loadWithInvalidLabel = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "app.settings.fontColor", label: "*" }
+                ]
+            }
+        });
+        return Promise.all([
+            expect(loadWithInvalidKey).eventually.rejectedWith("The character '*' is not supported in key or label."),
+            expect(loadWithInvalidLabel).eventually.rejectedWith("The character '*' is not supported in key or label.")
+        ]);
+    });
+
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
