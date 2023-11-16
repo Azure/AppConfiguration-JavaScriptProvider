@@ -129,8 +129,10 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         let needRefresh = false;
         for (const sentinel of this._sentinels) {
             const response = await this._client.getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
-                // TODO: do we trace this request by adding custom headers?
+                onlyIfChanged: true,
+                requestOptions: {
+                    customHeaders: this.customHeaders(RequestType.Watch)
+                }
             });
             if (response.statusCode === 200) {
                 // sentinel changed.

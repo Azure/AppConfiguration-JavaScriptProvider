@@ -6,9 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue } from "./utils/testHelper";
-import { promisify } from "util";
-const sleepInMs = promisify(setTimeout);
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs } from "./utils/testHelper";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
