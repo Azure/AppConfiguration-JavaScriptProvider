@@ -16,33 +16,33 @@ import { LinkedList } from "./common/linkedList";
 import { Disposable } from "./common/disposable";
 
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
-    private _adapters: IKeyValueAdapter[] = [];
+    private adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
      * Since multiple prefixes could start with the same characters, we need to trim the longest prefix first.
      */
-    private _sortedTrimKeyPrefixes: string[] | undefined;
-    private readonly _requestTracingEnabled: boolean;
+    private sortedTrimKeyPrefixes: string[] | undefined;
+    private readonly requestTracingEnabled: boolean;
     // Refresh
-    private _refreshInterval: number = DefaultRefreshIntervalInMs;
-    private _onRefreshListeners: LinkedList<() => any> = new LinkedList();
-    private _lastUpdateTimestamp: number;
-    private _sentinels: ConfigurationSettingId[];
+    private refreshInterval: number = DefaultRefreshIntervalInMs;
+    private onRefreshListeners: LinkedList<() => any> = new LinkedList();
+    private lastUpdateTimestamp: number;
+    private sentinels: ConfigurationSettingId[];
 
     constructor(
-        private _client: AppConfigurationClient,
-        private _options: AzureAppConfigurationOptions | undefined
+        private client: AppConfigurationClient,
+        private options: AzureAppConfigurationOptions | undefined
     ) {
         super();
         // Enable request tracing if not opt-out
-        this._requestTracingEnabled = requestTracingEnabled();
+        this.requestTracingEnabled = requestTracingEnabled();
 
-        if (_options?.trimKeyPrefixes) {
-            this._sortedTrimKeyPrefixes = [..._options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
+        if (options?.trimKeyPrefixes) {
+            this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
 
-        if (_options?.refreshOptions?.enabled) {
-            const { watchedSettings, refreshIntervalInMs } = _options.refreshOptions;
+        if (options?.refreshOptions?.enabled) {
+            const { watchedSettings, refreshIntervalInMs } = options.refreshOptions;
             // validate watched settings
             if (watchedSettings === undefined || watchedSettings.length === 0) {
                 throw new Error("Refresh is enabled but no watched settings are specified.");
@@ -53,11 +53,11 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
                     throw new Error(`The refresh interval time cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
                 } else {
-                    this._refreshInterval = refreshIntervalInMs;
+                    this.refreshInterval = refreshIntervalInMs;
                 }
             }
 
-            this._sentinels = watchedSettings.map(setting => {
+            this.sentinels = watchedSettings.map(setting => {
                 if (setting.key.includes("*") || setting.label?.includes("*")) {
                     throw new Error("The character '*' is not supported in key or label.");
                 }
@@ -67,33 +67,33 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
 
         // TODO: should add more adapters to process different type of values
         // feature flag, others
-        this._adapters.push(new AzureKeyVaultKeyValueAdapter(_options?.keyVaultOptions));
-        this._adapters.push(new JsonKeyValueAdapter());
+        this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        this.adapters.push(new JsonKeyValueAdapter());
     }
 
 
-    private get _refreshEnabled(): boolean {
-        return !!this._options?.refreshOptions?.enabled;
+    private get refreshEnabled(): boolean {
+        return !!this.options?.refreshOptions?.enabled;
     }
 
     public async load(requestType: RequestType = RequestType.Startup) {
         const keyValues: [key: string, value: unknown][] = [];
 
         // validate selectors
-        const selectors = getValidSelectors(this._options?.selectors);
+        const selectors = getValidSelectors(this.options?.selectors);
 
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: selector.keyFilter,
                 labelFilter: selector.labelFilter
             };
-            if (this._requestTracingEnabled) {
+            if (this.requestTracingEnabled) {
                 listOptions.requestOptions = {
                     customHeaders: this.customHeaders(requestType)
                 }
             }
 
-            const settings = this._client.listConfigurationSettings(listOptions);
+            const settings = this.client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
                 if (setting.key) {
@@ -101,8 +101,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                     keyValues.push(keyValuePair);
                 }
                 // update etag of sentinels if refresh is enabled
-                if (this._refreshEnabled) {
-                    const matchedSentinel = this._sentinels.find(s => s.key === setting.key && s.label === setting.label);
+                if (this.refreshEnabled) {
+                    const matchedSentinel = this.sentinels.find(s => s.key === setting.key && s.label === setting.label);
                     if (matchedSentinel) {
                         matchedSentinel.etag = setting.etag;
                     }
@@ -112,23 +112,23 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         for (const [k, v] of keyValues) {
             this.set(k, v);
         }
-        this._lastUpdateTimestamp = Date.now();
+        this.lastUpdateTimestamp = Date.now();
     }
 
     public async refresh(): Promise<void> {
-        if (!this._refreshEnabled) {
+        if (!this.refreshEnabled) {
             return Promise.resolve();
         }
         // if still within refresh interval, return
         const now = Date.now();
-        if (now < this._lastUpdateTimestamp + this._refreshInterval) {
+        if (now < this.lastUpdateTimestamp + this.refreshInterval) {
             return Promise.resolve();
         }
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
-        for (const sentinel of this._sentinels) {
-            const response = await this._client.getConfigurationSetting(sentinel, {
+        for (const sentinel of this.sentinels) {
+            const response = await this.client.getConfigurationSetting(sentinel, {
                 onlyIfChanged: true,
                 requestOptions: {
                     customHeaders: this.customHeaders(RequestType.Watch)
@@ -144,19 +144,19 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         if (needRefresh) {
             await this.load(RequestType.Watch);
             // run callbacks in async
-            for (const listener of this._onRefreshListeners) {
+            for (const listener of this.onRefreshListeners) {
                 listener();
             }
         }
     }
 
     public onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this._refreshEnabled) {
+        if (!this.refreshEnabled) {
             throw new Error("Refresh is not enabled.");
         }
 
         const boundedListener = listener.bind(thisArg);
-        const remove = this._onRefreshListeners.push(boundedListener);
+        const remove = this.onRefreshListeners.push(boundedListener);
         return new Disposable(remove);
     }
 
@@ -167,7 +167,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 
     private async processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
-        for (const adapter of this._adapters) {
+        for (const adapter of this.adapters) {
             if (adapter.canProcess(setting)) {
                 return adapter.processKeyValue(setting);
             }
@@ -176,8 +176,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 
     private keyWithPrefixesTrimmed(key: string): string {
-        if (this._sortedTrimKeyPrefixes) {
-            for (const prefix of this._sortedTrimKeyPrefixes) {
+        if (this.sortedTrimKeyPrefixes) {
+            for (const prefix of this.sortedTrimKeyPrefixes) {
                 if (key.startsWith(prefix)) {
                     return key.slice(prefix.length);
                 }
@@ -187,12 +187,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 
     private customHeaders(requestType: RequestType) {
-        if (!this._requestTracingEnabled) {
+        if (!this.requestTracingEnabled) {
             return undefined;
         }
 
         const headers = {};
-        headers[CorrelationContextHeaderName] = createCorrelationContextHeader(this._options, requestType);
+        headers[CorrelationContextHeaderName] = createCorrelationContextHeader(this.options, requestType);
         return headers;
     }
 }
