@@ -151,4 +151,24 @@ describe("load", function () {
         expect(settings.has("TestKey")).eq(true);
         expect(settings.get("TestKey")).eq("TestValueForProd");
     });
-})
+
+    it("should dedup exact same selectors but keeping the precedence", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "Test*",
+                labelFilter: "Prod"
+            }, {
+                keyFilter: "Test*",
+                labelFilter: "Test"
+            }, {
+                keyFilter: "Test*",
+                labelFilter: "Prod"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(settings.has("TestKey")).eq(true);
+        expect(settings.get("TestKey")).eq("TestValueForProd");
+    });
+
+});
