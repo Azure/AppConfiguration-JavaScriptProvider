@@ -22,3 +22,23 @@
  * Backslash `\` character is reserved and must be escaped using another backslash `\`.
  */
 export type SettingSelector = { keyFilter: string, labelFilter?: string };
+
+/**
+ * KeyFilter is used to filter key-values based on keys.
+ *
+ * @property Any:
+ * Matches all key-values.
+ */
+export enum KeyFilter {
+    Any = "*"
+}
+
+/**
+ * LabelFilter is used to filter key-values based on labels.
+ *
+ * @property Null:
+ * Matches key-values without a label.
+ */
+export enum LabelFilter {
+    Null = "\0"
+}
