@@ -8,7 +8,18 @@ import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 import * as RequestTracing from "./requestTracing/constants";
 
+/**
+ * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
+ * @param connectionString  The connection string for the App Configuration store.
+ * @param options  Optional parameters.
+ */
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+/**
+ * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The URL to the App Configuration store.
+ * @param credential  The credential to use to connect to the App Configuration store.
+ * @param options  Optional parameters.
+ */
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(
     connectionStringOrEndpoint: string | URL,
