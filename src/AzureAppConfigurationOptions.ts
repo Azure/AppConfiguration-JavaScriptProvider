@@ -14,7 +14,21 @@ export interface AzureAppConfigurationOptions {
      * If no selectors are specified then all key-values with no label will be included.
      */
     selectors?: SettingSelector[];
+
+    /**
+     * Specifies prefixes to be trimmed from the keys of all key-values retrieved from Azure App Configuration.
+     * This is useful when you want to remove a common prefix from all keys to avoid repetition.
+     * The provided prefixes will be sorted in descending order and the longest matching prefix will be trimmed first.
+     */
     trimKeyPrefixes?: string[];
+
+    /**
+     * Specifies custom options to be used when creating the AppConfigurationClient.
+     */
     clientOptions?: AppConfigurationClientOptions;
+
+    /**
+     * Specifies options used to resolve Vey Vault references.
+     */
     keyVaultOptions?: AzureAppConfigurationKeyVaultOptions;
 }
