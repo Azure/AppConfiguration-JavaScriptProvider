@@ -117,13 +117,13 @@ function getValidSelectors(selectors?: SettingSelector[]) {
 
     // below code dedupes selectors by keyFilter and labelFilter, the latter selector wins
     const dedupedSelectors: SettingSelector[] = [];
-    const reversedSelectors = [...selectors].reverse();
-    for (const selector of reversedSelectors) {
-        if (!dedupedSelectors.find(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter)) {
-            dedupedSelectors.push(selector);
+    for (const selector of selectors) {
+        const existingSelectorIndex = dedupedSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
+        if (existingSelectorIndex >= 0) {
+            dedupedSelectors.splice(existingSelectorIndex, 1);
         }
+        dedupedSelectors.push(selector);
     }
-    dedupedSelectors.reverse();
 
     return dedupedSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
