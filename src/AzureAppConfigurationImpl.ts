@@ -6,14 +6,14 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { KeyFilter } from "./KeyFilter";
-import { LabelFilter } from "./LabelFilter";
+import { KeyFilter, LabelFilter } from "./types";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./RefreshOptions";
 import { LinkedList } from "./common/linkedList";
 import { Disposable } from "./common/disposable";
+import { SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -197,12 +197,23 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 }
 
-function getValidSelectors(selectors?: { keyFilter: string, labelFilter?: string }[]) {
+function getValidSelectors(selectors?: SettingSelector[]) {
     if (!selectors || selectors.length === 0) {
         // Default selector: key: *, label: \0
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
     }
-    return selectors.map(selectorCandidate => {
+
+    // below code dedupes selectors by keyFilter and labelFilter, the latter selector wins
+    const dedupedSelectors: SettingSelector[] = [];
+    for (const selector of selectors) {
+        const existingSelectorIndex = dedupedSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
+        if (existingSelectorIndex >= 0) {
+            dedupedSelectors.splice(existingSelectorIndex, 1);
+        }
+        dedupedSelectors.push(selector);
+    }
+
+    return dedupedSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
             throw new Error("Key filter cannot be null or empty.");
