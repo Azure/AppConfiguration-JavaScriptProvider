@@ -6,11 +6,11 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { KeyFilter } from "./KeyFilter";
-import { LabelFilter } from "./LabelFilter";
+import { KeyFilter, LabelFilter } from "./types";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
+import { SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -44,7 +44,10 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
     public async load() {
         const keyValues: [key: string, value: unknown][] = [];
-        const selectors = this.options?.selectors ?? [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+
+        // validate selectors
+        const selectors = getValidSelectors(this.options?.selectors);
+
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: selector.keyFilter,
@@ -104,4 +107,35 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         headers[CorrelationContextHeaderName] = this.correlationContextHeader;
         return headers;
     }
+}
+
+function getValidSelectors(selectors?: SettingSelector[]) {
+    if (!selectors || selectors.length === 0) {
+        // Default selector: key: *, label: \0
+        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+    }
+
+    // below code dedupes selectors by keyFilter and labelFilter, the latter selector wins
+    const dedupedSelectors: SettingSelector[] = [];
+    for (const selector of selectors) {
+        const existingSelectorIndex = dedupedSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
+        if (existingSelectorIndex >= 0) {
+            dedupedSelectors.splice(existingSelectorIndex, 1);
+        }
+        dedupedSelectors.push(selector);
+    }
+
+    return dedupedSelectors.map(selectorCandidate => {
+        const selector = { ...selectorCandidate };
+        if (!selector.keyFilter) {
+            throw new Error("Key filter cannot be null or empty.");
+        }
+        if (!selector.labelFilter) {
+            selector.labelFilter = LabelFilter.Null;
+        }
+        if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
+            throw new Error("The characters '*' and ',' are not supported in label filters.");
+        }
+        return selector;
+    });
 }

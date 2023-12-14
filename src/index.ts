@@ -3,5 +3,4 @@
 
 export { load } from "./load";
 export { AzureAppConfiguration } from "./AzureAppConfiguration";
-export { KeyFilter } from "./KeyFilter";
-export { LabelFilter } from "./LabelFilter";
+export { KeyFilter, LabelFilter } from "./types";
