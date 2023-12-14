@@ -34,7 +34,7 @@ export async function load(
     } catch (error) {
         // load() method is called in the application's startup code path.
         // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
-        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propogate fatal errors.
+        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
         const delay = MinDelayForUnhandedError - (Date.now() - startTimestamp);
         if (delay > 0) {
             await new Promise((resolve) => setTimeout(resolve, delay));
