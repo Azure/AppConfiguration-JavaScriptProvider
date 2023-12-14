@@ -8,6 +8,8 @@ import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 import * as RequestTracing from "./requestTracing/constants";
 
+const MinDelayForUnhandedError: number = 5000; // 5 seconds
+
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
  * @param connectionString  The connection string for the App Configuration store.
@@ -22,6 +24,26 @@ export async function load(connectionString: string, options?: AzureAppConfigura
  */
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 export async function load(
+    connectionStringOrEndpoint: string | URL,
+    credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
+    appConfigOptions?: AzureAppConfigurationOptions
+): Promise<AzureAppConfiguration> {
+    const startTimestamp = Date.now();
+    try {
+        return await loadPromise(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
+    } catch (error) {
+        // load() method is called in the application's startup code path.
+        // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propogate fatal errors.
+        const delay = MinDelayForUnhandedError - (Date.now() - startTimestamp);
+        if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        throw error;
+    }
+}
+
+async function loadPromise(
     connectionStringOrEndpoint: string | URL,
     credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
     appConfigOptions?: AzureAppConfigurationOptions
