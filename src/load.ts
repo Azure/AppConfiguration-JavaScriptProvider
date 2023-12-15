@@ -29,27 +29,10 @@ export async function load(
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
-    try {
-        return await loadPromise(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
-    } catch (error) {
-        // load() method is called in the application's startup code path.
-        // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
-        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
-        const delay = MinDelayForUnhandedError - (Date.now() - startTimestamp);
-        if (delay > 0) {
-            await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-        throw error;
-    }
-}
-
-async function loadPromise(
-    connectionStringOrEndpoint: string | URL,
-    credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
-    appConfigOptions?: AzureAppConfigurationOptions
-): Promise<AzureAppConfiguration> {
     let client: AppConfigurationClient;
     let options: AzureAppConfigurationOptions | undefined;
+
+    // input validation
     if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
         const connectionString = connectionStringOrEndpoint;
         options = credentialOrOptions as AzureAppConfigurationOptions;
@@ -77,9 +60,20 @@ async function loadPromise(
         throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
     }
 
-    const appConfiguration = new AzureAppConfigurationImpl(client, options);
-    await appConfiguration.load();
-    return appConfiguration;
+    try {
+        const appConfiguration = new AzureAppConfigurationImpl(client, options);
+        await appConfiguration.load();
+        return appConfiguration;
+    } catch (error) {
+        // load() method is called in the application's startup code path.
+        // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
+        const delay = MinDelayForUnhandedError - (Date.now() - startTimestamp);
+        if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        throw error;
+    }
 }
 
 function instanceOfTokenCredential(obj: unknown) {
