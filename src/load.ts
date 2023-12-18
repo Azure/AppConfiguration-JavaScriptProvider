@@ -8,6 +8,8 @@ import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 import * as RequestTracing from "./requestTracing/constants";
 
+const MinDelayForUnhandedError: number = 5000; // 5 seconds
+
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
  * @param connectionString  The connection string for the App Configuration store.
@@ -26,8 +28,11 @@ export async function load(
     credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
+    const startTimestamp = Date.now();
     let client: AppConfigurationClient;
     let options: AzureAppConfigurationOptions | undefined;
+
+    // input validation
     if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
         const connectionString = connectionStringOrEndpoint;
         options = credentialOrOptions as AzureAppConfigurationOptions;
@@ -55,9 +60,20 @@ export async function load(
         throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
     }
 
-    const appConfiguration = new AzureAppConfigurationImpl(client, options);
-    await appConfiguration.load();
-    return appConfiguration;
+    try {
+        const appConfiguration = new AzureAppConfigurationImpl(client, options);
+        await appConfiguration.load();
+        return appConfiguration;
+    } catch (error) {
+        // load() method is called in the application's startup code path.
+        // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
+        const delay = MinDelayForUnhandedError - (Date.now() - startTimestamp);
+        if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        throw error;
+    }
 }
 
 function instanceOfTokenCredential(obj: unknown) {
