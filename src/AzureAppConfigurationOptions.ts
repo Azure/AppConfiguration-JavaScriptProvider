@@ -11,12 +11,16 @@ export const MaxRetryDelayInMs = 60000;
 export interface AzureAppConfigurationOptions {
     /**
      * Specify what key-values to include in the configuration provider.
+     *
+     * @remarks
      * If no selectors are specified then all key-values with no label will be included.
      */
     selectors?: SettingSelector[];
 
     /**
      * Specifies prefixes to be trimmed from the keys of all key-values retrieved from Azure App Configuration.
+     *
+     * @remarks
      * This is useful when you want to remove a common prefix from all keys to avoid repetition.
      * The provided prefixes will be sorted in descending order and the longest matching prefix will be trimmed first.
      */
