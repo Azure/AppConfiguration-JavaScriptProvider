@@ -16,6 +16,7 @@ const MinDelayForUnhandedError: number = 5000; // 5 seconds
  * @param options  Optional parameters.
  */
 export async function load(connectionString: string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
  * @param endpoint  The URL to the App Configuration store.
@@ -23,6 +24,7 @@ export async function load(connectionString: string, options?: AzureAppConfigura
  * @param options  Optional parameters.
  */
 export async function load(endpoint: URL | string, credential: TokenCredential, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
 export async function load(
     connectionStringOrEndpoint: string | URL,
     credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
