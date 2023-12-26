@@ -14,6 +14,7 @@ import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./Refres
 import { LinkedList } from "./common/linkedList";
 import { Disposable } from "./common/disposable";
 import { SettingSelector } from "./types";
+import { RefreshTimer } from "./refresh/RefreshTimer";
 
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     private adapters: IKeyValueAdapter[] = [];
@@ -26,8 +27,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     // Refresh
     private refreshInterval: number = DefaultRefreshIntervalInMs;
     private onRefreshListeners: LinkedList<() => any> = new LinkedList();
-    private lastUpdateTimestamp: number;
     private sentinels: ConfigurationSettingId[];
+    private refreshTimer: RefreshTimer;
 
     constructor(
         private client: AppConfigurationClient,
@@ -63,6 +64,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 }
                 return { ...setting };
             });
+
+            this.refreshTimer = new RefreshTimer(this.refreshInterval);
         }
 
         // TODO: should add more adapters to process different type of values
@@ -112,16 +115,15 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         for (const [k, v] of keyValues) {
             this.set(k, v);
         }
-        this.lastUpdateTimestamp = Date.now();
     }
 
     public async refresh(): Promise<void> {
         if (!this.refreshEnabled) {
             return Promise.resolve();
         }
-        // if still within refresh interval, return
-        const now = Date.now();
-        if (now < this.lastUpdateTimestamp + this.refreshInterval) {
+
+        // if still within refresh interval/backoff, return
+        if (this.refreshTimer.isDuringBackoff()) {
             return Promise.resolve();
         }
 
