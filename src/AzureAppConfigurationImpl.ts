@@ -117,6 +117,9 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         }
     }
 
+    /**
+     * Refresh the configuration store.
+     */
     public async refresh(): Promise<void> {
         if (!this.refreshEnabled) {
             return Promise.resolve();
@@ -144,8 +147,16 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             }
         }
         if (needRefresh) {
-            await this.load(RequestType.Watch);
-            // run callbacks in async
+            try {
+                await this.load(RequestType.Watch);
+                this.refreshTimer.reset();
+            } catch (error) {
+                // if refresh failed, backoff
+                this.refreshTimer.backoff();
+                throw error;
+            }
+
+            // successfully refreshed, run callbacks in async
             for (const listener of this.onRefreshListeners) {
                 listener();
             }
