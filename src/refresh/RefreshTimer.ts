@@ -30,6 +30,7 @@ export class RefreshTimer {
     }
 
     public reset(): void {
+        this._backoffEnd = Date.now() + this._interval;
         this._attempts = 0;
     }
 
