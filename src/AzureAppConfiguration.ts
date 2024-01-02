@@ -12,8 +12,8 @@ export type AzureAppConfiguration = {
     /**
      * API to register callback listeners, which will be called only when a refresh operation successfully updates key-values.
      *
-     * @param listener Callback funtion to be registered.
-     * @param thisArg Optional. Value to use as this when executing callback.
+     * @param listener - Callback funtion to be registered.
+     * @param thisArg - Optional. Value to use as `this` when executing callback.
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable;
 } & ReadonlyMap<string, any>;
