@@ -39,11 +39,13 @@ export class RefreshTimer {
         let maxBackoffMs: number;
         if (this._interval <= this._minBackoff) {
             return this._interval;
-        } else if (this._interval <= this._maxBackoff) {
+        }
+
+        // _minBackoff <= _interval
+        if (this._interval <= this._maxBackoff) {
             minBackoffMs = MinimumBackoffInMs
             maxBackoffMs = this._interval;
         } else {
-            // _interval > _maxBackoff
             minBackoffMs = MinimumBackoffInMs;
             maxBackoffMs = MaximumBackoffInMs;
         }
