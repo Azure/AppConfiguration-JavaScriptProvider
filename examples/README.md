@@ -4,15 +4,15 @@ These examples show how to use the JavaScript Provider for Azure App Configurati
 
 ## Prerequisites
 
-The sample programs are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
+The example programs are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
 
-You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run these sample programs:
+You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run these example programs:
 
 - [Azure App Configuration store](https://learn.microsoft.com/en-us/azure/azure-app-configuration/quickstart-azure-app-configuration-create?tabs=azure-portal)
 
-Samples retrieve credentials to access your App Configuration store from environment variables.
+Examples retrieve credentials to access your App Configuration store from environment variables.
 Alternatively, edit the source code to include the appropriate credentials.
-See each individual sample for details on which environment variables/credentials it requires to function.
+See each individual example for details on which environment variables/credentials it requires to function.
 
 ## Add a key-value
 Add the following key-value to the App Configuration store and leave Label and Content Type with their default values. For more information about how to add key-values to a store using the Azure portal or the CLI, go to [Create a key-value](./quickstart-azure-app-configuration-create.md#create-a-key-value).
