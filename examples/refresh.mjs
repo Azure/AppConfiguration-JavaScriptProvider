@@ -10,6 +10,7 @@ const sleepInMs = promisify(setTimeout);
  * This example retrives all settings with key following pattern "app.settings.*", i.e. starting with "app.settings.".
  * With the option `trimKeyPrefixes`, it trims the prefix "app.settings." from keys for simplicity.
  * Value of config "app.settings.message" will be printed.
+ * It also watches for changes to the key "app.settings.sentinel" and refreshes the configuration when it changes.
  *
  * Below environment variables are required for this example:
  * - APPCONFIG_CONNECTION_STRING
