@@ -66,7 +66,7 @@ describe("dynamic refresh", function () {
                 refreshIntervalInMs: 999
             }
         });
-        return expect(loadWithInvalidRefreshInterval).eventually.rejectedWith("The refresh interval time cannot be less than 1000 milliseconds.");
+        return expect(loadWithInvalidRefreshInterval).eventually.rejectedWith("The refresh interval cannot be less than 1000 milliseconds.");
     });
 
     it("should not allow '*' in key or label", async () => {
