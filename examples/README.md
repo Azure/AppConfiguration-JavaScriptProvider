@@ -6,7 +6,7 @@ These examples show how to use the JavaScript Provider for Azure App Configurati
 
 The examples are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
 
-You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run these example programs:
+You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run the examples:
 
 - [Azure App Configuration store](https://learn.microsoft.com/en-us/azure/azure-app-configuration/quickstart-azure-app-configuration-create?tabs=azure-portal)
 
