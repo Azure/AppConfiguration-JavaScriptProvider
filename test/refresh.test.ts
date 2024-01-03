@@ -79,6 +79,14 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        const loadWithInvalidKey2 = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "keyA,KeyB" }
+                ]
+            }
+        });
         const loadWithInvalidLabel = load(connectionString, {
             refreshOptions: {
                 enabled: true,
@@ -87,9 +95,19 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        const loadWithInvalidLabel2 = load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "app.settings.fontColor", label: "labelA,labelB" }
+                ]
+            }
+        });
         return Promise.all([
-            expect(loadWithInvalidKey).eventually.rejectedWith("The character '*' is not supported in key or label."),
-            expect(loadWithInvalidLabel).eventually.rejectedWith("The character '*' is not supported in key or label.")
+            expect(loadWithInvalidKey).eventually.rejectedWith("The characters '*' and ',' are not supported in key of watched settings."),
+            expect(loadWithInvalidKey2).eventually.rejectedWith("The characters '*' and ',' are not supported in key of watched settings."),
+            expect(loadWithInvalidLabel).eventually.rejectedWith("The characters '*' and ',' are not supported in label of watched settings."),
+            expect(loadWithInvalidLabel2).eventually.rejectedWith("The characters '*' and ',' are not supported in label of watched settings.")
         ]);
     });
 

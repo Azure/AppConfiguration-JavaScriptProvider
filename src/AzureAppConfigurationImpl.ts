@@ -59,8 +59,11 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             }
 
             this.sentinels = watchedSettings.map(setting => {
-                if (setting.key.includes("*") || setting.label?.includes("*")) {
-                    throw new Error("The character '*' is not supported in key or label.");
+                if (setting.key.includes("*") || setting.key.includes(",") ) {
+                    throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
+                }
+                if (setting.label?.includes("*") || setting.label?.includes(",")) {
+                    throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
                 }
                 return { ...setting };
             });
