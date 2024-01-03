@@ -28,10 +28,10 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     #options: AzureAppConfigurationOptions | undefined;
 
     // Refresh
-    private refreshInterval: number = DefaultRefreshIntervalInMs;
-    private onRefreshListeners: Array<() => any> = [];
-    private sentinels: ConfigurationSettingId[];
-    private refreshTimer: RefreshTimer;
+    #refreshInterval: number = DefaultRefreshIntervalInMs;
+    #onRefreshListeners: Array<() => any> = [];
+    #sentinels: ConfigurationSettingId[];
+    #refreshTimer: RefreshTimer;
 
     constructor(
         client: AppConfigurationClient,
@@ -61,11 +61,11 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                     throw new Error(`The refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
 
                 } else {
-                    this.refreshInterval = refreshIntervalInMs;
+                    this.#refreshInterval = refreshIntervalInMs;
                 }
             }
 
-            this.sentinels = watchedSettings.map(setting => {
+            this.#sentinels = watchedSettings.map(setting => {
                 if (setting.key.includes("*") || setting.key.includes(",")) {
                     throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
                 }
@@ -75,7 +75,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 return { ...setting };
             });
 
-            this.refreshTimer = new RefreshTimer(this.refreshInterval);
+            this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
         }
 
         // TODO: should add more adapters to process different type of values
@@ -85,7 +85,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 
 
-    private get refreshEnabled(): boolean {
+    get #refreshEnabled(): boolean {
         return !!this.#options?.refreshOptions?.enabled;
     }
 
@@ -110,13 +110,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
 
             for await (const setting of settings) {
                 if (setting.key) {
-                    const [key, value] = await this.#processAdapters(setting);
-                    const trimmedKey = this.#keyWithPrefixesTrimmed(key);
-                    keyValues.push([trimmedKey, value]);
+                    const keyValuePair = await this.#processKeyValues(setting);
+                    keyValues.push(keyValuePair);
                 }
                 // update etag of sentinels if refresh is enabled
-                if (this.refreshEnabled) {
-                    const matchedSentinel = this.sentinels.find(s => s.key === setting.key && s.label === setting.label);
+                if (this.#refreshEnabled) {
+                    const matchedSentinel = this.#sentinels.find(s => s.key === setting.key && s.label === setting.label);
                     if (matchedSentinel) {
                         matchedSentinel.etag = setting.etag;
                     }
@@ -132,18 +131,18 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
      * Refresh the configuration store.
      */
     public async refresh(): Promise<void> {
-        if (!this.refreshEnabled) {
+        if (!this.#refreshEnabled) {
             return Promise.resolve();
         }
 
         // if still within refresh interval/backoff, return
-        if (this.refreshTimer.isDuringBackoff()) {
+        if (this.#refreshTimer.isDuringBackoff()) {
             return Promise.resolve();
         }
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
-        for (const sentinel of this.sentinels) {
+        for (const sentinel of this.#sentinels) {
             const response = await this.#client.getConfigurationSetting(sentinel, {
                 onlyIfChanged: true,
                 requestOptions: {
@@ -160,38 +159,38 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         if (needRefresh) {
             try {
                 await this.load(RequestType.Watch);
-                this.refreshTimer.reset();
+                this.#refreshTimer.reset();
             } catch (error) {
                 // if refresh failed, backoff
-                this.refreshTimer.backoff();
+                this.#refreshTimer.backoff();
                 throw error;
             }
 
             // successfully refreshed, run callbacks in async
-            for (const listener of this.onRefreshListeners) {
+            for (const listener of this.#onRefreshListeners) {
                 listener();
             }
         }
     }
 
-    public onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.refreshEnabled) {
+    onRefresh(listener: () => any, thisArg?: any): Disposable {
+        if (!this.#refreshEnabled) {
             throw new Error("Refresh is not enabled.");
         }
 
         const boundedListener = listener.bind(thisArg);
-        this.onRefreshListeners.push(boundedListener);
+        this.#onRefreshListeners.push(boundedListener);
 
         const remove = () => {
-            const index = this.onRefreshListeners.indexOf(boundedListener);
+            const index = this.#onRefreshListeners.indexOf(boundedListener);
             if (index >= 0) {
-                this.onRefreshListeners.splice(index, 1);
+                this.#onRefreshListeners.splice(index, 1);
             }
         }
         return new Disposable(remove);
     }
 
-    private async processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+    async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
         const [key, value] = await this.#processAdapters(setting);
         const trimmedKey = this.#keyWithPrefixesTrimmed(key);
         return [trimmedKey, value];
