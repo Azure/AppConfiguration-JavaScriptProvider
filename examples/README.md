@@ -14,9 +14,16 @@ Samples retrieve credentials to access your App Configuration store from environ
 Alternatively, edit the source code to include the appropriate credentials.
 See each individual sample for details on which environment variables/credentials it requires to function.
 
-## Setup
+## Add a key-value
+Add the following key-value to the App Configuration store and leave Label and Content Type with their default values. For more information about how to add key-values to a store using the Azure portal or the CLI, go to [Create a key-value](./quickstart-azure-app-configuration-create.md#create-a-key-value).
 
-To run the samples using the published version of the package:
+| Key                    | Value          |
+|------------------------|----------------|
+| *app.settings.message* | *Hello World!* |
+
+## Setup & Run
+
+To run the examples using the published version of the package:
 
 1. Install the dependencies using `npm`:
 
@@ -24,15 +31,20 @@ To run the samples using the published version of the package:
     npm install
     ```
 
-2. There are two ways to run the samples using correct credentials:
+2. There are two ways to run the examples using correct credentials:
 
-- Edit the file `.env.template`, adding the correct credentials to access your Azure App Configuration store and rename the file from `.env.template` to just `.env`.
-Then run the samples, it will read this file automatically.
+    - Edit the file `.env.template`, adding the access keys to your App Configuration store. and rename the file from `.env.template` to just `.env`. The example programs will read this file automatically.
+
+    - Alternatively, you can set the environment variables to the access keys to your App Configuration store. In this case, setting up the `.env` file is not required. 
+        ```bash
+        npx cross-env APPCONFIG_CONNECTION_STRING="<appconfig connection string>" 
+        ```
+    
+3. Run the example
     ```bash
     node helloworld.mjs
     ```
-
-- Alternatively, run a single sample with the correct environment variables set (setting up the `.env` file is not required if you do this), for example (cross-platform):
-    ```bash
-    npx cross-env APPCONFIG_CONNECTION_STRING="<appconfig connection string>" node helloworld.mjs
+    You should see the following output:
+    ```Output
+    Message from Azure App Configuration: Hello World!
     ```
