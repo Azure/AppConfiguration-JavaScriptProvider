@@ -215,5 +215,8 @@ describe("dynamic refresh", function () {
 
         // can dispose callbacks
         callback.dispose();
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(count).eq(1);
     });
 });

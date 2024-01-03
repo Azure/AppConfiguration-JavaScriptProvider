@@ -11,7 +11,6 @@ import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAd
 import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./RefreshOptions";
-import { LinkedList } from "./common/linkedList";
 import { Disposable } from "./common/disposable";
 import { SettingSelector } from "./types";
 import { RefreshTimer } from "./refresh/RefreshTimer";
@@ -26,7 +25,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     private readonly requestTracingEnabled: boolean;
     // Refresh
     private refreshInterval: number = DefaultRefreshIntervalInMs;
-    private onRefreshListeners: LinkedList<() => any> = new LinkedList();
+    private onRefreshListeners: Array<() => any> = [];
     private sentinels: ConfigurationSettingId[];
     private refreshTimer: RefreshTimer;
 
@@ -173,7 +172,14 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         }
 
         const boundedListener = listener.bind(thisArg);
-        const remove = this.onRefreshListeners.push(boundedListener);
+        this.onRefreshListeners.push(boundedListener);
+
+        const remove = () => {
+            const index = this.onRefreshListeners.indexOf(boundedListener);
+            if (index >= 0) {
+                this.onRefreshListeners.splice(index, 1);
+            }
+        }
         return new Disposable(remove);
     }
 
