@@ -4,13 +4,13 @@ These examples show how to use the JavaScript Provider for Azure App Configurati
 
 ## Prerequisites
 
-The example programs are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
+The examples are compatible with [LTS versions of Node.js](https://github.com/nodejs/release#release-schedule).
 
 You need [an Azure subscription](https://azure.microsoft.com/free/) and the following Azure resources to run these example programs:
 
 - [Azure App Configuration store](https://learn.microsoft.com/en-us/azure/azure-app-configuration/quickstart-azure-app-configuration-create?tabs=azure-portal)
 
-Examples retrieve credentials to access your App Configuration store from environment variables.
+The examples retrieve credentials to access your App Configuration store from environment variables.
 Alternatively, edit the source code to include the appropriate credentials.
 See each individual example for details on which environment variables/credentials it requires to function.
 
@@ -33,14 +33,14 @@ To run the examples using the published version of the package:
 
 2. There are two ways to run the examples using correct credentials:
 
-    - Edit the file `.env.template`, adding the access keys to your App Configuration store. and rename the file from `.env.template` to just `.env`. The example programs will read this file automatically.
+    - Edit the file `.env.template`, adding the access keys to your App Configuration store. and rename the file from `.env.template` to just `.env`. The examples will read this file automatically.
 
     - Alternatively, you can set the environment variables to the access keys to your App Configuration store. In this case, setting up the `.env` file is not required. 
         ```bash
         npx cross-env APPCONFIG_CONNECTION_STRING="<appconfig connection string>" 
         ```
     
-3. Run the example:
+3. Run the examples:
     ```bash
     node helloworld.mjs
     ```
