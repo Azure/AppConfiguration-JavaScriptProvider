@@ -23,9 +23,10 @@ export type SettingSelector = {
      * The label filter to apply when querying Azure App Configuration for key-values.
      *
      * @remarks
-     * By default, the "null label" will be used, matching key-values without a label.
      * The characters asterisk `*` and comma `,` are not supported.
      * Backslash `\` character is reserved and must be escaped using another backslash `\`.
+     *
+     * @defaultValue `LabelFilter.Null`, matching key-values without a label.
      */
     labelFilter?: string
 };
