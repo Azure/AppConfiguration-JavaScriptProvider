@@ -13,58 +13,63 @@ import { createCorrelationContextHeader, requestTracingEnabled } from "./request
 import { SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
-    private adapters: IKeyValueAdapter[] = [];
+    #adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
      * Since multiple prefixes could start with the same characters, we need to trim the longest prefix first.
      */
-    private sortedTrimKeyPrefixes: string[] | undefined;
-    private readonly requestTracingEnabled: boolean;
-    private correlationContextHeader: string | undefined;
+    #sortedTrimKeyPrefixes: string[] | undefined;
+    readonly #requestTracingEnabled: boolean;
+    #correlationContextHeader: string | undefined;
+    #client: AppConfigurationClient;
+    #options: AzureAppConfigurationOptions | undefined;
 
     constructor(
-        private client: AppConfigurationClient,
-        private options: AzureAppConfigurationOptions | undefined
+        client: AppConfigurationClient,
+        options: AzureAppConfigurationOptions | undefined
     ) {
         super();
+        this.#client = client;
+        this.#options = options;
+
         // Enable request tracing if not opt-out
-        this.requestTracingEnabled = requestTracingEnabled();
-        if (this.requestTracingEnabled) {
-            this.enableRequestTracing();
+        this.#requestTracingEnabled = requestTracingEnabled();
+        if (this.#requestTracingEnabled) {
+            this.#enableRequestTracing();
         }
 
         if (options?.trimKeyPrefixes) {
-            this.sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
+            this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
         // TODO: should add more adapters to process different type of values
         // feature flag, others
-        this.adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
-        this.adapters.push(new JsonKeyValueAdapter());
+        this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        this.#adapters.push(new JsonKeyValueAdapter());
     }
 
-    public async load() {
+    async load() {
         const keyValues: [key: string, value: unknown][] = [];
 
         // validate selectors
-        const selectors = getValidSelectors(this.options?.selectors);
+        const selectors = getValidSelectors(this.#options?.selectors);
 
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: selector.keyFilter,
                 labelFilter: selector.labelFilter
             };
-            if (this.requestTracingEnabled) {
+            if (this.#requestTracingEnabled) {
                 listOptions.requestOptions = {
-                    customHeaders: this.customHeaders()
+                    customHeaders: this.#customHeaders()
                 }
             }
 
-            const settings = this.client.listConfigurationSettings(listOptions);
+            const settings = this.#client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
                 if (setting.key) {
-                    const [key, value] = await this.processAdapters(setting);
-                    const trimmedKey = this.keyWithPrefixesTrimmed(key);
+                    const [key, value] = await this.#processAdapters(setting);
+                    const trimmedKey = this.#keyWithPrefixesTrimmed(key);
                     keyValues.push([trimmedKey, value]);
                 }
             }
@@ -74,8 +79,8 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
     }
 
-    private async processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
-        for (const adapter of this.adapters) {
+    async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        for (const adapter of this.#adapters) {
             if (adapter.canProcess(setting)) {
                 return adapter.processKeyValue(setting);
             }
@@ -83,9 +88,9 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         return [setting.key, setting.value];
     }
 
-    private keyWithPrefixesTrimmed(key: string): string {
-        if (this.sortedTrimKeyPrefixes) {
-            for (const prefix of this.sortedTrimKeyPrefixes) {
+    #keyWithPrefixesTrimmed(key: string): string {
+        if (this.#sortedTrimKeyPrefixes) {
+            for (const prefix of this.#sortedTrimKeyPrefixes) {
                 if (key.startsWith(prefix)) {
                     return key.slice(prefix.length);
                 }
@@ -94,17 +99,17 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         return key;
     }
 
-    private enableRequestTracing() {
-        this.correlationContextHeader = createCorrelationContextHeader(this.options);
+    #enableRequestTracing() {
+        this.#correlationContextHeader = createCorrelationContextHeader(this.#options);
     }
 
-    private customHeaders() {
-        if (!this.requestTracingEnabled) {
+    #customHeaders() {
+        if (!this.#requestTracingEnabled) {
             return undefined;
         }
 
         const headers = {};
-        headers[CorrelationContextHeaderName] = this.correlationContextHeader;
+        headers[CorrelationContextHeaderName] = this.#correlationContextHeader;
         return headers;
     }
 }
