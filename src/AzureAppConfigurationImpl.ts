@@ -136,7 +136,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         }
 
         // if still within refresh interval/backoff, return
-        if (this.#refreshTimer.isDuringBackoff()) {
+        if (this.#refreshTimer.canRefresh()) {
             return Promise.resolve();
         }
 

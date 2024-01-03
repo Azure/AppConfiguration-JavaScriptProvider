@@ -20,7 +20,7 @@ export class RefreshTimer {
         this._backoffEnd = Date.now() + this._interval;
     }
 
-    public isDuringBackoff(): boolean {
+    public canRefresh(): boolean {
         return Date.now() < this._backoffEnd;
     }
 
