@@ -15,7 +15,7 @@ Alternatively, edit the source code to include the appropriate credentials.
 See each individual example for details on which environment variables/credentials it requires to function.
 
 ## Add a key-value
-Add the following key-value to the App Configuration store and leave Label and Content Type with their default values. For more information about how to add key-values to a store using the Azure portal or the CLI, go to [Create a key-value](./quickstart-azure-app-configuration-create.md#create-a-key-value).
+Add the following key-value to the App Configuration store and leave **Label** and **Content Type** with their default values. For more information about how to add key-values to a store using the Azure portal or the CLI, go to [Create a key-value](./quickstart-azure-app-configuration-create.md#create-a-key-value).
 
 | Key                    | Value          |
 |------------------------|----------------|
