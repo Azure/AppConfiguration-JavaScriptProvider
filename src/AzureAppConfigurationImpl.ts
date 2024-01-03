@@ -52,7 +52,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
-                    throw new Error(`The refresh interval time cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+                    throw new Error(`The refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+
                 } else {
                     this.refreshInterval = refreshIntervalInMs;
                 }

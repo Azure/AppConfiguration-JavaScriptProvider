@@ -13,15 +13,15 @@ export interface RefreshOptions {
     enabled: boolean;
 
     /**
-     * Specifies the interval for refresh to really update the values.
+     * Specifies the minimum time that must elapse before checking the server for any new changes.
      * Default value is 30 seconds. Must be greater than 1 second.
      * Any refresh operation triggered will not update the value for a key until after the interval.
      */
     refreshIntervalInMs?: number;
 
     /**
-     * Specifies settings to be watched.
-     * Only if any of the settings is updated, the refresh will acutally update loaded configuration settings.
+     * One or more configuration settings to be watched for changes on the server. 
+     * Any modifications to watched settings will refresh all settings loaded by the configuration provider.
      */
     watchedSettings?: WatchedSetting[];
 }
