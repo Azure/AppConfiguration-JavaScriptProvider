@@ -39,7 +39,7 @@ To run the examples using the published version of the package:
         ```bash
         npx cross-env APPCONFIG_CONNECTION_STRING="<appconfig connection string>" 
         ```
-    
+
 3. Run the examples:
     ```bash
     node helloworld.mjs
