@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
-import { AzureAppConfigurationKeyVaultOptions } from "./keyvault/AzureAppConfigurationKeyVaultOptions";
+import { KeyVaultOptions } from "./keyvault/AzureAppConfigurationKeyVaultOptions";
 import { SettingSelector } from "./types";
 
 export const MaxRetries = 2;
@@ -34,5 +34,5 @@ export interface AzureAppConfigurationOptions {
     /**
      * Specifies options used to resolve Vey Vault references.
      */
-    keyVaultOptions?: AzureAppConfigurationKeyVaultOptions;
+    keyVaultOptions?: KeyVaultOptions;
 }
