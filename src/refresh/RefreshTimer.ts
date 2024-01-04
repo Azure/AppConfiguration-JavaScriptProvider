@@ -18,7 +18,7 @@
 
 const MinimumBackoffInMs = 30 * 1000; // 30s
 const MaximumBackoffInMs = 10 * 60 * 1000; // 10min
-const MaxAttempts = 63;
+const MaxSafeExponential = 53; // Used to avoid overflow, as Number.MAX_SAFE_INTEGER = 2^53 - 1.
 const JitterRatio = 0.25;
 
 export class RefreshTimer {
@@ -29,6 +29,10 @@ export class RefreshTimer {
     constructor(
         private _interval: number
     ) {
+        if (this._interval <= 0) {
+            throw new Error(`Refresh interval must be greater than 0. Given: ${this._interval}`);
+        }
+
         this._minBackoff = Math.min(this._interval, MinimumBackoffInMs);
         this._maxBackoff = Math.min(this._interval, MaximumBackoffInMs);
         this._attempts = 0;
@@ -66,7 +70,8 @@ export class RefreshTimer {
         }
 
         // exponential: minBackoffMs * 2^attempts
-        let calculatedBackoffMs = Math.max(1, minBackoffMs) * (1 << Math.min(this._attempts, MaxAttempts));
+        const exponential = Math.min(this._attempts, MaxSafeExponential);
+        let calculatedBackoffMs = minBackoffMs * (efficientPowerOfTwo(exponential));
         if (calculatedBackoffMs > maxBackoffMs) {
             calculatedBackoffMs = maxBackoffMs;
         }
@@ -77,4 +82,25 @@ export class RefreshTimer {
         return calculatedBackoffMs * (1 + jitter);
     }
 
+}
+
+/**
+ * Efficient way to calculate 2^exponential.
+ *
+ * `Math.pow(base, exp)` is not used because it is less efficient and accurate by operating floating-point number.
+ * `1 << exp` is not used because it returns wrong results when exp >= 31.
+ */
+function efficientPowerOfTwo(positiveExponential: number) {
+    if (positiveExponential < 0) {
+        throw new Error("exponential must be a non-negative integer.");
+    } else if (positiveExponential > MaxSafeExponential) {
+        throw new Error(`exponential must be less than or equal to ${MaxSafeExponential}.`);
+    }
+
+    // bitwise operations in JavaScript are limited to 32 bits. It overflows at 2^31 - 1.
+    if (positiveExponential <= 30) {
+        return 1 << positiveExponential;
+    } else {
+        return (1 << 30) * (1 << (positiveExponential - 30));
+    }
 }
