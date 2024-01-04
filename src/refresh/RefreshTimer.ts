@@ -24,7 +24,7 @@ const JitterRatio = 0.25;
 export class RefreshTimer {
     private _minBackoff: number;
     private _maxBackoff: number;
-    private _attempts: number;
+    private _failedAttempts: number;
     private _backoffEnd: number; // Timestamp
     constructor(
         private _interval: number
@@ -35,7 +35,7 @@ export class RefreshTimer {
 
         this._minBackoff = Math.min(this._interval, MinimumBackoffInMs);
         this._maxBackoff = Math.min(this._interval, MaximumBackoffInMs);
-        this._attempts = 0;
+        this._failedAttempts = 0;
         this._backoffEnd = Date.now() + this._interval;
     }
 
@@ -45,12 +45,12 @@ export class RefreshTimer {
 
     public backoff(): void {
         this._backoffEnd = Date.now() + this._calculateBackoffTime();
-        this._attempts += 1;
+        this._failedAttempts += 1;
     }
 
     public reset(): void {
         this._backoffEnd = Date.now() + this._interval;
-        this._attempts = 0;
+        this._failedAttempts = 0;
     }
 
     private _calculateBackoffTime(): number {
@@ -69,8 +69,8 @@ export class RefreshTimer {
             maxBackoffMs = MaximumBackoffInMs;
         }
 
-        // exponential: minBackoffMs * 2^attempts
-        const exponential = Math.min(this._attempts, MaxSafeExponential);
+        // exponential: minBackoffMs * 2^failedAttempts
+        const exponential = Math.min(this._failedAttempts, MaxSafeExponential);
         let calculatedBackoffMs = minBackoffMs * (efficientPowerOfTwo(exponential));
         if (calculatedBackoffMs > maxBackoffMs) {
             calculatedBackoffMs = maxBackoffMs;
