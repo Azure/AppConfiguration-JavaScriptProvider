@@ -1,6 +1,21 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/**
+ * The backoff time is between the minimum and maximum backoff time, based on the number of attempts.
+ * An exponential backoff strategy is used, with a jitter factor to prevent clients from retrying at the same time.
+ *
+ * The backoff time is calculated as follows:
+ *  - `basic backoff time` = `MinimumBackoffInMs` * 2 ^ `attempts`, and it is no larger than the `MaximumBackoffInMs`.
+ *  - based on jitter ratio, the jittered time is between [-1, 1) * `JitterRatio` * basic backoff time.
+ *  - the final backoff time is the basic backoff time plus the jittered time.
+ *
+ * Note: the backoff time usually is no larger than the refresh interval, which is specified by the user.
+ *  - If the interval is less than the minimum backoff, the interval is used.
+ *  - If the interval is between the minimum and maximum backoff, the interval is used as the maximum backoff.
+ *  - Because of the jitter, the maximum backoff time is actually `MaximumBackoffInMs` * (1 + `JitterRatio`).
+ */
+
 const MinimumBackoffInMs = 30 * 1000; // 30s
 const MaximumBackoffInMs = 10 * 60 * 1000; // 10min
 const MaxAttempts = 63;
@@ -50,14 +65,15 @@ export class RefreshTimer {
             maxBackoffMs = MaximumBackoffInMs;
         }
 
-        // exponential
+        // exponential: minBackoffMs * 2^attempts
         let calculatedBackoffMs = Math.max(1, minBackoffMs) * (1 << Math.min(this._attempts, MaxAttempts));
         if (calculatedBackoffMs > maxBackoffMs) {
             calculatedBackoffMs = maxBackoffMs;
         }
 
-        // jitter
+        // jitter: random value between [-1, 1) * jitterRatio * calculatedBackoffMs
         const jitter = JitterRatio * (Math.random() * 2 - 1);
+
         return calculatedBackoffMs * (1 + jitter);
     }
 
