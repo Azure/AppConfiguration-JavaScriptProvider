@@ -22,9 +22,9 @@ const MaxSafeExponential = 53; // Used to avoid overflow, as Number.MAX_SAFE_INT
 const JitterRatio = 0.25;
 
 export class RefreshTimer {
-    private _minBackoff: number;
-    private _maxBackoff: number;
-    private _failedAttempts: number;
+    private _minBackoff: number = MinimumBackoffInMs;
+    private _maxBackoff: number = MaximumBackoffInMs;
+    private _failedAttempts: number = 0;
     private _backoffEnd: number; // Timestamp
     constructor(
         private _interval: number
@@ -33,9 +33,6 @@ export class RefreshTimer {
             throw new Error(`Refresh interval must be greater than 0. Given: ${this._interval}`);
         }
 
-        this._minBackoff = Math.min(this._interval, MinimumBackoffInMs);
-        this._maxBackoff = Math.min(this._interval, MaximumBackoffInMs);
-        this._failedAttempts = 0;
         this._backoffEnd = Date.now() + this._interval;
     }
 
@@ -62,11 +59,11 @@ export class RefreshTimer {
 
         // _minBackoff <= _interval
         if (this._interval <= this._maxBackoff) {
-            minBackoffMs = MinimumBackoffInMs
+            minBackoffMs = this._minBackoff;
             maxBackoffMs = this._interval;
         } else {
-            minBackoffMs = MinimumBackoffInMs;
-            maxBackoffMs = MaximumBackoffInMs;
+            minBackoffMs = this._minBackoff;
+            maxBackoffMs = this._maxBackoff;
         }
 
         // exponential: minBackoffMs * 2^failedAttempts
