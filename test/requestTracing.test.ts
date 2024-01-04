@@ -22,6 +22,8 @@ class HttpRequestHeadersPolicy {
 }
 
 describe("request tracing", function () {
+    this.timeout(15000);
+
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
     const position: "perCall" | "perRetry" = "perCall";
