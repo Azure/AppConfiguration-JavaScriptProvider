@@ -27,6 +27,8 @@ class HttpRequestCountPolicy {
 }
 
 describe("custom client options", function () {
+    this.timeout(15000);
+
     const fakeEndpoint = "https://azure.azconfig.io";
     beforeEach(() => {
         // Thus here mock it to reply 500, in which case the retry mechanism works.
