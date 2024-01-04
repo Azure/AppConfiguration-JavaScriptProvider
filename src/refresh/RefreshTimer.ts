@@ -21,7 +21,7 @@ export class RefreshTimer {
     }
 
     public canRefresh(): boolean {
-        return Date.now() < this._backoffEnd;
+        return Date.now() >= this._backoffEnd;
     }
 
     public backoff(): void {
