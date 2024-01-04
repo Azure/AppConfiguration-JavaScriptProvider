@@ -147,6 +147,32 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontColor")).eq("blue");
     });
 
+    it("should update values when watched setting is deleted", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.fontColor" }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+
+        // delete setting 'app.settings.fontColor'
+        const newMockedKVs = mockedKVs.filter(elem => elem.key !== "app.settings.fontColor");
+        restoreMocks();
+        mockAppConfigurationClientListConfigurationSettings(newMockedKVs);
+        mockAppConfigurationClientGetConfigurationSetting(newMockedKVs);
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(settings.get("app.settings.fontColor")).eq(undefined);
+    });
+
     it("should not update values when unwatched setting changes", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -221,4 +247,5 @@ describe("dynamic refresh", function () {
         await settings.refresh();
         expect(count).eq(1);
     });
+
 });

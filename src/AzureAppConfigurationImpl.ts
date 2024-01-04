@@ -1,19 +1,19 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { KeyFilter, LabelFilter } from "./types";
-import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
-import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
-import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { SettingSelector } from "./types";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
+import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
+import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
+import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     #adapters: IKeyValueAdapter[] = [];
@@ -122,6 +122,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 }
             }
         }
+        this.clear(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
             this.set(k, v);
         }
@@ -143,15 +144,25 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         for (const sentinel of this.#sentinels) {
-            const response = await this.#client.getConfigurationSetting(sentinel, {
-                onlyIfChanged: true,
-                requestOptions: {
-                    customHeaders: this.#customHeaders(RequestType.Watch)
+            let response: GetConfigurationSettingResponse | undefined;
+            try {
+                response = await this.#client.getConfigurationSetting(sentinel, {
+                    onlyIfChanged: true,
+                    requestOptions: {
+                        customHeaders: this.#customHeaders(RequestType.Watch)
+                    }
+                });
+            } catch (error) {
+                if (error instanceof RestError && error.statusCode === 404) {
+                    response = undefined;
+                } else {
+                    throw error;
                 }
-            });
-            if (response.statusCode === 200) {
-                // sentinel changed.
-                sentinel.etag = response.etag;// update etag of the sentinel
+            }
+
+            if (response === undefined || response.statusCode === 200) {
+                // sentinel deleted / changed.
+                sentinel.etag = response?.etag;// update etag of the sentinel
                 needRefresh = true;
                 break;
             }
