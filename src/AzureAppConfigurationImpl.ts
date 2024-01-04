@@ -23,7 +23,6 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
      */
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
-    #correlationContextHeader: string | undefined;
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
 
