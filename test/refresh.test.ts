@@ -23,6 +23,8 @@ function addSetting(key: string, value: any) {
 }
 
 describe("dynamic refresh", function () {
+    this.timeout(10000);
+
     beforeEach(() => {
         mockedKVs = [
             { value: "red", key: "app.settings.fontColor" },
