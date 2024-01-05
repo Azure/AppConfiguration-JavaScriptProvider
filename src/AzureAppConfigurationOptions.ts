@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
-import { AzureAppConfigurationKeyVaultOptions } from "./keyvault/AzureAppConfigurationKeyVaultOptions";
+import { KeyVaultOptions } from "./keyvault/KeyVaultOptions";
 import { RefreshOptions } from "./RefreshOptions";
 import { SettingSelector } from "./types";
 
@@ -35,7 +35,7 @@ export interface AzureAppConfigurationOptions {
     /**
      * Specifies options used to resolve Vey Vault references.
      */
-    keyVaultOptions?: AzureAppConfigurationKeyVaultOptions;
+    keyVaultOptions?: KeyVaultOptions;
     /**
      * Specifies options for dynamic refresh key-values.
      */
