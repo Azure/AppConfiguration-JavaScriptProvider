@@ -1,18 +1,21 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { KeyFilter, LabelFilter } from "./types";
+import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./RefreshOptions";
+import { Disposable } from "./common/disposable";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
-import { CorrelationContextHeaderName } from "./requestTracing/constants";
+import { RefreshTimer } from "./refresh/RefreshTimer";
+import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
-import { SettingSelector } from "./types";
+import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
-export class AzureAppConfigurationImpl extends Map<string, unknown> implements AzureAppConfiguration {
+export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     #adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
@@ -20,9 +23,14 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
      */
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
-    #correlationContextHeader: string | undefined;
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
+
+    // Refresh
+    #refreshInterval: number = DefaultRefreshIntervalInMs;
+    #onRefreshListeners: Array<() => any> = [];
+    #sentinels: ConfigurationSettingId[];
+    #refreshTimer: RefreshTimer;
 
     constructor(
         client: AppConfigurationClient,
@@ -34,20 +42,53 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
         // Enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
-        if (this.#requestTracingEnabled) {
-            this.#enableRequestTracing();
-        }
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
+
+        if (options?.refreshOptions?.enabled) {
+            const { watchedSettings, refreshIntervalInMs } = options.refreshOptions;
+            // validate watched settings
+            if (watchedSettings === undefined || watchedSettings.length === 0) {
+                throw new Error("Refresh is enabled but no watched settings are specified.");
+            }
+
+            // custom refresh interval
+            if (refreshIntervalInMs !== undefined) {
+                if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
+                    throw new Error(`The refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+
+                } else {
+                    this.#refreshInterval = refreshIntervalInMs;
+                }
+            }
+
+            this.#sentinels = watchedSettings.map(setting => {
+                if (setting.key.includes("*") || setting.key.includes(",")) {
+                    throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
+                }
+                if (setting.label?.includes("*") || setting.label?.includes(",")) {
+                    throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
+                }
+                return { ...setting };
+            });
+
+            this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
+        }
+
         // TODO: should add more adapters to process different type of values
         // feature flag, others
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
-    async load() {
+
+    get #refreshEnabled(): boolean {
+        return !!this.#options?.refreshOptions?.enabled;
+    }
+
+    async load(requestType: RequestType = RequestType.Startup) {
         const keyValues: [key: string, value: unknown][] = [];
 
         // validate selectors
@@ -60,7 +101,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
             };
             if (this.#requestTracingEnabled) {
                 listOptions.requestOptions = {
-                    customHeaders: this.#customHeaders()
+                    customHeaders: this.#customHeaders(requestType)
                 }
             }
 
@@ -68,15 +109,101 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
 
             for await (const setting of settings) {
                 if (setting.key) {
-                    const [key, value] = await this.#processAdapters(setting);
-                    const trimmedKey = this.#keyWithPrefixesTrimmed(key);
-                    keyValues.push([trimmedKey, value]);
+                    const keyValuePair = await this.#processKeyValues(setting);
+                    keyValues.push(keyValuePair);
+                }
+                // update etag of sentinels if refresh is enabled
+                if (this.#refreshEnabled) {
+                    const matchedSentinel = this.#sentinels.find(s => s.key === setting.key && s.label === setting.label);
+                    if (matchedSentinel) {
+                        matchedSentinel.etag = setting.etag;
+                    }
                 }
             }
         }
+        this.clear(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
             this.set(k, v);
         }
+    }
+
+    /**
+     * Refresh the configuration store.
+     */
+    public async refresh(): Promise<void> {
+        if (!this.#refreshEnabled) {
+            return Promise.resolve();
+        }
+
+        // if still within refresh interval/backoff, return
+        if (!this.#refreshTimer.canRefresh()) {
+            return Promise.resolve();
+        }
+
+        // try refresh if any of watched settings is changed.
+        let needRefresh = false;
+        for (const sentinel of this.#sentinels) {
+            let response: GetConfigurationSettingResponse | undefined;
+            try {
+                response = await this.#client.getConfigurationSetting(sentinel, {
+                    onlyIfChanged: true,
+                    requestOptions: {
+                        customHeaders: this.#customHeaders(RequestType.Watch)
+                    }
+                });
+            } catch (error) {
+                if (error instanceof RestError && error.statusCode === 404) {
+                    response = undefined;
+                } else {
+                    throw error;
+                }
+            }
+
+            if (response === undefined || response.statusCode === 200) {
+                // sentinel deleted / changed.
+                sentinel.etag = response?.etag;// update etag of the sentinel
+                needRefresh = true;
+                break;
+            }
+        }
+        if (needRefresh) {
+            try {
+                await this.load(RequestType.Watch);
+                this.#refreshTimer.reset();
+            } catch (error) {
+                // if refresh failed, backoff
+                this.#refreshTimer.backoff();
+                throw error;
+            }
+
+            // successfully refreshed, run callbacks in async
+            for (const listener of this.#onRefreshListeners) {
+                listener();
+            }
+        }
+    }
+
+    onRefresh(listener: () => any, thisArg?: any): Disposable {
+        if (!this.#refreshEnabled) {
+            throw new Error("Refresh is not enabled.");
+        }
+
+        const boundedListener = listener.bind(thisArg);
+        this.#onRefreshListeners.push(boundedListener);
+
+        const remove = () => {
+            const index = this.#onRefreshListeners.indexOf(boundedListener);
+            if (index >= 0) {
+                this.#onRefreshListeners.splice(index, 1);
+            }
+        }
+        return new Disposable(remove);
+    }
+
+    async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        const [key, value] = await this.#processAdapters(setting);
+        const trimmedKey = this.#keyWithPrefixesTrimmed(key);
+        return [trimmedKey, value];
     }
 
     async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -99,17 +226,13 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         return key;
     }
 
-    #enableRequestTracing() {
-        this.#correlationContextHeader = createCorrelationContextHeader(this.#options);
-    }
-
-    #customHeaders() {
+    #customHeaders(requestType: RequestType) {
         if (!this.#requestTracingEnabled) {
             return undefined;
         }
 
         const headers = {};
-        headers[CorrelationContextHeaderName] = this.#correlationContextHeader;
+        headers[CorrelationContextHeaderName] = createCorrelationContextHeader(this.#options, requestType);
         return headers;
     }
 }
