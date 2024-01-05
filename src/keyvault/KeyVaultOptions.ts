@@ -7,7 +7,7 @@ import { SecretClient } from "@azure/keyvault-secrets";
 /**
  * Options used to resolve Key Vault references.
  */
-export interface AzureAppConfigurationKeyVaultOptions {
+export interface KeyVaultOptions {
     /**
      * Specifies the Key Vault secret client used for resolving Key Vault references.
      */

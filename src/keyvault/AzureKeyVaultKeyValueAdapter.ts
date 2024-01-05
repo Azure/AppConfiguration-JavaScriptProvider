@@ -3,7 +3,7 @@
 
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter";
-import { AzureAppConfigurationKeyVaultOptions } from "./AzureAppConfigurationKeyVaultOptions";
+import { KeyVaultOptions } from "./KeyVaultOptions";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
@@ -13,7 +13,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     private secretClients: Map<string, SecretClient>;
 
     constructor(
-        private keyVaultOptions: AzureAppConfigurationKeyVaultOptions | undefined
+        private keyVaultOptions: KeyVaultOptions | undefined
     ) { }
 
     public canProcess(setting: ConfigurationSetting): boolean {
