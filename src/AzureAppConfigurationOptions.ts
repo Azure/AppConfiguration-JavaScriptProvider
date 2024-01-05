@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
-import { KeyVaultOptions } from "./keyvault/AzureAppConfigurationKeyVaultOptions";
+import { KeyVaultOptions } from "./keyvault/KeyVaultOptions";
 import { SettingSelector } from "./types";
 
 export const MaxRetries = 2;

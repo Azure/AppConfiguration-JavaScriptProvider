@@ -3,7 +3,7 @@
 
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter";
-import { KeyVaultOptions } from "./AzureAppConfigurationKeyVaultOptions";
+import { KeyVaultOptions } from "./KeyVaultOptions";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
