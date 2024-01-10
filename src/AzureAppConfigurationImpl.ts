@@ -132,7 +132,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
      */
     public async refresh(): Promise<void> {
         if (!this.#refreshEnabled) {
-            return Promise.resolve();
+            throw new Error("Refresh is not enabled.");
         }
 
         // if still within refresh interval/backoff, return

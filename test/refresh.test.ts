@@ -38,6 +38,13 @@ describe("dynamic refresh", function () {
         restoreMocks();
     })
 
+    it("should throw error when refresh is not enabled but refresh is called", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        const refreshCall = settings.refresh();
+        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled.");
+    });
+
     it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithEmptyWatchedSettings = load(connectionString, {
