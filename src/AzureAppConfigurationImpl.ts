@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
@@ -14,6 +14,11 @@ import { RefreshTimer } from "./refresh/RefreshTimer";
 import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
+
+type KeyValueIdentifier = string; // key::label
+function toKeyValueIderntifier(key: string, label: string | undefined): KeyValueIdentifier {
+    return `${key}::${label ?? ""}`;
+}
 
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     #adapters: IKeyValueAdapter[] = [];
@@ -29,7 +34,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     // Refresh
     #refreshInterval: number = DefaultRefreshIntervalInMs;
     #onRefreshListeners: Array<() => any> = [];
-    #sentinels: ConfigurationSettingId[];
+    #sentinels: Map<KeyValueIdentifier, ConfigurationSettingId> = new Map();
     #refreshTimer: RefreshTimer;
 
     constructor(
@@ -64,15 +69,16 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 }
             }
 
-            this.#sentinels = watchedSettings.map(setting => {
+            for (const setting of watchedSettings) {
                 if (setting.key.includes("*") || setting.key.includes(",")) {
                     throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
                 }
                 if (setting.label?.includes("*") || setting.label?.includes(",")) {
                     throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
                 }
-                return { ...setting };
-            });
+                const id = toKeyValueIderntifier(setting.key, setting.label);
+                this.#sentinels.set(id, setting);
+            }
 
             this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
         }
@@ -88,8 +94,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return !!this.#options?.refreshOptions?.enabled;
     }
 
-    async load(requestType: RequestType = RequestType.Startup) {
-        const keyValues: [key: string, value: unknown][] = [];
+    async #loadSelectedKeyValues(requestType: RequestType): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
+        const loadedSettings = new Map<string, ConfigurationSetting>();
 
         // validate selectors
         const selectors = getValidSelectors(this.#options?.selectors);
@@ -108,19 +114,57 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             const settings = this.#client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
-                if (setting.key) {
-                    const keyValuePair = await this.#processKeyValues(setting);
-                    keyValues.push(keyValuePair);
-                }
-                // update etag of sentinels if refresh is enabled
-                if (this.#refreshEnabled) {
-                    const matchedSentinel = this.#sentinels.find(s => s.key === setting.key && s.label === setting.label);
-                    if (matchedSentinel) {
-                        matchedSentinel.etag = setting.etag;
-                    }
+                const id = toKeyValueIderntifier(setting.key, setting.label);
+                loadedSettings.set(id, setting);
+            }
+        }
+        return loadedSettings;
+    }
+
+    /**
+     * Load watched key-values from Azure App Configuration service if not coverred by the selectors. Update etag of sentinels.
+     */
+    async #loadWatchedKeyValues(requestType: RequestType, existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
+        const watchedSettings = new Map<KeyValueIdentifier, ConfigurationSetting>();
+
+        if (!this.#refreshEnabled) {
+            return watchedSettings;
+        }
+
+        for (const [id, sentinel] of this.#sentinels) {
+            const matchedSetting = existingSettings.get(id);
+            if (matchedSetting) {
+                watchedSettings.set(id, matchedSetting);
+                sentinel.etag = matchedSetting.etag;
+            } else {
+                // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
+                const { key, label } = sentinel;
+                const response = await this.#getConfigurationSettingWithTrace(requestType, { key, label });
+                if (response) {
+                    watchedSettings.set(id, response);
+                    sentinel.etag = response.etag;
+                } else {
+                    sentinel.etag = undefined;
                 }
             }
         }
+        return watchedSettings;
+    }
+
+    async load(requestType: RequestType = RequestType.Startup) {
+        const keyValues: [key: string, value: unknown][] = [];
+
+        const loadedSettings = await this.#loadSelectedKeyValues(requestType);
+        const watchedSettings = await this.#loadWatchedKeyValues(requestType, loadedSettings);
+
+        // process key-values, watched settings have higher priority
+        for (const setting of [...loadedSettings.values(), ...watchedSettings.values()]) {
+            if (setting.key) {
+                const [key, value] = await this.#processKeyValues(setting);
+                keyValues.push([key, value]);
+            }
+        }
+
         this.clear(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
             this.set(k, v);
@@ -142,22 +186,10 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
-        for (const sentinel of this.#sentinels) {
-            let response: GetConfigurationSettingResponse | undefined;
-            try {
-                response = await this.#client.getConfigurationSetting(sentinel, {
-                    onlyIfChanged: true,
-                    requestOptions: {
-                        customHeaders: this.#customHeaders(RequestType.Watch)
-                    }
-                });
-            } catch (error) {
-                if (error instanceof RestError && error.statusCode === 404) {
-                    response = undefined;
-                } else {
-                    throw error;
-                }
-            }
+        for (const sentinel of this.#sentinels.values()) {
+            const response = await this.#getConfigurationSettingWithTrace(RequestType.Watch, sentinel, {
+                onlyIfChanged: true
+            });
 
             if (response === undefined || response.statusCode === 200) {
                 // sentinel deleted / changed.
@@ -234,6 +266,25 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         const headers = {};
         headers[CorrelationContextHeaderName] = createCorrelationContextHeader(this.#options, requestType);
         return headers;
+    }
+
+    async #getConfigurationSettingWithTrace(requestType: RequestType, configurationSettingId: ConfigurationSettingId, options?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+        let response: GetConfigurationSettingResponse | undefined;
+        try {
+            response = await this.#client.getConfigurationSetting(configurationSettingId, {
+                ...options ?? {},
+                requestOptions: {
+                    customHeaders: this.#customHeaders(requestType)
+                }
+            });
+        } catch (error) {
+            if (error instanceof RestError && error.statusCode === 404) {
+                response = undefined;
+            } else {
+                throw error;
+            }
+        }
+        return response;
     }
 }
 

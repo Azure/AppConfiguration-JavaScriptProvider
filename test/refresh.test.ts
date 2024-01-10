@@ -28,7 +28,8 @@ describe("dynamic refresh", function () {
     beforeEach(() => {
         mockedKVs = [
             { value: "red", key: "app.settings.fontColor" },
-            { value: "40", key: "app.settings.fontSize" }
+            { value: "40", key: "app.settings.fontSize" },
+            { value: "30", key: "app.settings.fontSize", label: "prod" }
         ].map(createMockedKeyValue);
         mockAppConfigurationClientListConfigurationSettings(mockedKVs);
         mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
@@ -255,4 +256,40 @@ describe("dynamic refresh", function () {
         expect(count).eq(1);
     });
 
+    it("should also load watched settings if not specified in selectors", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [
+                { keyFilter: "app.settings.fontColor" }
+            ],
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.fontSize" }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+    });
+
+    it("watched settings have higher priority than selectors", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [
+                { keyFilter: "app.settings.*" }
+            ],
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.fontSize", label: "prod" }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontSize")).eq("30");
+    });
 });
