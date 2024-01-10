@@ -34,6 +34,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     readonly #requestTracingEnabled: boolean;
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
+    #isInitialLoadCompleted: boolean = false;
 
     // Refresh
     #refreshInterval: number = DefaultRefreshIntervalInMs;
@@ -98,7 +99,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return !!this.#options?.refreshOptions?.enabled;
     }
 
-    async #loadSelectedKeyValues(requestType: RequestType): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
+    async #loadSelectedKeyValues(): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
         const loadedSettings = new Map<string, ConfigurationSetting>();
 
         // validate selectors
@@ -110,6 +111,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 labelFilter: selector.labelFilter
             };
             if (this.#requestTracingEnabled) {
+                const requestType: RequestType = this.#isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup;
                 listOptions.requestOptions = {
                     customHeaders: this.#customHeaders(requestType)
                 }
@@ -128,7 +130,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     /**
      * Load watched key-values from Azure App Configuration service if not coverred by the selectors. Update etag of sentinels.
      */
-    async #loadWatchedKeyValues(requestType: RequestType, existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
+    async #loadWatchedKeyValues(existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
         const watchedSettings = new Map<KeyValueIdentifier, ConfigurationSetting>();
 
         if (!this.#refreshEnabled) {
@@ -143,7 +145,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
                 const { key, label } = sentinel;
-                const response = await this.#getConfigurationSettingWithTrace(requestType, { key, label });
+                const response = await this.#getConfigurationSettingWithTrace({ key, label });
                 if (response) {
                     watchedSettings.set(id, response);
                     sentinel.etag = response.etag;
@@ -155,11 +157,11 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return watchedSettings;
     }
 
-    async load(requestType: RequestType = RequestType.Startup) {
+    async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
 
-        const loadedSettings = await this.#loadSelectedKeyValues(requestType);
-        const watchedSettings = await this.#loadWatchedKeyValues(requestType, loadedSettings);
+        const loadedSettings = await this.#loadSelectedKeyValues();
+        const watchedSettings = await this.#loadWatchedKeyValues(loadedSettings);
 
         // process key-values, watched settings have higher priority
         for (const setting of [...loadedSettings.values(), ...watchedSettings.values()]) {
@@ -173,6 +175,16 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         for (const [k, v] of keyValues) {
             this.set(k, v);
         }
+    }
+
+    /**
+     * Load the configuration store for the first time.
+     */
+    async load() {
+        await this.#loadSelectedAndWatchedKeyValues();
+
+        // Mark all settings have loaded at startup.
+        this.#isInitialLoadCompleted = true;
     }
 
     /**
@@ -191,7 +203,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSettingWithTrace(RequestType.Watch, sentinel, {
+            const response = await this.#getConfigurationSettingWithTrace(sentinel, {
                 onlyIfChanged: true
             });
 
@@ -204,7 +216,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         }
         if (needRefresh) {
             try {
-                await this.load(RequestType.Watch);
+                await this.#loadSelectedAndWatchedKeyValues();
                 this.#refreshTimer.reset();
             } catch (error) {
                 // if refresh failed, backoff
@@ -272,15 +284,17 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return headers;
     }
 
-    async #getConfigurationSettingWithTrace(requestType: RequestType, configurationSettingId: ConfigurationSettingId, options?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+    async #getConfigurationSettingWithTrace(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            response = await this.#client.getConfigurationSetting(configurationSettingId, {
-                ...options ?? {},
-                requestOptions: {
+            const options = {...customOptions ?? {}};
+            if (this.#requestTracingEnabled) {
+                const requestType = this.#isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup;
+                options.requestOptions = {
                     customHeaders: this.#customHeaders(requestType)
                 }
-            });
+            }
+            response = await this.#client.getConfigurationSetting(configurationSettingId, options);
         } catch (error) {
             if (error instanceof RestError && error.statusCode === 404) {
                 response = undefined;
