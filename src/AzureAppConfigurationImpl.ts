@@ -15,8 +15,12 @@ import { CorrelationContextHeaderName, RequestType } from "./requestTracing/cons
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
+/**
+ * Key-value identifier, used as key of a Map.
+ * A primitive string type is actually used, because operator === is used to compare identifiers and we cannot override it.
+ */
 type KeyValueIdentifier = string; // key::label
-function toKeyValueIderntifier(key: string, label: string | undefined): KeyValueIdentifier {
+function toKeyValueIdentifier(key: string, label: string | undefined): KeyValueIdentifier {
     return `${key}::${label ?? ""}`;
 }
 
@@ -76,7 +80,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 if (setting.label?.includes("*") || setting.label?.includes(",")) {
                     throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
                 }
-                const id = toKeyValueIderntifier(setting.key, setting.label);
+                const id = toKeyValueIdentifier(setting.key, setting.label);
                 this.#sentinels.set(id, setting);
             }
 
@@ -114,7 +118,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             const settings = this.#client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
-                const id = toKeyValueIderntifier(setting.key, setting.label);
+                const id = toKeyValueIdentifier(setting.key, setting.label);
                 loadedSettings.set(id, setting);
             }
         }
