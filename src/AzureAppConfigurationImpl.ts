@@ -11,7 +11,7 @@ import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./Refres
 import { Disposable } from "./common/disposable";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
-import { CorrelationContextHeaderName, RequestType } from "./requestTracing/constants";
+import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
@@ -111,9 +111,10 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 labelFilter: selector.labelFilter
             };
             if (this.#requestTracingEnabled) {
-                const requestType: RequestType = this.#isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup;
                 listOptions.requestOptions = {
-                    customHeaders: this.#customHeaders(requestType)
+                    customHeaders: {
+                        [CorrelationContextHeaderName]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
+                    }
                 }
             }
 
@@ -274,24 +275,15 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return key;
     }
 
-    #customHeaders(requestType: RequestType) {
-        if (!this.#requestTracingEnabled) {
-            return undefined;
-        }
-
-        const headers = {};
-        headers[CorrelationContextHeaderName] = createCorrelationContextHeader(this.#options, requestType);
-        return headers;
-    }
-
     async #getConfigurationSettingWithTrace(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
             const options = {...customOptions ?? {}};
             if (this.#requestTracingEnabled) {
-                const requestType = this.#isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup;
                 options.requestOptions = {
-                    customHeaders: this.#customHeaders(requestType)
+                    customHeaders: {
+                        [CorrelationContextHeaderName]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
+                    }
                 }
             }
             response = await this.#client.getConfigurationSetting(configurationSettingId, options);
