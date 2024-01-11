@@ -39,6 +39,9 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     // Refresh
     #refreshInterval: number = DefaultRefreshIntervalInMs;
     #onRefreshListeners: Array<() => any> = [];
+    /**
+     * Aka watched settings.
+     */
     #sentinels: Map<KeyValueIdentifier, ConfigurationSettingId> = new Map();
     #refreshTimer: RefreshTimer;
 
@@ -129,43 +132,38 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     }
 
     /**
-     * Load watched key-values from Azure App Configuration service if not coverred by the selectors. Update etag of sentinels.
+     * Update etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
-    async #loadWatchedKeyValues(existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
-        const watchedSettings = new Map<KeyValueIdentifier, ConfigurationSetting>();
-
+    async #updateWatchedKeyValuesEtag(existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<void> {
         if (!this.#refreshEnabled) {
-            return watchedSettings;
+            return;
         }
 
         for (const [id, sentinel] of this.#sentinels) {
             const matchedSetting = existingSettings.get(id);
             if (matchedSetting) {
-                watchedSettings.set(id, matchedSetting);
                 sentinel.etag = matchedSetting.etag;
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
                 const { key, label } = sentinel;
                 const response = await this.#getConfigurationSettingWithTrace({ key, label });
                 if (response) {
-                    watchedSettings.set(id, response);
                     sentinel.etag = response.etag;
                 } else {
                     sentinel.etag = undefined;
                 }
             }
         }
-        return watchedSettings;
     }
 
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
 
         const loadedSettings = await this.#loadSelectedKeyValues();
-        const watchedSettings = await this.#loadWatchedKeyValues(loadedSettings);
+        await this.#updateWatchedKeyValuesEtag(loadedSettings);
 
         // process key-values, watched settings have higher priority
-        for (const setting of [...loadedSettings.values(), ...watchedSettings.values()]) {
+        for (const setting of loadedSettings.values()) {
             if (setting.key) {
                 const [key, value] = await this.#processKeyValues(setting);
                 keyValues.push([key, value]);

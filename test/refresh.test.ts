@@ -256,7 +256,7 @@ describe("dynamic refresh", function () {
         expect(count).eq(1);
     });
 
-    it("should also load watched settings if not specified in selectors", async () => {
+    it("should not include watched settings into configuration if not specified in selectors", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [
@@ -272,24 +272,6 @@ describe("dynamic refresh", function () {
         });
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
-        expect(settings.get("app.settings.fontSize")).eq("40");
-    });
-
-    it("watched settings have higher priority than selectors", async () => {
-        const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString, {
-            selectors: [
-                { keyFilter: "app.settings.*" }
-            ],
-            refreshOptions: {
-                enabled: true,
-                refreshIntervalInMs: 2000,
-                watchedSettings: [
-                    { key: "app.settings.fontSize", label: "prod" }
-                ]
-            }
-        });
-        expect(settings).not.undefined;
-        expect(settings.get("app.settings.fontSize")).eq("30");
+        expect(settings.get("app.settings.fontSize")).undefined;
     });
 });
