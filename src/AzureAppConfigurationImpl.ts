@@ -153,10 +153,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
 
         // process key-values, watched settings have higher priority
         for (const setting of loadedSettings) {
-            if (setting.key) {
-                const [key, value] = await this.#processKeyValues(setting);
-                keyValues.push([key, value]);
-            }
+            const [key, value] = await this.#processKeyValues(setting);
+            keyValues.push([key, value]);
         }
 
         this.clear(); // clear existing key-values in case of configuration setting deletion
