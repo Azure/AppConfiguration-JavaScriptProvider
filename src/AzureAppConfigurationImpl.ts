@@ -15,15 +15,6 @@ import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
-/**
- * Key-value identifier, used as key of a Map.
- * A primitive string type is actually used, because operator === is used to compare identifiers and we cannot override it.
- */
-type KeyValueIdentifier = string; // key::label
-function toKeyValueIdentifier(key: string, label: string | undefined): KeyValueIdentifier {
-    return `${key}::${label ?? ""}`;
-}
-
 export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
     #adapters: IKeyValueAdapter[] = [];
     /**
@@ -42,7 +33,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     /**
      * Aka watched settings.
      */
-    #sentinels: Map<KeyValueIdentifier, ConfigurationSettingId> = new Map();
+    #sentinels: ConfigurationSettingId[] = [];
     #refreshTimer: RefreshTimer;
 
     constructor(
@@ -84,8 +75,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 if (setting.label?.includes("*") || setting.label?.includes(",")) {
                     throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
                 }
-                const id = toKeyValueIdentifier(setting.key, setting.label);
-                this.#sentinels.set(id, setting);
+                this.#sentinels.push(setting);
             }
 
             this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
@@ -102,8 +92,8 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         return !!this.#options?.refreshOptions?.enabled;
     }
 
-    async #loadSelectedKeyValues(): Promise<Map<KeyValueIdentifier, ConfigurationSetting>> {
-        const loadedSettings = new Map<string, ConfigurationSetting>();
+    async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
+        const loadedSettings: ConfigurationSetting[] = [];
 
         // validate selectors
         const selectors = getValidSelectors(this.#options?.selectors);
@@ -124,8 +114,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             const settings = this.#client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
-                const id = toKeyValueIdentifier(setting.key, setting.label);
-                loadedSettings.set(id, setting);
+                loadedSettings.push(setting);
             }
         }
         return loadedSettings;
@@ -134,13 +123,13 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     /**
      * Update etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
-    async #updateWatchedKeyValuesEtag(existingSettings: Map<KeyValueIdentifier, ConfigurationSetting>): Promise<void> {
+    async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
         if (!this.#refreshEnabled) {
             return;
         }
 
-        for (const [id, sentinel] of this.#sentinels) {
-            const matchedSetting = existingSettings.get(id);
+        for (const sentinel of this.#sentinels) {
+            const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
             if (matchedSetting) {
                 sentinel.etag = matchedSetting.etag;
             } else {
@@ -163,7 +152,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         await this.#updateWatchedKeyValuesEtag(loadedSettings);
 
         // process key-values, watched settings have higher priority
-        for (const setting of loadedSettings.values()) {
+        for (const setting of loadedSettings) {
             if (setting.key) {
                 const [key, value] = await this.#processKeyValues(setting);
                 keyValues.push([key, value]);
