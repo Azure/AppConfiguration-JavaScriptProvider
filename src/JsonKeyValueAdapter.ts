@@ -1,14 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { ConfigurationSetting, secretReferenceContentType } from "@azure/app-configuration";
+import { ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 
 
 export class JsonKeyValueAdapter implements IKeyValueAdapter {
     private static readonly ExcludedJsonContentTypes: string[] = [
-        secretReferenceContentType
-        // TODO: exclude application/vnd.microsoft.appconfig.ff+json after feature management is supported
+        secretReferenceContentType,
+        featureFlagContentType
     ];
 
     public canProcess(setting: ConfigurationSetting): boolean {
