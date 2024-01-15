@@ -4,6 +4,7 @@
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
 import { KeyVaultOptions } from "./keyvault/KeyVaultOptions";
 import { SettingSelector } from "./types";
+import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions";
 
 export const MaxRetries = 2;
 export const MaxRetryDelayInMs = 60000;
@@ -35,4 +36,9 @@ export interface AzureAppConfigurationOptions {
      * Specifies options used to resolve Vey Vault references.
      */
     keyVaultOptions?: KeyVaultOptions;
+
+    /**
+     * Specifies options used to configure feature flags.
+     */
+    featureFlagOptions?: FeatureFlagOptions;
 }

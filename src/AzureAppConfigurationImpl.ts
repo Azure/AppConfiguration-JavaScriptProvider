@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, FeatureFlagValue, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag, parseFeatureFlag } from "@azure/app-configuration";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
@@ -41,8 +41,7 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
-        // TODO: should add more adapters to process different type of values
-        // feature flag, others
+
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
         this.#adapters.push(new JsonKeyValueAdapter());
     }
@@ -76,6 +75,32 @@ export class AzureAppConfigurationImpl extends Map<string, unknown> implements A
         }
         for (const [k, v] of keyValues) {
             this.set(k, v);
+        }
+
+        // load feature flags
+        if (this.#options?.featureFlagOptions?.enabled) {
+            const selectors = this.#options?.featureFlagOptions?.selectors ?? [];
+            const featureFlags: FeatureFlagValue[] = [];
+            for (const selector of selectors) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                    labelFilter: selector.labelFilter
+                };
+                if (this.#requestTracingEnabled) {
+                    listOptions.requestOptions = {
+                        customHeaders: this.#customHeaders()
+                    }
+                }
+
+                const featureFlagSettings = this.#client.listConfigurationSettings(listOptions);
+                for await (const setting of featureFlagSettings) {
+                    if (isFeatureFlag(setting)) {
+                        const featureFlag = parseFeatureFlag(setting);
+                        featureFlags.push(featureFlag.value);
+                    }
+                }
+            }
+            this.set("FeatureManagement", { FeatureFlags: featureFlags });
         }
     }
 
