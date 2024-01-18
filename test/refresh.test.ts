@@ -274,4 +274,49 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).undefined;
     });
+
+    it("should refresh when watched setting is added", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.bgColor" }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+
+        // add setting 'app.settings.bgColor'
+        addSetting("app.settings.bgColor", "white");
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(settings.get("app.settings.bgColor")).eq("white");
+    });
+
+    it("should not refresh when watched setting keeps not existing", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.bgColor" }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+
+        // update an unwatched setting
+        updateSetting("app.settings.fontColor", "blue");
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        // should not refresh
+        expect(settings.get("app.settings.fontColor")).eq("red");
+    });
 });

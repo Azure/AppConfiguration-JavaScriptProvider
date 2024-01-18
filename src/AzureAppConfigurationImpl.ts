@@ -194,10 +194,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             });
 
             if (response === undefined || response.statusCode === 200) {
-                // sentinel deleted / changed.
-                sentinel.etag = response?.etag;// update etag of the sentinel
-                needRefresh = true;
-                break;
+                // sentinel deleted / changed / created.
+                if (sentinel.etag !== response?.etag) {
+                    sentinel.etag = response?.etag;// update etag of the sentinel
+                    needRefresh = true;
+                    break;
+                }
             }
         }
         if (needRefresh) {
@@ -263,7 +265,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     async #getConfigurationSettingWithTrace(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            const options = {...customOptions ?? {}};
+            const options = { ...customOptions ?? {} };
             if (this.#requestTracingEnabled) {
                 options.requestOptions = {
                     customHeaders: {
