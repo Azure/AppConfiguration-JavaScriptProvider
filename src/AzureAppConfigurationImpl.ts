@@ -193,13 +193,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
                 onlyIfChanged: true
             });
 
-            if (response === undefined || response.statusCode === 200) {
-                // sentinel deleted / changed / created.
-                if (sentinel.etag !== response?.etag) {
-                    sentinel.etag = response?.etag;// update etag of the sentinel
-                    needRefresh = true;
-                    break;
-                }
+            if (response?.statusCode === 200 // created or changed
+                || (response === undefined && sentinel.etag !== undefined) // deleted
+            ) {
+                sentinel.etag = response?.etag;// update etag of the sentinel
+                needRefresh = true;
+                break;
             }
         }
         if (needRefresh) {
