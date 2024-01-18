@@ -21,7 +21,7 @@ import {
 } from "./constants";
 
 // Utils
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined): string {
+export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -29,7 +29,7 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     UsersKeyVault
     */
     const keyValues = new Map<string, string | undefined>();
-    keyValues.set(RequestTypeKey, RequestType.Startup); // TODO: now always "Startup", until refresh is supported.
+    keyValues.set(RequestTypeKey, isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup);
     keyValues.set(HostTypeKey, getHostType());
     keyValues.set(EnvironmentKey, isDevEnvironment() ? DevEnvironmentValue : undefined);
 

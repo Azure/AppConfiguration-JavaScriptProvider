@@ -3,6 +3,7 @@
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
 import { KeyVaultOptions } from "./keyvault/KeyVaultOptions";
+import { RefreshOptions } from "./RefreshOptions";
 import { SettingSelector } from "./types";
 
 export const MaxRetries = 2;
@@ -35,4 +36,8 @@ export interface AzureAppConfigurationOptions {
      * Specifies options used to resolve Vey Vault references.
      */
     keyVaultOptions?: KeyVaultOptions;
+    /**
+     * Specifies options for dynamic refresh key-values.
+     */
+    refreshOptions?: RefreshOptions;
 }
