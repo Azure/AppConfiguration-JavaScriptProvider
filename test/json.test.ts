@@ -25,7 +25,7 @@ describe("json", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;
-        const logging = settings.get("json.settings.logging");
+        const logging = settings.get<any>("json.settings.logging");
         expect(logging).not.undefined;
         expect(logging.Test).not.undefined;
         expect(logging.Test.Level).eq("Debug");
@@ -43,7 +43,7 @@ describe("json", function () {
             }
         });
         expect(settings).not.undefined;
-        const resolvedSecret = settings.get("TestKey");
+        const resolvedSecret = settings.get<any>("TestKey");
         expect(resolvedSecret).not.undefined;
         expect(resolvedSecret.uri).undefined;
         expect(typeof resolvedSecret).eq("string");
@@ -74,7 +74,7 @@ describe("json", function () {
         const settings = await load(connectionString);
         expect(settings).not.undefined;
         expect(typeof settings.get("json.settings.object")).eq("object", "is object");
-        expect(Object.keys(settings.get("json.settings.object")).length).eq(0, "is empty object");
+        expect(Object.keys(settings.get<any>("json.settings.object")).length).eq(0, "is empty object");
         expect(Array.isArray(settings.get("json.settings.array"))).eq(true, "is array");
         expect(settings.get("json.settings.number")).eq(8, "is number");
         expect(settings.get("json.settings.string")).eq("string", "is string");

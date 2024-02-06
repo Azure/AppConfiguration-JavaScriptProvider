@@ -15,7 +15,22 @@ import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
-export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
+export class AzureAppConfigurationImpl implements AzureAppConfiguration {
+    /**
+     * App Configuration data
+     */
+    readonly data: { [key: string]: any } = {};
+
+    /**
+     * Separator for hierarchical keys.
+     */
+    readonly #SEP: string = ".";
+
+    /**
+     * Hosting key-value pairs in the configuration store.
+     */
+    #configMap: Map<string, any> = new Map<string, any>();
+
     #adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
@@ -40,7 +55,6 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         client: AppConfigurationClient,
         options: AzureAppConfigurationOptions | undefined
     ) {
-        super();
         this.#client = client;
         this.#options = options;
 
@@ -87,6 +101,9 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
+    get<T>(key: string): T | undefined {
+        return this.#configMap.get(key);
+    }
 
     get #refreshEnabled(): boolean {
         return !!this.#options?.refreshOptions?.enabled;
@@ -157,10 +174,12 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             keyValues.push([key, value]);
         }
 
-        this.clear(); // clear existing key-values in case of configuration setting deletion
+        this.#configMap.clear(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
-            this.set(k, v);
+            this.#configMap.set(k, v);
         }
+        // also construct hierarchical data object from map
+        this.#constructDataFromMap();
     }
 
     /**
@@ -168,9 +187,36 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
-
         // Mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
+    }
+
+    /**
+     * Construct hierarchical data object from map.
+     *
+     * @remarks
+     * This method is used to construct hierarchical data object from map, and it is called after the initial load and each refresh.
+     */
+    #constructDataFromMap() {
+        // clean data object in-place
+        for (const key of Object.keys(this.data)) {
+            delete this.data[key];
+        }
+        // construct hierarchical data object from map
+        for (const [key, value] of this.#configMap) {
+            const segments = key.split(this.#SEP);
+            let current = this.data;
+            // construct hierarchical data object along the path
+            for (let i = 0; i < segments.length - 1; i++) {
+                const segment = segments[i];
+                if (typeof current[segment] !== "object") { // Note: it overwrites existing value if it's not an object
+                    current[segment] = {};
+                }
+                current = current[segment];
+            }
+            // set value to the last segment
+            current[segments[segments.length - 1]] = value;
+        }
     }
 
     /**

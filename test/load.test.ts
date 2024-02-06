@@ -28,6 +28,16 @@ const mockedKVs = [{
 }, {
     key: "KeyForEmptyValue",
     value: "",
+}, {
+    key: "app2.settings",
+    value: JSON.stringify({ fontColor: "blue", fontSize: 20 }),
+    contentType: "application/json"
+}, {
+    key: "app3.settings",
+    value: "placeholder"
+}, {
+    key: "app3.settings.fontColor",
+    value: "yellow"
 }].map(createMockedKeyValue);
 
 describe("load", function () {
@@ -83,11 +93,8 @@ describe("load", function () {
             trimKeyPrefixes: ["app.settings."]
         });
         expect(settings).not.undefined;
-        expect(settings.has("fontColor")).eq(true);
         expect(settings.get("fontColor")).eq("red");
-        expect(settings.has("fontSize")).eq(true);
         expect(settings.get("fontSize")).eq("40");
-        expect(settings.has("TestKey")).eq(false);
     });
 
     it("should trim longest key prefix first", async () => {
@@ -100,20 +107,15 @@ describe("load", function () {
             trimKeyPrefixes: ["app.", "app.settings.", "Test"]
         });
         expect(settings).not.undefined;
-        expect(settings.has("fontColor")).eq(true);
         expect(settings.get("fontColor")).eq("red");
-        expect(settings.has("fontSize")).eq(true);
         expect(settings.get("fontSize")).eq("40");
-        expect(settings.has("TestKey")).eq(false);
     });
 
     it("should support null/empty value", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;
-        expect(settings.has("KeyForNullValue")).eq(true);
         expect(settings.get("KeyForNullValue")).eq(null);
-        expect(settings.has("KeyForEmptyValue")).eq(true);
         expect(settings.get("KeyForEmptyValue")).eq("");
     });
 
@@ -148,7 +150,6 @@ describe("load", function () {
             }]
         });
         expect(settings).not.undefined;
-        expect(settings.has("TestKey")).eq(true);
         expect(settings.get("TestKey")).eq("TestValueForProd");
     });
 
@@ -167,8 +168,54 @@ describe("load", function () {
             }]
         });
         expect(settings).not.undefined;
-        expect(settings.has("TestKey")).eq(true);
         expect(settings.get("TestKey")).eq("TestValueForProd");
     });
 
+    // access data property
+    it("should directly access data property", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.data).not.undefined;
+        expect(settings.data.app.settings.fontColor).eq("red");
+        expect(settings.data.app.settings.fontSize).eq("40");
+    });
+
+    it("should access property of JSON object content-type with data accessor", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.data).not.undefined;
+        expect(settings.data.app2.settings.fontColor).eq("blue");
+        expect(settings.data.app2.settings.fontSize).eq(20);
+    });
+
+    it("should not access property of JSON content-type object with get()", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.get("app2.settings")).not.undefined; // JSON object accessed as a whole
+        expect(settings.get("app2.settings.fontColor")).undefined;
+        expect(settings.get("app2.settings.fontSize")).undefined;
+    });
+
+    /**
+     * Edge case: Hierarchical key-value pairs with overlapped key prefix.
+     * key: "app3.settings" => value: "placeholder"
+     * key: "app3.settings.fontColor" => value: "yellow"
+     *
+     * get() will return "placeholder" for "app3.settings" and "yellow" for "app3.settings.fontColor", as expected.
+     * data.app3.settings will return "placeholder" as a whole JSON object, which is not guarenteed to be correct.
+     */
+    it("Edge case: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        // use get() method
+        expect(settings.get("app3.settings")).eq("placeholder");
+        expect(settings.get("app3.settings.fontColor")).eq("yellow");
+        // use data property
+        expect(settings.data.app3.settings).not.eq("placeholder"); // not as expected.
+        expect(settings.data.app3.settings.fontColor).eq("yellow");
+    });
 });
