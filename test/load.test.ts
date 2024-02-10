@@ -31,6 +31,8 @@ const mockedKVs = [{
 }].map(createMockedKeyValue);
 
 describe("load", function () {
+    this.timeout(10000);
+
     before(() => {
         mockAppConfigurationClientListConfigurationSettings(mockedKVs);
     });
@@ -65,12 +67,12 @@ describe("load", function () {
     });
 
     it("should throw error given invalid connection string", async () => {
-        expect(load("invalid-connection-string")).eventually.rejected;
+        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string.");
     });
 
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
-        expect(load("invalid-endpoint-url", credential)).eventually.rejected;
+        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
     });
 
     it("should trim key prefix if applicable", async () => {
@@ -117,7 +119,7 @@ describe("load", function () {
         expect(settings.get("KeyForEmptyValue")).eq("");
     });
 
-    it("should not support * or , in label filters", async () => {
+    it("should not support * in label filters", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithWildcardLabelFilter = load(connectionString, {
             selectors: [{
@@ -125,15 +127,18 @@ describe("load", function () {
                 labelFilter: "*"
             }]
         });
-        expect(loadWithWildcardLabelFilter).to.eventually.rejected;
+        return expect(loadWithWildcardLabelFilter).to.eventually.rejectedWith("The characters '*' and ',' are not supported in label filters.");
+    });
 
+    it("should not support , in label filters", async () => {
+        const connectionString = createMockedConnectionString();
         const loadWithMultipleLabelFilter = load(connectionString, {
             selectors: [{
                 keyFilter: "app.*",
                 labelFilter: "labelA,labelB"
             }]
         });
-        expect(loadWithMultipleLabelFilter).to.eventually.rejected;
+        return expect(loadWithMultipleLabelFilter).to.eventually.rejectedWith("The characters '*' and ',' are not supported in label filters.");
     });
 
     it("should override config settings with same key but different label", async () => {

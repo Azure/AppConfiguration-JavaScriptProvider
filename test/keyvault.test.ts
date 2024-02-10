@@ -27,6 +27,8 @@ function mockNewlyCreatedKeyVaultSecretClients() {
     mockSecretClientGetSecret(mockedData.map(([_key, secretUri, value]) => [secretUri, value]));
 }
 describe("key vault reference", function () {
+    this.timeout(10000);
+
     beforeEach(() => {
         mockAppConfigurationClient();
         mockNewlyCreatedKeyVaultSecretClients();
@@ -37,7 +39,7 @@ describe("key vault reference", function () {
     });
 
     it("require key vault options to resolve reference", async () => {
-        expect(load(createMockedConnectionString())).eventually.rejected;
+        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Configure keyVaultOptions to resolve Key Vault Reference(s).");
     });
 
     it("should resolve key vault reference with credential", async () => {
@@ -93,7 +95,7 @@ describe("key vault reference", function () {
                 ]
             }
         });
-        expect(loadKeyVaultPromise).eventually.rejected;
+        return expect(loadKeyVaultPromise).eventually.rejectedWith("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
     });
 
     it("should fallback to use default credential when corresponding secret client not provided", async () => {
