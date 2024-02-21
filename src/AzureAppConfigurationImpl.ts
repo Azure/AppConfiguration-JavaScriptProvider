@@ -3,7 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration } from "./AzureAppConfiguration";
+import { AzureAppConfiguration, HierarchicalDataConversionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
@@ -16,16 +16,6 @@ import { createCorrelationContextHeader, requestTracingEnabled } from "./request
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
-    /**
-     * App Configuration data
-     */
-    readonly data: { [key: string]: any } = {};
-
-    /**
-     * Separator for hierarchical keys.
-     */
-    readonly #SEP: string = ".";
-
     /**
      * Hosting key-value pairs in the configuration store.
      */
@@ -178,8 +168,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         for (const [k, v] of keyValues) {
             this.#configMap.set(k, v);
         }
-        // also construct hierarchical data object from map
-        this.#constructDataFromMap();
     }
 
     /**
@@ -193,30 +181,52 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     /**
      * Construct hierarchical data object from map.
-     *
-     * @remarks
-     * This method is used to construct hierarchical data object from map, and it is called after the initial load and each refresh.
      */
-    #constructDataFromMap() {
-        // clean data object in-place
-        for (const key of Object.keys(this.data)) {
-            delete this.data[key];
-        }
+    toHierarchicalData(options?: HierarchicalDataConversionOptions): Record<string, any> {
+        const separator = options?.separator ?? ".";
+        const prefix = options?.prefix ?? "";
+        const onError = options?.onError ?? "error";
+
         // construct hierarchical data object from map
+        const data: Record<string, any> = {};
         for (const [key, value] of this.#configMap) {
-            const segments = key.split(this.#SEP);
-            let current = this.data;
-            // construct hierarchical data object along the path
-            for (let i = 0; i < segments.length - 1; i++) {
-                const segment = segments[i];
-                if (typeof current[segment] !== "object") { // Note: it overwrites existing value if it's not an object
-                    current[segment] = {};
+            if (key.startsWith(prefix)) {
+                const segments = key.slice(prefix.length).split(separator);
+                let current = data;
+                // construct hierarchical data object along the path
+                for (let i = 0; i < segments.length - 1; i++) {
+                    const segment = segments[i];
+                    // undefined or empty string
+                    if (!segment) {
+                        if (onError === "error") {
+                            throw new Error(`invalid key: ${key}`);
+                        } else if (onError === "ignore") {
+                            continue;
+                        } else {
+                            throw new Error(`The value of 'onError' is not supported: ${onError}`);
+                        }
+                    }
+                    // create path if not exist
+                    if (current[segment] === undefined) {
+                        current[segment] = {};
+                    }
+                    // The path has been occupied by a non-object value, causing ambiguity.
+                    if (typeof current[segment] !== "object") {
+                        if (onError === "error") {
+                            throw new Error(`The key '${prefix}${segments.slice(0, i + 1).join(separator)}' is not a valid path.`);
+                        } else if (onError === "ignore") {
+                            current[segment] = {}; // overwrite the non-object value
+                        } else {
+                            throw new Error(`The value of 'onError' is not supported: ${onError}`);
+                        }
+                    }
+                    current = current[segment];
                 }
-                current = current[segment];
+                // set value to the last segment
+                current[segments[segments.length - 1]] = value;
             }
-            // set value to the last segment
-            current[segments[segments.length - 1]] = value;
         }
+        return data;
     }
 
     /**

@@ -174,25 +174,39 @@ describe("load", function () {
     // access data property
     it("should directly access data property", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app.settings.*"
+            }]
+        });
         expect(settings).not.undefined;
-        expect(settings.data).not.undefined;
-        expect(settings.data.app.settings.fontColor).eq("red");
-        expect(settings.data.app.settings.fontSize).eq("40");
+        const data = settings.toHierarchicalData();
+        expect(data).not.undefined;
+        expect(data.app.settings.fontColor).eq("red");
+        expect(data.app.settings.fontSize).eq("40");
     });
 
     it("should access property of JSON object content-type with data accessor", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app2.*"
+            }]
+        });
         expect(settings).not.undefined;
-        expect(settings.data).not.undefined;
-        expect(settings.data.app2.settings.fontColor).eq("blue");
-        expect(settings.data.app2.settings.fontSize).eq(20);
+        const data = settings.toHierarchicalData();
+        expect(data).not.undefined;
+        expect(data.app2.settings.fontColor).eq("blue");
+        expect(data.app2.settings.fontSize).eq(20);
     });
 
     it("should not access property of JSON content-type object with get()", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app2.*"
+            }]
+        });
         expect(settings).not.undefined;
         expect(settings.get("app2.settings")).not.undefined; // JSON object accessed as a whole
         expect(settings.get("app2.settings.fontColor")).undefined;
@@ -207,15 +221,33 @@ describe("load", function () {
      * get() will return "placeholder" for "app3.settings" and "yellow" for "app3.settings.fontColor", as expected.
      * data.app3.settings will return "placeholder" as a whole JSON object, which is not guarenteed to be correct.
      */
-    it("Edge case: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+    it("Edge case: Hierarchical key-value pairs with overlapped key prefix. Ignore error.", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app3.settings*"
+            }]
+        });
         expect(settings).not.undefined;
         // use get() method
         expect(settings.get("app3.settings")).eq("placeholder");
         expect(settings.get("app3.settings.fontColor")).eq("yellow");
         // use data property
-        expect(settings.data.app3.settings).not.eq("placeholder"); // not as expected.
-        expect(settings.data.app3.settings.fontColor).eq("yellow");
+        const data = settings.toHierarchicalData({ onError: "ignore" }); // ignore error on hierarchical key conversion
+        expect(data.app3.settings).not.eq("placeholder"); // not as expected.
+        expect(data.app3.settings.fontColor).eq("yellow");
+    });
+
+    it("Edge case: Hierarchical key-value pairs with overlapped key prefix. Default error.", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app3.settings*"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(() => {
+            settings.toHierarchicalData();
+        }).to.throw("The key 'app3.settings' is not a valid path.");
     });
 });
