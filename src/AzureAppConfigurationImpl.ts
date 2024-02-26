@@ -232,7 +232,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Refresh the configuration store.
      */
-    public async refresh(): Promise<void> {
+    async refresh(): Promise<void> {
         if (!this.#refreshEnabled) {
             throw new Error("Refresh is not enabled.");
         }

@@ -4,24 +4,23 @@
 import { ConfigurationSetting, secretReferenceContentType } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 
-
 export class JsonKeyValueAdapter implements IKeyValueAdapter {
-    private static readonly ExcludedJsonContentTypes: string[] = [
+    static readonly #ExcludedJsonContentTypes: string[] = [
         secretReferenceContentType
         // TODO: exclude application/vnd.microsoft.appconfig.ff+json after feature management is supported
     ];
 
-    public canProcess(setting: ConfigurationSetting): boolean {
+    canProcess(setting: ConfigurationSetting): boolean {
         if (!setting.contentType) {
             return false;
         }
-        if (JsonKeyValueAdapter.ExcludedJsonContentTypes.includes(setting.contentType)) {
+        if (JsonKeyValueAdapter.#ExcludedJsonContentTypes.includes(setting.contentType)) {
             return false;
         }
         return isJsonContentType(setting.contentType);
     }
 
-    public async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
+    async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
         let parsedValue: unknown;
         if (setting.value !== undefined) {
             try {
