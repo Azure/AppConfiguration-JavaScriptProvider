@@ -22,52 +22,55 @@ const MaxSafeExponential = 30; // Used to avoid overflow. bitwise operations in 
 const JitterRatio = 0.25;
 
 export class RefreshTimer {
-    private _minBackoff: number = MinimumBackoffInMs;
-    private _maxBackoff: number = MaximumBackoffInMs;
-    private _failedAttempts: number = 0;
-    private _backoffEnd: number; // Timestamp
+    #minBackoff: number = MinimumBackoffInMs;
+    #maxBackoff: number = MaximumBackoffInMs;
+    #failedAttempts: number = 0;
+    #backoffEnd: number; // Timestamp
+    #interval: number;
+
     constructor(
-        private _interval: number
+        interval: number
     ) {
-        if (this._interval <= 0) {
-            throw new Error(`Refresh interval must be greater than 0. Given: ${this._interval}`);
+        if (interval <= 0) {
+            throw new Error(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
         }
 
-        this._backoffEnd = Date.now() + this._interval;
+        this.#interval = interval;
+        this.#backoffEnd = Date.now() + this.#interval;
     }
 
-    public canRefresh(): boolean {
-        return Date.now() >= this._backoffEnd;
+    canRefresh(): boolean {
+        return Date.now() >= this.#backoffEnd;
     }
 
-    public backoff(): void {
-        this._failedAttempts += 1;
-        this._backoffEnd = Date.now() + this._calculateBackoffTime();
+    backoff(): void {
+        this.#failedAttempts += 1;
+        this.#backoffEnd = Date.now() + this.#calculateBackoffTime();
     }
 
-    public reset(): void {
-        this._failedAttempts = 0;
-        this._backoffEnd = Date.now() + this._interval;
+    reset(): void {
+        this.#failedAttempts = 0;
+        this.#backoffEnd = Date.now() + this.#interval;
     }
 
-    private _calculateBackoffTime(): number {
+    #calculateBackoffTime(): number {
         let minBackoffMs: number;
         let maxBackoffMs: number;
-        if (this._interval <= this._minBackoff) {
-            return this._interval;
+        if (this.#interval <= this.#minBackoff) {
+            return this.#interval;
         }
 
         // _minBackoff <= _interval
-        if (this._interval <= this._maxBackoff) {
-            minBackoffMs = this._minBackoff;
-            maxBackoffMs = this._interval;
+        if (this.#interval <= this.#maxBackoff) {
+            minBackoffMs = this.#minBackoff;
+            maxBackoffMs = this.#interval;
         } else {
-            minBackoffMs = this._minBackoff;
-            maxBackoffMs = this._maxBackoff;
+            minBackoffMs = this.#minBackoff;
+            maxBackoffMs = this.#maxBackoff;
         }
 
         // exponential: minBackoffMs * 2^(failedAttempts-1)
-        const exponential = Math.min(this._failedAttempts - 1, MaxSafeExponential);
+        const exponential = Math.min(this.#failedAttempts - 1, MaxSafeExponential);
         let calculatedBackoffMs = minBackoffMs * (1 << exponential);
         if (calculatedBackoffMs > maxBackoffMs) {
             calculatedBackoffMs = maxBackoffMs;

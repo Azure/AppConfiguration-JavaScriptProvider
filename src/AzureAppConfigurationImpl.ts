@@ -176,7 +176,7 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
     /**
      * Refresh the configuration store.
      */
-    public async refresh(): Promise<void> {
+    async refresh(): Promise<void> {
         if (!this.#refreshEnabled) {
             throw new Error("Refresh is not enabled.");
         }
