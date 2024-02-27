@@ -3,7 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration, HierarchicalDataConversionOptions } from "./AzureAppConfiguration";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
@@ -182,7 +182,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Construct hierarchical data object from map.
      */
-    toHierarchicalData(options?: HierarchicalDataConversionOptions): Record<string, any> {
+    constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
         const separator = options?.separator ?? ".";
         const prefix = options?.prefix ?? "";
         const onError = options?.onError ?? "error";

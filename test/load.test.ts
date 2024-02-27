@@ -185,7 +185,7 @@ describe("load", function () {
             }]
         });
         expect(settings).not.undefined;
-        const data = settings.toHierarchicalData();
+        const data = settings.constructConfigurationObject();
         expect(data).not.undefined;
         expect(data.app.settings.fontColor).eq("red");
         expect(data.app.settings.fontSize).eq("40");
@@ -199,7 +199,7 @@ describe("load", function () {
             }]
         });
         expect(settings).not.undefined;
-        const data = settings.toHierarchicalData();
+        const data = settings.constructConfigurationObject();
         expect(data).not.undefined;
         expect(data.app2.settings.fontColor).eq("blue");
         expect(data.app2.settings.fontSize).eq(20);
@@ -238,7 +238,7 @@ describe("load", function () {
         expect(settings.get("app3.settings")).eq("placeholder");
         expect(settings.get("app3.settings.fontColor")).eq("yellow");
         // use data property
-        const data = settings.toHierarchicalData({ onError: "ignore" }); // ignore error on hierarchical key conversion
+        const data = settings.constructConfigurationObject({ onError: "ignore" }); // ignore error on hierarchical key conversion
         expect(data.app3.settings).not.eq("placeholder"); // not as expected.
         expect(data.app3.settings.fontColor).eq("yellow");
     });
@@ -252,7 +252,7 @@ describe("load", function () {
         });
         expect(settings).not.undefined;
         expect(() => {
-            settings.toHierarchicalData();
+            settings.constructConfigurationObject();
         }).to.throw("The key 'app3.settings' is not a valid path.");
     });
 });

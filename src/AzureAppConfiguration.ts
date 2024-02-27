@@ -16,17 +16,17 @@ export type AzureAppConfiguration = {
      * @param thisArg - Optional. Value to use as `this` when executing callback.
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable;
-} & IGettable & IHierarchicalData;
+} & IGettable & IConfigurationObject;
 
-interface IHierarchicalData {
+interface IConfigurationObject {
     /**
-     * Convert the Map-styled data structure to hierarchical object properties.
+     * Construct configuration object based on Map-styled data structure and hierarchical keys.
      * @param options - The options to control the conversion behavior.
      */
-    toHierarchicalData(options?: HierarchicalDataConversionOptions): Record<string, any>;
+    constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any>;
 }
 
-export interface HierarchicalDataConversionOptions {
+export interface ConfigurationObjectConstructionOptions {
     /**
      * The separator to use when converting hierarchical keys to object properties.
      * Default is '.'.
