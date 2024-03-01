@@ -38,7 +38,14 @@ const mockedKVs = [{
 }, {
     key: "app3.settings.fontColor",
     value: "yellow"
-}].map(createMockedKeyValue);
+}, {
+    key: "app4.excludedFolders.0",
+    value: "node_modules"
+}, {
+    key: "app4.excludedFolders.1",
+    value: "dist"
+}
+].map(createMockedKeyValue);
 
 describe("load", function () {
     this.timeout(10000);
@@ -226,24 +233,7 @@ describe("load", function () {
      * get() will return "placeholder" for "app3.settings" and "yellow" for "app3.settings.fontColor", as expected.
      * data.app3.settings will return "placeholder" as a whole JSON object, which is not guarenteed to be correct.
      */
-    it("Edge case: Hierarchical key-value pairs with overlapped key prefix. Ignore error.", async () => {
-        const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString, {
-            selectors: [{
-                keyFilter: "app3.settings*"
-            }]
-        });
-        expect(settings).not.undefined;
-        // use get() method
-        expect(settings.get("app3.settings")).eq("placeholder");
-        expect(settings.get("app3.settings.fontColor")).eq("yellow");
-        // use data property
-        const data = settings.constructConfigurationObject({ onError: "ignore" }); // ignore error on hierarchical key conversion
-        expect(data.app3.settings).not.eq("placeholder"); // not as expected.
-        expect(data.app3.settings.fontColor).eq("yellow");
-    });
-
-    it("Edge case: Hierarchical key-value pairs with overlapped key prefix. Default error.", async () => {
+    it("Edge case: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
@@ -254,5 +244,20 @@ describe("load", function () {
         expect(() => {
             settings.constructConfigurationObject();
         }).to.throw("The key 'app3.settings' is not a valid path.");
+    });
+
+    it("should construct configuration object with array", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app4.*"
+            }]
+        });
+        expect(settings).not.undefined;
+        const data = settings.constructConfigurationObject();
+        expect(data).not.undefined;
+        // Both { '0': 'node_modules', '1': 'dist' } and ['node_modules', 'dist'] are valid.
+        expect(data.app4.excludedFolders[0]).eq("node_modules");
+        expect(data.app4.excludedFolders[1]).eq("dist");
     });
 });

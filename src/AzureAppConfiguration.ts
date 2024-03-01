@@ -32,18 +32,6 @@ export interface ConfigurationObjectConstructionOptions {
      * Default is '.'.
      */
     separator?: string;
-
-    /**
-     * The prefix of hierarchical keys to be converted object properties, usefull when converting a subset of the keys.
-     * Default is '', representing the root of the object.
-     */
-    prefix?: string;
-
-    /**
-     * The behavior when error or amibiguity occurs on converting hierarchical keys.
-     * Default is 'error'.
-     */
-    onError?: "error" | "ignore";
 }
 
 interface IGettable {

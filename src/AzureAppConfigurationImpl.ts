@@ -184,47 +184,31 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
         const separator = options?.separator ?? ".";
-        const prefix = options?.prefix ?? "";
-        const onError = options?.onError ?? "error";
 
         // construct hierarchical data object from map
         const data: Record<string, any> = {};
         for (const [key, value] of this.#configMap) {
-            if (key.startsWith(prefix)) {
-                const segments = key.slice(prefix.length).split(separator);
-                let current = data;
-                // construct hierarchical data object along the path
-                for (let i = 0; i < segments.length - 1; i++) {
-                    const segment = segments[i];
-                    // undefined or empty string
-                    if (!segment) {
-                        if (onError === "error") {
-                            throw new Error(`invalid key: ${key}`);
-                        } else if (onError === "ignore") {
-                            continue;
-                        } else {
-                            throw new Error(`The value of 'onError' is not supported: ${onError}`);
-                        }
-                    }
-                    // create path if not exist
-                    if (current[segment] === undefined) {
-                        current[segment] = {};
-                    }
-                    // The path has been occupied by a non-object value, causing ambiguity.
-                    if (typeof current[segment] !== "object") {
-                        if (onError === "error") {
-                            throw new Error(`The key '${prefix}${segments.slice(0, i + 1).join(separator)}' is not a valid path.`);
-                        } else if (onError === "ignore") {
-                            current[segment] = {}; // overwrite the non-object value
-                        } else {
-                            throw new Error(`The value of 'onError' is not supported: ${onError}`);
-                        }
-                    }
-                    current = current[segment];
+            const segments = key.split(separator);
+            let current = data;
+            // construct hierarchical data object along the path
+            for (let i = 0; i < segments.length - 1; i++) {
+                const segment = segments[i];
+                // undefined or empty string
+                if (!segment) {
+                    throw new Error(`invalid key: ${key}`);
                 }
-                // set value to the last segment
-                current[segments[segments.length - 1]] = value;
+                // create path if not exist
+                if (current[segment] === undefined) {
+                    current[segment] = {};
+                }
+                // The path has been occupied by a non-object value, causing ambiguity.
+                if (typeof current[segment] !== "object") {
+                    throw new Error(`The key '${segments.slice(0, i + 1).join(separator)}' is not a valid path.`);
+                }
+                current = current[segment];
             }
+            // set value to the last segment
+            current[segments[segments.length - 1]] = value;
         }
         return data;
     }
