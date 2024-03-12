@@ -29,7 +29,8 @@ interface IConfigurationObject {
 export interface ConfigurationObjectConstructionOptions {
     /**
      * The separator to use when converting hierarchical keys to object properties.
-     * Default is '.'.
+     * If separator is undefined, '.' will be used by default.
+
      */
     separator?: string;
 }
