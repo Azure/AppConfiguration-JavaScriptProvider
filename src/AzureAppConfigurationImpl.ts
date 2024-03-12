@@ -203,12 +203,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 // The path has been occupied by a non-object value, causing ambiguity.
                 if (typeof current[segment] !== "object") {
-                    throw new Error(`The key '${segments.slice(0, i + 1).join(separator)}' is not a valid path.`);
+                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
                 }
                 current = current[segment];
             }
+
+            const lastSegment = segments[segments.length - 1];
+            if (current[lastSegment] !== undefined) {
+                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+            }
             // set value to the last segment
-            current[segments[segments.length - 1]] = value;
+            current[lastSegment] = value;
         }
         return data;
     }

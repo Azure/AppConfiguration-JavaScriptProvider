@@ -44,7 +44,13 @@ const mockedKVs = [{
 }, {
     key: "app4.excludedFolders.1",
     value: "dist"
-}
+}, {
+    key: "app5.settings.fontColor",
+    value: "yellow"
+}, {
+    key: "app5.settings",
+    value: "placeholder"
+},
 ].map(createMockedKeyValue);
 
 describe("load", function () {
@@ -233,7 +239,7 @@ describe("load", function () {
      * get() will return "placeholder" for "app3.settings" and "yellow" for "app3.settings.fontColor", as expected.
      * data.app3.settings will return "placeholder" as a whole JSON object, which is not guarenteed to be correct.
      */
-    it("Edge case: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+    it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
@@ -243,7 +249,28 @@ describe("load", function () {
         expect(settings).not.undefined;
         expect(() => {
             settings.constructConfigurationObject();
-        }).to.throw("The key 'app3.settings' is not a valid path.");
+        }).to.throw("Ambiguity occurs when constructing configuration object from key 'app3.settings.fontColor', value 'yellow'. The path 'app3.settings' has been occupied.");
+    });
+
+    /**
+     * Edge case: Hierarchical key-value pairs with overlapped key prefix.
+     * key: "app5.settings.fontColor" => value: "yellow"
+     * key: "app5.settings" => value: "placeholder"
+     *
+     * When ocnstructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
+     * An error will be thrown when constructing from key "app5.settings" because there is ambiguity between the two keys.
+     */
+    it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app5.settings*"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(() => {
+            settings.constructConfigurationObject();
+        }).to.throw("Ambiguity occurs when constructing configuration object from key 'app5.settings', value 'placeholder'. The key should not be part of another key.");
     });
 
     it("should construct configuration object with array", async () => {
