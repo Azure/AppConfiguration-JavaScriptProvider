@@ -15,6 +15,18 @@ const mockedKVs = [{
     key: "app.settings.fontSize",
     value: "40",
 }, {
+    key: "app/settings/fontColor",
+    value: "red",
+}, {
+    key: "app/settings/fontSize",
+    value: "40",
+}, {
+    key: "app%settings%fontColor",
+    value: "red",
+}, {
+    key: "app%settings%fontSize",
+    value: "40",
+}, {
     key: "TestKey",
     label: "Test",
     value: "TestValue",
@@ -50,7 +62,7 @@ const mockedKVs = [{
 }, {
     key: "app5.settings",
     value: "placeholder"
-},
+}
 ].map(createMockedKeyValue);
 
 describe("load", function () {
@@ -286,5 +298,37 @@ describe("load", function () {
         // Both { '0': 'node_modules', '1': 'dist' } and ['node_modules', 'dist'] are valid.
         expect(data.app4.excludedFolders[0]).eq("node_modules");
         expect(data.app4.excludedFolders[1]).eq("dist");
+    });
+
+    it("should construct configuration object with customized separator", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app/settings/*"
+            }]
+        });
+        expect(settings).not.undefined;
+        const data = settings.constructConfigurationObject({ separator: "/" });
+        expect(data).not.undefined;
+        expect(data.app.settings.fontColor).eq("red");
+        expect(data.app.settings.fontSize).eq("40");
+    });
+
+    it("should throw error when construct configuration object with invalid separator", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app%settings%*"
+            }]
+        });
+        expect(settings).not.undefined;
+
+        expect(() => {
+            // Below line will throw error because of type checking, i.e. Type '"%"' is not assignable to type '"/" | "." | "," | ";" | "-" | "_" | "__" | ":" | undefined'.ts(2322)
+            // Here force to turn if off for testing purpose, as JavaScript does not have type checking.
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            settings.constructConfigurationObject({ separator: "%" });
+        }).to.throw("Invalid separator '%'. Supported values: '.', ',', ';', '-', '_', '__', '/', ':'.");
     });
 });

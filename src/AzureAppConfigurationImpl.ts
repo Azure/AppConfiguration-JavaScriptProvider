@@ -184,6 +184,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
         const separator = options?.separator ?? ".";
+        const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
+        if (!validSeparators.includes(separator)) {
+            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+        }
 
         // construct hierarchical data object from map
         const data: Record<string, any> = {};
