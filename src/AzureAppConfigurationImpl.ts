@@ -3,7 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration } from "./AzureAppConfiguration";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
@@ -15,7 +15,12 @@ import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
-export class AzureAppConfigurationImpl extends Map<string, any> implements AzureAppConfiguration {
+export class AzureAppConfigurationImpl implements AzureAppConfiguration {
+    /**
+     * Hosting key-value pairs in the configuration store.
+     */
+    #configMap: Map<string, any> = new Map<string, any>();
+
     #adapters: IKeyValueAdapter[] = [];
     /**
      * Trim key prefixes sorted in descending order.
@@ -40,7 +45,6 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         client: AppConfigurationClient,
         options: AzureAppConfigurationOptions | undefined
     ) {
-        super();
         this.#client = client;
         this.#options = options;
 
@@ -87,6 +91,9 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
+    get<T>(key: string): T | undefined {
+        return this.#configMap.get(key);
+    }
 
     get #refreshEnabled(): boolean {
         return !!this.#options?.refreshOptions?.enabled;
@@ -157,9 +164,9 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
             keyValues.push([key, value]);
         }
 
-        this.clear(); // clear existing key-values in case of configuration setting deletion
+        this.#configMap.clear(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
-            this.set(k, v);
+            this.#configMap.set(k, v);
         }
     }
 
@@ -168,9 +175,51 @@ export class AzureAppConfigurationImpl extends Map<string, any> implements Azure
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
-
         // Mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
+    }
+
+    /**
+     * Construct hierarchical data object from map.
+     */
+    constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
+        const separator = options?.separator ?? ".";
+        const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
+        if (!validSeparators.includes(separator)) {
+            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+        }
+
+        // construct hierarchical data object from map
+        const data: Record<string, any> = {};
+        for (const [key, value] of this.#configMap) {
+            const segments = key.split(separator);
+            let current = data;
+            // construct hierarchical data object along the path
+            for (let i = 0; i < segments.length - 1; i++) {
+                const segment = segments[i];
+                // undefined or empty string
+                if (!segment) {
+                    throw new Error(`invalid key: ${key}`);
+                }
+                // create path if not exist
+                if (current[segment] === undefined) {
+                    current[segment] = {};
+                }
+                // The path has been occupied by a non-object value, causing ambiguity.
+                if (typeof current[segment] !== "object") {
+                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
+                }
+                current = current[segment];
+            }
+
+            const lastSegment = segments[segments.length - 1];
+            if (current[lastSegment] !== undefined) {
+                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+            }
+            // set value to the last segment
+            current[lastSegment] = value;
+        }
+        return data;
     }
 
     /**
