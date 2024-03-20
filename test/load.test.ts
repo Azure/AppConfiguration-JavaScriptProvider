@@ -127,6 +127,40 @@ describe("load", function () {
         expect(settings.get("app.settings.fontFamily")).undefined;
     });
 
+    it("should also work with other ReadonlyMap APIs", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app.settings.*",
+                labelFilter: "\0"
+            }]
+        });
+        expect(settings).not.undefined;
+        // size
+        expect(settings.size).eq(2);
+        // keys()
+        expect(Array.from(settings.keys())).deep.eq(["app.settings.fontColor", "app.settings.fontSize"]);
+        // values()
+        expect(Array.from(settings.values())).deep.eq(["red", "40"]);
+        // entries()
+        expect(Array.from(settings.entries())).deep.eq([["app.settings.fontColor", "red"], ["app.settings.fontSize", "40"]]);
+        // forEach()
+        const keys: string[] = [];
+        const values: string[] = [];
+        settings.forEach((value, key) => {
+            keys.push(key);
+            values.push(value);
+        });
+        expect(keys).deep.eq(["app.settings.fontColor", "app.settings.fontSize"]);
+        expect(values).deep.eq(["red", "40"]);
+        // [Symbol.iterator]()
+        const entries: [string, string][] = [];
+        for (const [key, value] of settings) {
+            entries.push([key, value]);
+        }
+        expect(entries).deep.eq([["app.settings.fontColor", "red"], ["app.settings.fontSize", "40"]]);
+    });
+
     it("should be read-only, set(key, value) should not work", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
