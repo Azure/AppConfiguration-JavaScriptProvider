@@ -6,6 +6,9 @@ import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configu
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
+import { RestError } from "@azure/core-rest-pipeline";
+import { promisify } from "util";
+const sleepInMs = promisify(setTimeout);
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -34,6 +37,21 @@ function mockAppConfigurationClientListConfigurationSettings(kvList: Configurati
             return keyMatched && labelMatched;
         })
         return testKvSetGnerator(kvs) as any;
+    });
+}
+
+function mockAppConfigurationClientGetConfigurationSetting(kvList) {
+    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
+        const found = kvList.find(elem => elem.key === settingId.key && elem.label === settingId.label);
+        if (found) {
+            if (options?.onlyIfChanged && settingId.etag === found.etag) {
+                return { statusCode: 304 };
+            } else {
+                return { statusCode: 200, ...found };
+            }
+        } else {
+            throw new RestError("", { statusCode: 404 });
+        }
     });
 }
 
@@ -108,6 +126,7 @@ const createMockedKeyValue = (props: {[key: string]: any}): ConfigurationSetting
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
+    mockAppConfigurationClientGetConfigurationSetting,
     mockSecretClientGetSecret,
     restoreMocks,
 
@@ -116,5 +135,7 @@ export {
     createMockedTokenCredential,
     createMockedKeyVaultReference,
     createMockedJsonKeyValue,
-    createMockedKeyValue
+    createMockedKeyValue,
+
+    sleepInMs
 }

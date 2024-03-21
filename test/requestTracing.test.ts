@@ -5,7 +5,7 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedTokenCredential } from "./utils/testHelper";
+import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper";
 import { load } from "./exportedApi";
 class HttpRequestHeadersPolicy {
     headers: any;
@@ -22,6 +22,8 @@ class HttpRequestHeadersPolicy {
 }
 
 describe("request tracing", function () {
+    this.timeout(15000);
+
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
     const position: "perCall" | "perRetry" = "perCall";
@@ -117,5 +119,33 @@ describe("request tracing", function () {
 
         // clean up
         delete process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED;
+    });
+
+    it("should have request type in correlation-context header when refresh is enabled", async () => {
+        mockAppConfigurationClientListConfigurationSettings([{
+            key: "app.settings.fontColor",
+            value: "red"
+        }].map(createMockedKeyValue));
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 1000,
+                watchedSettings: [{
+                    key: "app.settings.fontColor"
+                }]
+            }
+        });
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("RequestType=Watch")).eq(true);
+
+        restoreMocks();
     });
 });
