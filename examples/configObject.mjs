@@ -5,11 +5,11 @@ import * as dotenv from "dotenv";
 dotenv.config()
 
 /**
- * This example demostrates how to construct a configuration object from settings loaded from Azure App Configuration.
+ * This example demonstrates how to construct a configuration object from settings loaded from Azure App Configuration.
  * If you are using configuration object instead of Map-styled settings, it would minimize the code changes required to use Azure App Configuration in your application.
  *
- * When you import configuration into Azure App Configuration from a local .json file, the keys are automatically flattened with specified separator (default is ".").
- * E.g. if you import the following .json file:
+ * When you import configuration into Azure App Configuration from a local .json file, the keys are automatically flattened with a separator if specified.
+ * E.g. if you import the following .json file, specifying the separator as ".":
  * {
  *   "app": {
  *     "settings": {
