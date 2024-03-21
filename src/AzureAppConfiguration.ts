@@ -16,7 +16,7 @@ export type AzureAppConfiguration = {
      * @param thisArg - Optional. Value to use as `this` when executing callback.
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable;
-} & IGettable & IConfigurationObject;
+} & IGettable & ReadonlyMap<string, any> & IConfigurationObject;
 
 interface IConfigurationObject {
     /**

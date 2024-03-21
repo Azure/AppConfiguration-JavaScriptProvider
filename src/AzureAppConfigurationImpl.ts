@@ -91,8 +91,37 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
+    // ReadonlyMap APIs
     get<T>(key: string): T | undefined {
         return this.#configMap.get(key);
+    }
+
+    forEach(callbackfn: (value: any, key: string, map: ReadonlyMap<string, any>) => void, thisArg?: any): void {
+        this.#configMap.forEach(callbackfn, thisArg);
+    }
+
+    has(key: string): boolean {
+        return this.#configMap.has(key);
+    }
+
+    get size(): number {
+        return this.#configMap.size;
+    }
+
+    entries(): IterableIterator<[string, any]> {
+        return this.#configMap.entries();
+    }
+
+    keys(): IterableIterator<string> {
+        return this.#configMap.keys();
+    }
+
+    values(): IterableIterator<any> {
+        return this.#configMap.values();
+    }
+
+    [Symbol.iterator](): IterableIterator<[string, any]> {
+        return this.#configMap[Symbol.iterator]();
     }
 
     get #refreshEnabled(): boolean {

@@ -110,6 +110,74 @@ describe("load", function () {
         return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
     });
 
+    it("should filter by key and label, has(key) and get(key) should work", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app.settings.*",
+                labelFilter: "\0"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(settings.has("app.settings.fontColor")).true;
+        expect(settings.has("app.settings.fontSize")).true;
+        expect(settings.has("app.settings.fontFamily")).false;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+        expect(settings.get("app.settings.fontFamily")).undefined;
+    });
+
+    it("should also work with other ReadonlyMap APIs", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app.settings.*",
+                labelFilter: "\0"
+            }]
+        });
+        expect(settings).not.undefined;
+        // size
+        expect(settings.size).eq(2);
+        // keys()
+        expect(Array.from(settings.keys())).deep.eq(["app.settings.fontColor", "app.settings.fontSize"]);
+        // values()
+        expect(Array.from(settings.values())).deep.eq(["red", "40"]);
+        // entries()
+        expect(Array.from(settings.entries())).deep.eq([["app.settings.fontColor", "red"], ["app.settings.fontSize", "40"]]);
+        // forEach()
+        const keys: string[] = [];
+        const values: string[] = [];
+        settings.forEach((value, key) => {
+            keys.push(key);
+            values.push(value);
+        });
+        expect(keys).deep.eq(["app.settings.fontColor", "app.settings.fontSize"]);
+        expect(values).deep.eq(["red", "40"]);
+        // [Symbol.iterator]()
+        const entries: [string, string][] = [];
+        for (const [key, value] of settings) {
+            entries.push([key, value]);
+        }
+        expect(entries).deep.eq([["app.settings.fontColor", "red"], ["app.settings.fontSize", "40"]]);
+    });
+
+    it("should be read-only, set(key, value) should not work", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app.settings.*",
+                labelFilter: "\0"
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(() => {
+            // Here force to turn if off for testing purpose, as JavaScript does not have type checking.
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            settings.set("app.settings.fontColor", "blue");
+        }).to.throw("settings.set is not a function");
+    });
+
     it("should trim key prefix if applicable", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
