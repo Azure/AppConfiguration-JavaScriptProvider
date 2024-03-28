@@ -24,6 +24,7 @@ const settings = await load(connectionString, {
     }],
     trimKeyPrefixes: ["app.settings."],
     refreshOptions: {
+        enabled: true,
         watchedSettings: [{ key: "app.settings.sentinel" }],
         refreshIntervalInMs: 10 * 1000 // Default value is 30 seconds, shorted for this sample
     }
