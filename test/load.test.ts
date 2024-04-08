@@ -62,6 +62,17 @@ const mockedKVs = [{
 }, {
     key: "app5.settings",
     value: "placeholder"
+}, {
+    key: ".appconfig.featureflag/Beta",
+    value: JSON.stringify({
+        "id": "Beta",
+        "description": "",
+        "enabled": true,
+        "conditions": {
+            "client_filters": []
+        }
+    }),
+    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8"
 }
 ].map(createMockedKeyValue);
 
@@ -108,6 +119,13 @@ describe("load", function () {
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
         return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
+    });
+
+    it("should not include feature flags directly in the settings", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.get(".appconfig.featureflag/Beta")).undefined;
     });
 
     it("should filter by key and label, has(key) and get(key) should work", async () => {
