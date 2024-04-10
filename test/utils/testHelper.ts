@@ -15,7 +15,7 @@ const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
 function mockAppConfigurationClientListConfigurationSettings(kvList: ConfigurationSetting[]) {
-    function* testKvSetGnerator(kvs: any[]) {
+    function* testKvSetGenerator(kvs: any[]) {
         yield* kvs;
     }
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
@@ -36,7 +36,7 @@ function mockAppConfigurationClientListConfigurationSettings(kvList: Configurati
             }
             return keyMatched && labelMatched;
         })
-        return testKvSetGnerator(kvs) as any;
+        return testKvSetGenerator(kvs) as any;
     });
 }
 
@@ -79,9 +79,9 @@ function restoreMocks() {
     sinon.restore();
 }
 
-const createMockedEnpoint = (name = "azure") => `https://${name}.azconfig.io`;
+const createMockedEndpoint = (name = "azure") => `https://${name}.azconfig.io`;
 
-const createMockedConnectionString = (endpoint = createMockedEnpoint(), secret = "secret", id = "b1d9b31") => {
+const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret = "secret", id = "b1d9b31") => {
     const toEncodeAsBytes = Buffer.from(secret);
     const returnValue = toEncodeAsBytes.toString("base64");
     return `Endpoint=${endpoint};Id=${id};Secret=${returnValue}`;
@@ -99,7 +99,7 @@ const createMockedKeyVaultReference = (key: string, vaultUri: string): Configura
     lastModified: new Date(),
     tags: {
     },
-    etag: "SPJSMnJ2ph4BAjftWfdIctV2VIyQxtcIzRbh1oxTBkM",
+    etag: uuid.v4(),
     isReadOnly: false,
 });
 
@@ -109,7 +109,7 @@ const createMockedJsonKeyValue = (key: string, value: any): ConfigurationSetting
     contentType: "application/json",
     lastModified: new Date(),
     tags: {},
-    etag: "GdmsLWq3mFjFodVEXUYRmvFr3l_qRiKAW_KdpFbxZKk",
+    etag: uuid.v4(),
     isReadOnly: false
 });
 
@@ -130,7 +130,7 @@ export {
     mockSecretClientGetSecret,
     restoreMocks,
 
-    createMockedEnpoint,
+    createMockedEndpoint,
     createMockedConnectionString,
     createMockedTokenCredential,
     createMockedKeyVaultReference,

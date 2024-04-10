@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEnpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper";
+import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -62,6 +62,17 @@ const mockedKVs = [{
 }, {
     key: "app5.settings",
     value: "placeholder"
+}, {
+    key: ".appconfig.featureflag/Beta",
+    value: JSON.stringify({
+        "id": "Beta",
+        "description": "",
+        "enabled": true,
+        "conditions": {
+            "client_filters": []
+        }
+    }),
+    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8"
 }
 ].map(createMockedKeyValue);
 
@@ -84,7 +95,7 @@ describe("load", function () {
     });
 
     it("should load data from config store with aad + endpoint URL", async () => {
-        const endpoint = createMockedEnpoint();
+        const endpoint = createMockedEndpoint();
         const credential = createMockedTokenCredential();
         const settings = await load(new URL(endpoint), credential);
         expect(settings).not.undefined;
@@ -93,7 +104,7 @@ describe("load", function () {
     });
 
     it("should load data from config store with aad + endpoint string", async () => {
-        const endpoint = createMockedEnpoint();
+        const endpoint = createMockedEndpoint();
         const credential = createMockedTokenCredential();
         const settings = await load(endpoint, credential);
         expect(settings).not.undefined;
@@ -108,6 +119,13 @@ describe("load", function () {
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
         return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
+    });
+
+    it("should not include feature flags directly in the settings", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        expect(settings).not.undefined;
+        expect(settings.get(".appconfig.featureflag/Beta")).undefined;
     });
 
     it("should filter by key and label, has(key) and get(key) should work", async () => {
@@ -251,7 +269,7 @@ describe("load", function () {
         expect(settings.get("TestKey")).eq("TestValueForProd");
     });
 
-    it("should dedup exact same selectors but keeping the precedence", async () => {
+    it("should deduplicate exact same selectors but keeping the precedence", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
@@ -317,7 +335,7 @@ describe("load", function () {
      * key: "app3.settings.fontColor" => value: "yellow"
      *
      * get() will return "placeholder" for "app3.settings" and "yellow" for "app3.settings.fontColor", as expected.
-     * data.app3.settings will return "placeholder" as a whole JSON object, which is not guarenteed to be correct.
+     * data.app3.settings will return "placeholder" as a whole JSON object, which is not guaranteed to be correct.
      */
     it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
@@ -337,7 +355,7 @@ describe("load", function () {
      * key: "app5.settings.fontColor" => value: "yellow"
      * key: "app5.settings" => value: "placeholder"
      *
-     * When ocnstructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
+     * When constructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
      * An error will be thrown when constructing from key "app5.settings" because there is ambiguity between the two keys.
      */
     it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
