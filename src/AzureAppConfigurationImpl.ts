@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, isFeatureFlag } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
@@ -150,7 +150,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const settings = this.#client.listConfigurationSettings(listOptions);
 
             for await (const setting of settings) {
-                loadedSettings.push(setting);
+                if (!isFeatureFlag(setting)) { // exclude feature flags
+                    loadedSettings.push(setting);
+                }
             }
         }
         return loadedSettings;
