@@ -370,17 +370,17 @@ function getValidSelectors(selectors?: SettingSelector[]) {
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
     }
 
-    // below code dedupes selectors by keyFilter and labelFilter, the latter selector wins
-    const dedupedSelectors: SettingSelector[] = [];
+    // below code deduplicates selectors by keyFilter and labelFilter, the latter selector wins
+    const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
-        const existingSelectorIndex = dedupedSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
+        const existingSelectorIndex = uniqueSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
         if (existingSelectorIndex >= 0) {
-            dedupedSelectors.splice(existingSelectorIndex, 1);
+            uniqueSelectors.splice(existingSelectorIndex, 1);
         }
-        dedupedSelectors.push(selector);
+        uniqueSelectors.push(selector);
     }
 
-    return dedupedSelectors.map(selectorCandidate => {
+    return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
             throw new Error("Key filter cannot be null or empty.");
