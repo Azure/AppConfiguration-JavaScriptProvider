@@ -25,3 +25,17 @@ export interface RefreshOptions {
      */
     watchedSettings?: WatchedSetting[];
 }
+
+export interface FeatureFlagRefreshOptions {
+    /**
+     * Specifies whether the provider should automatically refresh when the configuration is changed.
+     */
+    enabled: boolean;
+
+    /**
+     * Specifies the minimum time that must elapse before checking the server for any new changes.
+     * Default value is 10 seconds. Must be greater than 1 second.
+     * Any refresh operation triggered will not update the value for a key until after the interval.
+     */
+    refreshIntervalInMs?: number;
+}

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, isFeatureFlag } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, FeatureFlagValue, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag, parseFeatureFlag } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
@@ -14,6 +14,7 @@ import { RefreshTimer } from "./refresh/RefreshTimer";
 import { CorrelationContextHeaderName } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
+import { featureFlagsKeyName, featureManagementKeyName } from "./featureManagement/constants";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -40,6 +41,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #sentinels: ConfigurationSettingId[] = [];
     #refreshTimer: RefreshTimer;
+
+    // Feature flags
+    #featureFlagRefreshInterval: number = DefaultRefreshIntervalInMs;
+    #featureFlagRefreshTimer: RefreshTimer;
 
     constructor(
         client: AppConfigurationClient,
@@ -85,13 +90,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
         }
 
-        // TODO: should add more adapters to process different type of values
-        // feature flag, others
+        // feature flag options
+        if (options?.featureFlagOptions?.enabled && options.featureFlagOptions.refresh?.enabled) {
+            const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
+
+            // custom refresh interval
+            if (refreshIntervalInMs !== undefined) {
+                if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
+                    throw new Error(`The feature flag refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+                } else {
+                    this.#featureFlagRefreshInterval = refreshIntervalInMs;
+                }
+            }
+
+            this.#featureFlagRefreshTimer = new RefreshTimer(this.#featureFlagRefreshInterval);
+        }
+
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
-    // ReadonlyMap APIs
+    // #region ReadonlyMap APIs
     get<T>(key: string): T | undefined {
         return this.#configMap.get(key);
     }
@@ -123,9 +142,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     [Symbol.iterator](): IterableIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
+    // #endregion
 
     get #refreshEnabled(): boolean {
         return !!this.#options?.refreshOptions?.enabled;
+    }
+
+    get #featureFlagEnabled(): boolean {
+        return !!this.#options?.featureFlagOptions?.enabled;
+    }
+
+    get #featureFlagRefreshEnabled(): boolean {
+        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
@@ -195,10 +223,48 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             keyValues.push([key, value]);
         }
 
-        this.#configMap.clear(); // clear existing key-values in case of configuration setting deletion
+        this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
             this.#configMap.set(k, v);
         }
+    }
+
+    async #clearLoadedKeyValues() {
+        for(const key of this.#configMap.keys()) {
+            if (key !== featureManagementKeyName) {
+                this.#configMap.delete(key);
+            }
+        }
+    }
+
+    async #loadFeatureFlags() {
+        const featureFlags: FeatureFlagValue[] = [];
+        const featureFlagSelectors = getValidSelectors(this.#options?.featureFlagOptions?.selectors);
+        for (const selector of featureFlagSelectors) {
+            const listOptions: ListConfigurationSettingsOptions = {
+                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                labelFilter: selector.labelFilter
+            };
+            if (this.#requestTracingEnabled) {
+                listOptions.requestOptions = {
+                    customHeaders: {
+                        [CorrelationContextHeaderName]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
+                    }
+                }
+            }
+
+            const settings = this.#client.listConfigurationSettings(listOptions);
+
+            for await (const setting of settings) {
+                if (isFeatureFlag(setting)) {
+                    const flag = parseFeatureFlag(setting);
+                    featureFlags.push(flag.value)
+                }
+            }
+        }
+
+        // feature_management is a reserved key, and feature_flags is an array of feature flags
+        this.#configMap.set(featureManagementKeyName, { [featureFlagsKeyName]: featureFlags });
     }
 
     /**
@@ -206,6 +272,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
+        if (this.#featureFlagEnabled) {
+            await this.#loadFeatureFlags();
+        }
         // Mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
     }
@@ -257,10 +326,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Refresh the configuration store.
      */
     async refresh(): Promise<void> {
-        if (!this.#refreshEnabled) {
-            throw new Error("Refresh is not enabled.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values and feature flags.");
         }
 
+        if (this.#refreshEnabled) {
+            await this.#refreshKeyValues();
+        }
+        if (this.#featureFlagRefreshEnabled) {
+            await this.#refreshFeatureFlags();
+        }
+    }
+
+    async #refreshKeyValues(): Promise<void> {
         // if still within refresh interval/backoff, return
         if (!this.#refreshTimer.canRefresh()) {
             return Promise.resolve();
@@ -298,9 +376,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
+    async #refreshFeatureFlags(): Promise<void> {
+        // if still within refresh interval/backoff, return
+        if (!this.#featureFlagRefreshTimer.canRefresh()) {
+            return Promise.resolve();
+        }
+
+        try {
+            await this.#loadFeatureFlags();
+            this.#featureFlagRefreshTimer.reset();
+        } catch (error) {
+            // if refresh failed, backoff
+            this.#featureFlagRefreshTimer.backoff();
+            throw error;
+        }
+    }
+
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled) {
-            throw new Error("Refresh is not enabled.");
+            throw new Error("Refresh is not enabled for key-values.");
         }
 
         const boundedListener = listener.bind(thisArg);

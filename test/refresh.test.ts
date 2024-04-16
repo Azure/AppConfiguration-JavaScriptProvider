@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs } from "./utils/testHelper";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -43,7 +43,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         const refreshCall = settings.refresh();
-        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled.");
+        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values and feature flags.");
     });
 
     it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
@@ -124,10 +124,10 @@ describe("dynamic refresh", function () {
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
-        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled.");
+        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values.");
     });
 
-    it("should only udpate values after refreshInterval", async () => {
+    it("should only update values after refreshInterval", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             refreshOptions: {
@@ -319,4 +319,57 @@ describe("dynamic refresh", function () {
         // should not refresh
         expect(settings.get("app.settings.fontColor")).eq("red");
     });
+
+});
+
+describe("dynamic refresh feature flags", function () {
+    this.timeout(10000);
+
+    beforeEach(() => {
+        mockedKVs = [
+            createMockedFeatureFlag("Beta", { enabled: true })
+        ];
+        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
+    });
+
+    afterEach(() => {
+        restoreMocks();
+    })
+
+    it("should refresh feature flags when enabled", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 2000 // 2 seconds for quick test.
+                }
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        expect(settings.get<any>("feature_management").feature_flags).not.undefined;
+        expect(settings.get<any>("feature_management").feature_flags[0].id).eq("Beta");
+        expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(true);
+
+        // change feature flag Beta to false
+        updateSetting(".appconfig.featureflag/Beta", JSON.stringify({
+            "id": "Beta",
+            "description": "",
+            "enabled": false,
+            "conditions": {
+                "client_filters": []
+            }
+        }));
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+
+        expect(settings.get<any>("feature_management").feature_flags[0].id).eq("Beta");
+        expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(false);
+
+    });
+
 });

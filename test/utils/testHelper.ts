@@ -123,6 +123,23 @@ const createMockedKeyValue = (props: {[key: string]: any}): ConfigurationSetting
     isReadOnly: false
 }, props));
 
+const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => (Object.assign({
+    key: `.appconfig.featureflag/${name}`,
+    value: JSON.stringify(Object.assign({
+        "id": name,
+        "description": "",
+        "enabled": true,
+        "conditions": {
+            "client_filters": []
+        }
+    }, flagProps)),
+    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8",
+    lastModified: new Date(),
+    tags: {},
+    etag: uuid.v4(),
+    isReadOnly: false
+}, props));
+
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
@@ -136,6 +153,7 @@ export {
     createMockedKeyVaultReference,
     createMockedJsonKeyValue,
     createMockedKeyValue,
+    createMockedFeatureFlag,
 
     sleepInMs
 }
