@@ -298,6 +298,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
+    async tryRefresh(): Promise<boolean> {
+        if (!this.#refreshEnabled) {
+            return false;
+        }
+
+        try {
+            await this.refresh();
+        } catch (error) {
+            console.warn("A refresh operation failed.", error);
+            return false;
+        }
+
+        return true;
+    }
+
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled) {
             throw new Error("Refresh is not enabled.");
