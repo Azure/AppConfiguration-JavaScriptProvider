@@ -12,7 +12,7 @@ import { Disposable } from "./common/disposable";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { CORRELATION_CONTEXT_HEADER_NAME } from "./requestTracing/constants";
-import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
+import { createCorrelationContextHeader, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -139,15 +139,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 keyFilter: selector.keyFilter,
                 labelFilter: selector.labelFilter
             };
-            if (this.#requestTracingEnabled) {
-                listOptions.requestOptions = {
-                    customHeaders: {
-                        [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
-                    }
-                }
-            }
 
-            const settings = this.#client.listConfigurationSettings(listOptions);
+            const settings = listConfigurationSettingsWithTrace(this.#client, listOptions, {
+                requestTracingEnabled: this.#requestTracingEnabled,
+                initialLoadCompleted: this.#isInitialLoadCompleted,
+                appConfigOptions: this.#options
+            });
 
             for await (const setting of settings) {
                 if (!isFeatureFlag(setting)) { // exclude feature flags

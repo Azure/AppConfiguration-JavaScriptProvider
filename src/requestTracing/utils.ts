@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { AppConfigurationClient, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
 import {
     AZURE_FUNCTION_ENV_VAR,
@@ -17,10 +18,34 @@ import {
     ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED,
     RequestType,
     REQUEST_TYPE_KEY,
-    SERVICE_FABRIC_ENV_VAR
+    SERVICE_FABRIC_ENV_VAR,
+    CORRELATION_CONTEXT_HEADER_NAME
 } from "./constants";
 
 // Utils
+export function listConfigurationSettingsWithTrace(
+    client: AppConfigurationClient,
+    listOptions: ListConfigurationSettingsOptions,
+    requestTracingOptions: {
+        requestTracingEnabled: boolean;
+        initialLoadCompleted: boolean;
+        appConfigOptions: AzureAppConfigurationOptions | undefined;
+    }) {
+
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+
+    const actualListOptions = { ...listOptions };
+    if (requestTracingEnabled) {
+        actualListOptions.requestOptions = {
+            customHeaders: {
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+            }
+        }
+    }
+
+    return client.listConfigurationSettings(actualListOptions);
+}
+
 export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
