@@ -28,7 +28,8 @@ export interface RefreshOptions {
 
 export interface FeatureFlagRefreshOptions {
     /**
-     * Specifies whether the provider should automatically refresh when the configuration is changed.
+     * Specifies whether the provider should automatically refresh all feature flags if any feature flag changes.
+
      */
     enabled: boolean;
 

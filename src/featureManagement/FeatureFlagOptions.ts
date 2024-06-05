@@ -9,7 +9,8 @@ import { SettingSelector } from "../types";
  */
 export interface FeatureFlagOptions {
     /**
-     * Specifies whether feature flag support is enabled.
+     * Specifies whether feature flags will be loaded from Azure App Configuration.
+
      */
     enabled: boolean;
 
