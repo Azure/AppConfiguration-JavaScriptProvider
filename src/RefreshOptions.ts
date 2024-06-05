@@ -29,13 +29,12 @@ export interface RefreshOptions {
 export interface FeatureFlagRefreshOptions {
     /**
      * Specifies whether the provider should automatically refresh all feature flags if any feature flag changes.
-
      */
     enabled: boolean;
 
     /**
      * Specifies the minimum time that must elapse before checking the server for any new changes.
-     * Default value is 10 seconds. Must be greater than 1 second.
+     * Default value is 30 seconds. Must be greater than 1 second.
      * Any refresh operation triggered will not update the value for a key until after the interval.
      */
     refreshIntervalInMs?: number;
