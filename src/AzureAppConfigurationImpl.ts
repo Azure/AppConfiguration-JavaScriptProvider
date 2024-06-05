@@ -7,7 +7,7 @@ import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from ".
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { DefaultRefreshIntervalInMs, MinimumRefreshIntervalInMs } from "./RefreshOptions";
+import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
@@ -32,7 +32,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isInitialLoadCompleted: boolean = false;
 
     // Refresh
-    #refreshInterval: number = DefaultRefreshIntervalInMs;
+    #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
     /**
      * Aka watched settings.
@@ -63,8 +63,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
-                if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
-                    throw new Error(`The refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+                if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
+                    throw new Error(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
 
                 } else {
                     this.#refreshInterval = refreshIntervalInMs;
