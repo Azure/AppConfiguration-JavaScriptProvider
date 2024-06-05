@@ -84,7 +84,7 @@ function instanceOfTokenCredential(obj: unknown) {
 
 function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
     // user-agent
-    let userAgentPrefix = RequestTracing.UserAgentPrefix; // Default UA for JavaScript Provider
+    let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
     const userAgentOptions = options?.clientOptions?.userAgentOptions;
     if (userAgentOptions?.userAgentPrefix) {
         userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user

@@ -3,21 +3,21 @@
 
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
 import {
-    AzureFunctionEnvironmentVariable,
-    AzureWebAppEnvironmentVariable,
-    ContainerAppEnvironmentVariable,
-    DevEnvironmentValue,
-    EnvironmentKey,
+    AZURE_FUNCTION_ENV_VAR,
+    AZURE_WEB_APP_ENV_VAR,
+    CONTAINER_APP_ENV_VAR,
+    DEV_ENV_VAL,
+    ENV_KEY,
     HostType,
-    HostTypeKey,
-    KeyVaultConfiguredTag,
-    KubernetesEnvironmentVariable,
-    NodeJSDevEnvironmentVariableValue,
-    NodeJSEnvironmentVariable,
-    RequestTracingDisabledEnvironmentVariable,
+    HOST_TYPE_KEY,
+    KEY_VAULT_CONFIGURED_TAG,
+    KUBERNETES_ENV_VAR,
+    NODEJS_DEV_ENV_VAL,
+    NODEJS_ENV_VAR,
+    ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED,
     RequestType,
-    RequestTypeKey,
-    ServiceFabricEnvironmentVariable
+    REQUEST_TYPE_KEY,
+    SERVICE_FABRIC_ENV_VAR
 } from "./constants";
 
 // Utils
@@ -29,15 +29,15 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     UsersKeyVault
     */
     const keyValues = new Map<string, string | undefined>();
-    keyValues.set(RequestTypeKey, isInitialLoadCompleted ? RequestType.Watch : RequestType.Startup);
-    keyValues.set(HostTypeKey, getHostType());
-    keyValues.set(EnvironmentKey, isDevEnvironment() ? DevEnvironmentValue : undefined);
+    keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
+    keyValues.set(HOST_TYPE_KEY, getHostType());
+    keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
 
     const tags: string[] = [];
     if (options?.keyVaultOptions) {
         const { credential, secretClients, secretResolver } = options.keyVaultOptions;
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
-            tags.push(KeyVaultConfiguredTag);
+            tags.push(KEY_VAULT_CONFIGURED_TAG);
         }
     }
 
@@ -55,7 +55,7 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
 }
 
 export function requestTracingEnabled(): boolean {
-    const requestTracingDisabledEnv = getEnvironmentVariable(RequestTracingDisabledEnvironmentVariable);
+    const requestTracingDisabledEnv = getEnvironmentVariable(ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED);
     const disabled = requestTracingDisabledEnv?.toLowerCase() === "true";
     return !disabled;
 }
@@ -71,27 +71,27 @@ function getEnvironmentVariable(name: string) {
 
 function getHostType(): string | undefined {
     let hostType: string | undefined;
-    if (getEnvironmentVariable(AzureFunctionEnvironmentVariable)) {
-        hostType = HostType.AzureFunction;
-    } else if (getEnvironmentVariable(AzureWebAppEnvironmentVariable)) {
-        hostType = HostType.AzureWebApp;
-    } else if (getEnvironmentVariable(ContainerAppEnvironmentVariable)) {
-        hostType = HostType.ContainerApp;
-    } else if (getEnvironmentVariable(KubernetesEnvironmentVariable)) {
-        hostType = HostType.Kubernetes;
-    } else if (getEnvironmentVariable(ServiceFabricEnvironmentVariable)) {
-        hostType = HostType.ServiceFabric;
+    if (getEnvironmentVariable(AZURE_FUNCTION_ENV_VAR)) {
+        hostType = HostType.AZURE_FUNCTION;
+    } else if (getEnvironmentVariable(AZURE_WEB_APP_ENV_VAR)) {
+        hostType = HostType.AZURE_WEB_APP;
+    } else if (getEnvironmentVariable(CONTAINER_APP_ENV_VAR)) {
+        hostType = HostType.CONTAINER_APP;
+    } else if (getEnvironmentVariable(KUBERNETES_ENV_VAR)) {
+        hostType = HostType.KUBERNETES;
+    } else if (getEnvironmentVariable(SERVICE_FABRIC_ENV_VAR)) {
+        hostType = HostType.SERVICE_FABRIC;
     } else if (isBrowser()) {
-        hostType = HostType.Browser;
+        hostType = HostType.BROWSER;
     } else if (isWebWorker()) {
-        hostType = HostType.WebWorker;
+        hostType = HostType.WEB_WORKER;
     }
     return hostType;
 }
 
 function isDevEnvironment(): boolean {
-    const envType = getEnvironmentVariable(NodeJSEnvironmentVariable);
-    if (NodeJSDevEnvironmentVariableValue === envType?.toLowerCase()) {
+    const envType = getEnvironmentVariable(NODEJS_ENV_VAR);
+    if (NODEJS_DEV_ENV_VAL === envType?.toLowerCase()) {
         return true;
     }
     return false;
