@@ -68,7 +68,6 @@ export function getConfigurationSettingWithTrace(
     }
 
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
-
 }
 
 export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
