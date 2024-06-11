@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
 import {
     AZURE_FUNCTION_ENV_VAR,
@@ -17,10 +18,58 @@ import {
     NODEJS_ENV_VAR,
     REQUEST_TYPE_KEY,
     RequestType,
-    SERVICE_FABRIC_ENV_VAR
+    SERVICE_FABRIC_ENV_VAR,
+    CORRELATION_CONTEXT_HEADER_NAME
 } from "./constants";
 
 // Utils
+export function listConfigurationSettingsWithTrace(
+    requestTracingOptions: {
+        requestTracingEnabled: boolean;
+        initialLoadCompleted: boolean;
+        appConfigOptions: AzureAppConfigurationOptions | undefined;
+    },
+    client: AppConfigurationClient,
+    listOptions: ListConfigurationSettingsOptions
+) {
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+
+    const actualListOptions = { ...listOptions };
+    if (requestTracingEnabled) {
+        actualListOptions.requestOptions = {
+            customHeaders: {
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+            }
+        }
+    }
+
+    return client.listConfigurationSettings(actualListOptions);
+}
+
+export function getConfigurationSettingWithTrace(
+    requestTracingOptions: {
+        requestTracingEnabled: boolean;
+        initialLoadCompleted: boolean;
+        appConfigOptions: AzureAppConfigurationOptions | undefined;
+    },
+    client: AppConfigurationClient,
+    configurationSettingId: ConfigurationSettingId,
+    getOptions?: GetConfigurationSettingOptions,
+) {
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+    const actualGetOptions = { ...getOptions };
+
+    if (requestTracingEnabled) {
+        actualGetOptions.requestOptions = {
+            customHeaders: {
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+            }
+        }
+    }
+
+    return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
+}
+
 export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
