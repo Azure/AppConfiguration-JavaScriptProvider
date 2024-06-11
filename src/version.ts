@@ -1,4 +1,4 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-export const Version = "1.0.0-preview";
+export const VERSION = "1.0.0-preview";
