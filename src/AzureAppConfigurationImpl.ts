@@ -11,8 +11,7 @@ import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./Re
 import { Disposable } from "./common/disposable";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
-import { CORRELATION_CONTEXT_HEADER_NAME } from "./requestTracing/constants";
-import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
+import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -140,15 +139,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter
             };
 
-            if (this.#requestTracingEnabled) {
-                listOptions.requestOptions = {
-                    customHeaders: {
-                        [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
-                    }
-                }
-            }
-
-            const settings = this.#client.listConfigurationSettings(listOptions);
+            const settings = listConfigurationSettingsWithTrace(
+                {
+                    requestTracingEnabled: this.#requestTracingEnabled,
+                    initialLoadCompleted: this.#isInitialLoadCompleted,
+                    appConfigOptions: this.#options
+                },
+                this.#client, listOptions
+            );
 
             for await (const setting of settings) {
                 if (!isFeatureFlag(setting)) { // exclude feature flags
@@ -174,7 +172,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
                 const { key, label } = sentinel;
-                const response = await this.#getConfigurationSettingWithTrace({ key, label });
+                const response = await this.#getConfigurationSetting({ key, label });
                 if (response) {
                     sentinel.etag = response.etag;
                 } else {
@@ -270,7 +268,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSettingWithTrace(sentinel, {
+            const response = await this.#getConfigurationSetting(sentinel, {
                 onlyIfChanged: true
             });
 
@@ -342,18 +340,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return key;
     }
 
-    async #getConfigurationSettingWithTrace(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+    /**
+     * Get a configuration setting by key and label. If the setting is not found, return undefine instead of throwing an error.
+     */
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            const options = { ...customOptions ?? {} };
-            if (this.#requestTracingEnabled) {
-                options.requestOptions = {
-                    customHeaders: {
-                        [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
-                    }
-                }
-            }
-            response = await this.#client.getConfigurationSetting(configurationSettingId, options);
+            response = await getConfigurationSettingWithTrace({
+                requestTracingEnabled: this.#requestTracingEnabled,
+                initialLoadCompleted: this.#isInitialLoadCompleted,
+                appConfigOptions: this.#options
+            }, this.#client, configurationSettingId, customOptions);
+
         } catch (error) {
             if (error instanceof RestError && error.statusCode === 404) {
                 response = undefined;
