@@ -139,13 +139,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter
             };
 
+            const requestTraceOptions = {
+                requestTracingEnabled: this.#requestTracingEnabled,
+                initialLoadCompleted: this.#isInitialLoadCompleted,
+                appConfigOptions: this.#options
+            };
             const settings = listConfigurationSettingsWithTrace(
-                {
-                    requestTracingEnabled: this.#requestTracingEnabled,
-                    initialLoadCompleted: this.#isInitialLoadCompleted,
-                    appConfigOptions: this.#options
-                },
-                this.#client, listOptions
+                requestTraceOptions,
+                this.#client,
+                listOptions
             );
 
             for await (const setting of settings) {
@@ -346,11 +348,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            response = await getConfigurationSettingWithTrace({
+            const requestTraceOptions = {
                 requestTracingEnabled: this.#requestTracingEnabled,
                 initialLoadCompleted: this.#isInitialLoadCompleted,
                 appConfigOptions: this.#options
-            }, this.#client, configurationSettingId, customOptions);
+            };
+            response = await getConfigurationSettingWithTrace(
+                requestTraceOptions,
+                this.#client,
+                configurationSettingId,
+                customOptions
+            );
 
         } catch (error) {
             if (error instanceof RestError && error.statusCode === 404) {
