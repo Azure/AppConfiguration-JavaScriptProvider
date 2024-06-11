@@ -9,11 +9,11 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -246,17 +246,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
                 labelFilter: selector.labelFilter
             };
-            if (this.#requestTracingEnabled) {
-                // TODO: use extracted api
-                listOptions.requestOptions = {
-                    customHeaders: {
-                        [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
-                    }
-                }
-            }
-
-            const settings = this.#client.listConfigurationSettings(listOptions);
-
+            const requestTraceOptions = {
+                requestTracingEnabled: this.#requestTracingEnabled,
+                initialLoadCompleted: this.#isInitialLoadCompleted,
+                appConfigOptions: this.#options
+            };
+            const settings = listConfigurationSettingsWithTrace(
+                requestTraceOptions,
+                this.#client,
+                listOptions
+            );
             for await (const setting of settings) {
                 if (isFeatureFlag(setting)) {
                     const flag = parseFeatureFlag(setting);
