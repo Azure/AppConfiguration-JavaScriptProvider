@@ -14,7 +14,7 @@ import { RefreshTimer } from "./refresh/RefreshTimer";
 import { CORRELATION_CONTEXT_HEADER_NAME } from "./requestTracing/constants";
 import { createCorrelationContextHeader, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
-import { featureFlagsKeyName, featureManagementKeyName } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -43,7 +43,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #refreshTimer: RefreshTimer;
 
     // Feature flags
-    #featureFlagRefreshInterval: number = DefaultRefreshIntervalInMs;
+    #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #featureFlagRefreshTimer: RefreshTimer;
 
     constructor(
@@ -96,8 +96,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
-                if (refreshIntervalInMs < MinimumRefreshIntervalInMs) {
-                    throw new Error(`The feature flag refresh interval cannot be less than ${MinimumRefreshIntervalInMs} milliseconds.`);
+                if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
+                    throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
                     this.#featureFlagRefreshInterval = refreshIntervalInMs;
                 }
@@ -232,7 +232,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #clearLoadedKeyValues() {
         for(const key of this.#configMap.keys()) {
-            if (key !== featureManagementKeyName) {
+            if (key !== FEATURE_MANAGEMENT_KEY_NAME) {
                 this.#configMap.delete(key);
             }
         }
@@ -247,9 +247,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter
             };
             if (this.#requestTracingEnabled) {
+                // TODO: use extracted api
                 listOptions.requestOptions = {
                     customHeaders: {
-                        [CorrelationContextHeaderName]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
+                        [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(this.#options, this.#isInitialLoadCompleted)
                     }
                 }
             }
@@ -265,7 +266,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
-        this.#configMap.set(featureManagementKeyName, { [featureFlagsKeyName]: featureFlags });
+        this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
     }
 
     /**
