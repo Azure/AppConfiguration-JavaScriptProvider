@@ -31,7 +31,10 @@ describe("feature flags", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             featureFlagOptions: {
-                enabled: true
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*"
+                }]
             }
         });
         expect(settings).not.undefined;
@@ -50,11 +53,20 @@ describe("feature flags", function () {
         expect(settings.get("feature_management")).undefined;
     });
 
-    it("should not load feature flags if not specified", async () => {
+    it("should not load feature flags if featureFlagOptions not specified", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;
         expect(settings.get("feature_management")).undefined;
+    });
+
+    it("should throw error if selectors not specified", async () => {
+        const connectionString = createMockedConnectionString();
+        return expect(load(connectionString, {
+            featureFlagOptions: {
+                enabled: true
+            }
+        })).eventually.rejectedWith("Feature flag selectors must be provided.");
     });
 
     it("should load feature flags with custom selector", async () => {

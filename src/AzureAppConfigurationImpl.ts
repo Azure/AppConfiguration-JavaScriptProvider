@@ -159,7 +159,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const loadedSettings: ConfigurationSetting[] = [];
 
         // validate selectors
-        const selectors = getValidSelectors(this.#options?.selectors);
+        const selectors = getValidKeyValueSelectors(this.#options?.selectors);
 
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -240,7 +240,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #loadFeatureFlags() {
         const featureFlags: FeatureFlagValue[] = [];
-        const featureFlagSelectors = getValidSelectors(this.#options?.featureFlagOptions?.selectors);
+        const featureFlagSelectors = getValidFeatureFlagSelectors(this.#options?.featureFlagOptions?.selectors);
         for (const selector of featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -465,12 +465,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 }
 
-function getValidSelectors(selectors?: SettingSelector[]) {
-    if (!selectors || selectors.length === 0) {
-        // Default selector: key: *, label: \0
-        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
-    }
-
+function validateSelectors(selectors: SettingSelector[]) {
     // below code deduplicates selectors by keyFilter and labelFilter, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
@@ -494,4 +489,21 @@ function getValidSelectors(selectors?: SettingSelector[]) {
         }
         return selector;
     });
+}
+
+function getValidKeyValueSelectors(selectors?: SettingSelector[]) {
+    if (!selectors || selectors.length === 0) {
+        // Default selector: key: *, label: \0
+        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+    }
+    return validateSelectors(selectors);
+}
+
+function getValidFeatureFlagSelectors(selectors?: SettingSelector[]) {
+    if (!selectors || selectors.length === 0) {
+        // selectors must be explicitly provided.
+        throw new Error("Feature flag selectors must be provided.");
+    } else {
+        return validateSelectors(selectors);
+    }
 }
