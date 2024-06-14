@@ -8,9 +8,48 @@ import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyV
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
+const sampleVariantValue = JSON.stringify({
+	"id": "variant",
+	"description": "",
+	"enabled": true,
+	"variants": [
+		{
+			"name": "Off",
+			"configuration_value": false
+		},
+		{
+			"name": "On",
+			"configuration_value": true
+		}
+	],
+	"allocation": {
+		"percentile": [
+			{
+				"variant": "Off",
+				"from": 0,
+				"to": 40
+			},
+			{
+				"variant": "On",
+				"from": 49,
+				"to": 100
+			}
+		],
+		"default_when_enabled": "Off",
+		"default_when_disabled": "Off"
+	},
+	"telemetry": {
+		"enabled": false
+	}
+});
+
 const mockedKVs = [{
     key: "app.settings.fontColor",
     value: "red",
+}, {
+    key: ".appconfig.featureflag/variant",
+    value: sampleVariantValue,
+    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8",
 }].map(createMockedKeyValue).concat([
     createMockedFeatureFlag("Beta", true),
     createMockedFeatureFlag("Alpha_1", true),
@@ -84,6 +123,38 @@ describe("feature flags", function () {
         const featureFlags = settings.get<any>("feature_management").feature_flags;
         expect(featureFlags).not.undefined;
         expect((featureFlags as []).length).equals(2);
+    });
+
+    it("should parse variant", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "variant"
+                }]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(1);
+        const variant = featureFlags[0];
+        expect(variant).not.undefined;
+        expect(variant.id).equals("variant");
+        expect(variant.variants).not.undefined;
+        expect(variant.variants.length).equals(2);
+        expect(variant.variants[0].configuration_value).equals(false);
+        expect(variant.variants[1].configuration_value).equals(true);
+        expect(variant.allocation).not.undefined;
+        expect(variant.allocation.percentile).not.undefined;
+        expect(variant.allocation.percentile.length).equals(2);
+        expect(variant.allocation.percentile[0].variant).equals("Off");
+        expect(variant.allocation.percentile[1].variant).equals("On");
+        expect(variant.allocation.default_when_enabled).equals("Off");
+        expect(variant.allocation.default_when_disabled).equals("Off");
+        expect(variant.telemetry).not.undefined;
     });
 
 });

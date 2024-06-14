@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, FeatureFlagValue, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag, parseFeatureFlag } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
@@ -239,7 +239,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        const featureFlags: FeatureFlagValue[] = [];
+        const featureFlags: unknown[] = [];
         const featureFlagSelectors = getValidFeatureFlagSelectors(this.#options?.featureFlagOptions?.selectors);
         for (const selector of featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -258,8 +258,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
             for await (const setting of settings) {
                 if (isFeatureFlag(setting)) {
-                    const flag = parseFeatureFlag(setting);
-                    featureFlags.push(flag.value)
+                    const flag = JSON.parse(setting.value);
+                    featureFlags.push(flag)
                 }
             }
         }
