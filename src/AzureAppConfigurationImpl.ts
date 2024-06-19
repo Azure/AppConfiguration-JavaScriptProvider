@@ -465,7 +465,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 }
 
-function validateSelectors(selectors: SettingSelector[]) {
+function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
     // below code deduplicates selectors by keyFilter and labelFilter, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
@@ -491,19 +491,19 @@ function validateSelectors(selectors: SettingSelector[]) {
     });
 }
 
-function getValidKeyValueSelectors(selectors?: SettingSelector[]) {
+function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelector[] {
     if (!selectors || selectors.length === 0) {
         // Default selector: key: *, label: \0
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
     }
-    return validateSelectors(selectors);
+    return getValidSelectors(selectors);
 }
 
-function getValidFeatureFlagSelectors(selectors?: SettingSelector[]) {
+function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSelector[] {
     if (!selectors || selectors.length === 0) {
         // selectors must be explicitly provided.
         throw new Error("Feature flag selectors must be provided.");
     } else {
-        return validateSelectors(selectors);
+        return getValidSelectors(selectors);
     }
 }
