@@ -331,18 +331,42 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values and feature flags.");
         }
 
+        const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
-            await this.#refreshKeyValues();
+            refreshTasks.push(this.#refreshKeyValues());
         }
         if (this.#featureFlagRefreshEnabled) {
-            await this.#refreshFeatureFlags();
+            refreshTasks.push(this.#refreshFeatureFlags());
+        }
+
+        // wait until all tasks are either resolved or rejected
+        const results = await Promise.allSettled(refreshTasks);
+
+        // check if any refresh task failed
+        for (const result of results) {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
+        }
+
+        // check if any refresh task succeeded
+        const anyRefreshed = results.some(result => result.status === "fulfilled" && result.value === true);
+        if (anyRefreshed) {
+            // successfully refreshed, run callbacks in async
+            for (const listener of this.#onRefreshListeners) {
+                listener();
+            }
         }
     }
 
-    async #refreshKeyValues(): Promise<void> {
+    /**
+     * Refresh key-values.
+     * @returns true if key-values are refreshed, false otherwise.
+     */
+    async #refreshKeyValues(): Promise<boolean> {
         // if still within refresh interval/backoff, return
         if (!this.#refreshTimer.canRefresh()) {
-            return Promise.resolve();
+            return Promise.resolve(false);
         }
 
         // try refresh if any of watched settings is changed.
@@ -360,6 +384,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 break;
             }
         }
+
         if (needRefresh) {
             try {
                 await this.#loadSelectedAndWatchedKeyValues();
@@ -369,21 +394,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#refreshTimer.backoff();
                 throw error;
             }
-
-            // successfully refreshed, run callbacks in async
-            for (const listener of this.#onRefreshListeners) {
-                listener();
-            }
+            return Promise.resolve(true);
         }
+
+        return Promise.resolve(false);
     }
 
-    async #refreshFeatureFlags(): Promise<void> {
+    /**
+     * Refresh feature flags.
+     * @returns true if feature flags are refreshed, false otherwise.
+     */
+    async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
         if (!this.#featureFlagRefreshTimer.canRefresh()) {
-            return Promise.resolve();
+            return Promise.resolve(false);
         }
 
         try {
+            // TODO: instead of refreshing all feature flags, only refresh the changed ones with etag
             await this.#loadFeatureFlags();
             this.#featureFlagRefreshTimer.reset();
         } catch (error) {
@@ -391,6 +419,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#featureFlagRefreshTimer.backoff();
             throw error;
         }
+        return Promise.resolve(true);
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
