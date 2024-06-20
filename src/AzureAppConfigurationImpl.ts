@@ -239,7 +239,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        const featureFlags: unknown[] = [];
+        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
+        const featureFlagsMap = new Map<string, any>();
         const featureFlagSelectors = getValidFeatureFlagSelectors(this.#options?.featureFlagOptions?.selectors);
         for (const selector of featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -258,11 +259,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
             for await (const setting of settings) {
                 if (isFeatureFlag(setting)) {
-                    const flag = JSON.parse(setting.value);
-                    featureFlags.push(flag)
+                    featureFlagsMap.set(setting.key, setting.value);
                 }
             }
         }
+
+        // parse feature flags
+        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
