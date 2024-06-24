@@ -155,6 +155,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
+    get #requestTraceOptions() {
+        return {
+            requestTracingEnabled: this.#requestTracingEnabled,
+            initialLoadCompleted: this.#isInitialLoadCompleted,
+            appConfigOptions: this.#options
+        };
+    }
+
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
         const loadedSettings: ConfigurationSetting[] = [];
 
@@ -167,13 +175,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter
             };
 
-            const requestTraceOptions = {
-                requestTracingEnabled: this.#requestTracingEnabled,
-                initialLoadCompleted: this.#isInitialLoadCompleted,
-                appConfigOptions: this.#options
-            };
             const settings = listConfigurationSettingsWithTrace(
-                requestTraceOptions,
+                this.#requestTraceOptions,
                 this.#client,
                 listOptions
             );
@@ -214,7 +217,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
-
         const loadedSettings = await this.#loadSelectedKeyValues();
         await this.#updateWatchedKeyValuesEtag(loadedSettings);
 
@@ -247,13 +249,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
                 labelFilter: selector.labelFilter
             };
-            const requestTraceOptions = {
-                requestTracingEnabled: this.#requestTracingEnabled,
-                initialLoadCompleted: this.#isInitialLoadCompleted,
-                appConfigOptions: this.#options
-            };
             const settings = listConfigurationSettingsWithTrace(
-                requestTraceOptions,
+                this.#requestTraceOptions,
                 this.#client,
                 listOptions
             );
@@ -474,18 +471,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            const requestTraceOptions = {
-                requestTracingEnabled: this.#requestTracingEnabled,
-                initialLoadCompleted: this.#isInitialLoadCompleted,
-                appConfigOptions: this.#options
-            };
             response = await getConfigurationSettingWithTrace(
-                requestTraceOptions,
+                this.#requestTraceOptions,
                 this.#client,
                 configurationSettingId,
                 customOptions
             );
-
         } catch (error) {
             if (error instanceof RestError && error.statusCode === 404) {
                 response = undefined;
