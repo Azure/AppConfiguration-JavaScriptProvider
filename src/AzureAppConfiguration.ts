@@ -3,11 +3,18 @@
 
 import { Disposable } from "./common/disposable";
 
-export type AzureAppConfiguration = {
+export type AzureAppConfiguration = IRefreshable & IGettable & ReadonlyMap<string, any> & IConfigurationObject;
+
+interface IRefreshable {
     /**
      * API to trigger refresh operation.
      */
     refresh(): Promise<void>;
+
+    /**
+     * API to try refreshing key-values. A return value indicates whether the operation succeeded.
+     */
+    tryRefresh(): Promise<boolean>;
 
     /**
      * API to register callback listeners, which will be called only when a refresh operation successfully updates key-values.
@@ -16,7 +23,7 @@ export type AzureAppConfiguration = {
      * @param thisArg - Optional. Value to use as `this` when executing callback.
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable;
-} & IGettable & ReadonlyMap<string, any> & IConfigurationObject;
+}
 
 interface IConfigurationObject {
     /**

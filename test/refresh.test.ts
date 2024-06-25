@@ -320,3 +320,43 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontColor")).eq("red");
     });
 });
+
+describe("try refresh", function () {
+    this.timeout(10000);
+
+    beforeEach(() => {
+        mockedKVs = [
+            { value: "red", key: "app.settings.fontColor" },
+            { value: "40", key: "app.settings.fontSize" },
+            { value: "30", key: "app.settings.fontSize", label: "prod" }
+        ].map(createMockedKeyValue);
+        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
+    });
+
+    afterEach(() => {
+        restoreMocks();
+    })
+
+    it("should return false when refresh is not enabled", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString);
+        const result = await settings.tryRefresh();
+        expect(result).eq(false);
+    });
+
+    it("should return true when refresh is enabled", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [
+                    { key: "app.settings.fontColor" }
+                ]
+            }
+        });
+        const result = await settings.tryRefresh();
+        expect(result).eq(true);
+    });
+
+});
