@@ -14,6 +14,7 @@ const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
+// TODO: mock client.listConfigurationSettings().byPage() to test pagination
 function mockAppConfigurationClientListConfigurationSettings(kvList: ConfigurationSetting[]) {
     function* testKvSetGenerator(kvs: any[]) {
         yield* kvs;

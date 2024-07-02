@@ -15,6 +15,13 @@ import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
+type PagedSettingSelector = SettingSelector & {
+    /**
+     * Key: page eTag, Value: feature flag configurations
+     */
+    pageEtags?: string[];
+};
+
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Hosting key-value pairs in the configuration store.
@@ -44,6 +51,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Feature flags
     #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #featureFlagRefreshTimer: RefreshTimer;
+
+    // selectors
+    #featureFlagSelectors: PagedSettingSelector[] = [];
 
     constructor(
         client: AppConfigurationClient,
@@ -90,19 +100,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // feature flag options
-        if (options?.featureFlagOptions?.enabled && options.featureFlagOptions.refresh?.enabled) {
-            const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
+        if (options?.featureFlagOptions?.enabled) {
+            // validate feature flag selectors
+            this.#featureFlagSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
-            // custom refresh interval
-            if (refreshIntervalInMs !== undefined) {
-                if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
-                } else {
-                    this.#featureFlagRefreshInterval = refreshIntervalInMs;
+            if (options.featureFlagOptions.refresh?.enabled) {
+                const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
+                // custom refresh interval
+                if (refreshIntervalInMs !== undefined) {
+                    if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
+                        throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    } else {
+                        this.#featureFlagRefreshInterval = refreshIntervalInMs;
+                    }
                 }
-            }
 
-            this.#featureFlagRefreshTimer = new RefreshTimer(this.#featureFlagRefreshInterval);
+                this.#featureFlagRefreshTimer = new RefreshTimer(this.#featureFlagRefreshInterval);
+            }
         }
 
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
@@ -233,7 +247,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #clearLoadedKeyValues() {
-        for(const key of this.#configMap.keys()) {
+        for (const key of this.#configMap.keys()) {
             if (key !== FEATURE_MANAGEMENT_KEY_NAME) {
                 this.#configMap.delete(key);
             }
@@ -243,22 +257,31 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadFeatureFlags() {
         // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
         const featureFlagsMap = new Map<string, any>();
-        const featureFlagSelectors = getValidFeatureFlagSelectors(this.#options?.featureFlagOptions?.selectors);
-        for (const selector of featureFlagSelectors) {
+        for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
                 labelFilter: selector.labelFilter
             };
-            const settings = listConfigurationSettingsWithTrace(
+
+            const pageEtags: string[] = [];
+            const pageIterator = listConfigurationSettingsWithTrace(
                 this.#requestTraceOptions,
                 this.#client,
                 listOptions
-            );
-            for await (const setting of settings) {
-                if (isFeatureFlag(setting)) {
-                    featureFlagsMap.set(setting.key, setting.value);
+            ).byPage();
+            for await (const page of pageIterator) {
+                if (page._response.status === 200) {
+                    if (page.etag) {
+                        pageEtags.push(page.etag);
+                    }
+                }
+                for (const setting of page.items) {
+                    if (isFeatureFlag(setting)) {
+                        featureFlagsMap.set(setting.key, setting.value);
+                    }
                 }
             }
+            selector.pageEtags = pageEtags;
         }
 
         // parse feature flags
@@ -410,16 +433,41 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        try {
-            // TODO: instead of refreshing all feature flags, only refresh the changed ones with etag
-            await this.#loadFeatureFlags();
-            this.#featureFlagRefreshTimer.reset();
-        } catch (error) {
-            // if refresh failed, backoff
-            this.#featureFlagRefreshTimer.backoff();
-            throw error;
+        // check if any feature flag is changed
+        let needRefresh = false;
+        for (const selector of this.#featureFlagSelectors) {
+            const listOptions: ListConfigurationSettingsOptions = {
+                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                labelFilter: selector.labelFilter,
+                pageEtags: selector.pageEtags
+            };
+            const pageIterator = listConfigurationSettingsWithTrace(
+                this.#requestTraceOptions,
+                this.#client,
+                listOptions
+            ).byPage();
+            for await (const page of pageIterator) {
+                if (page._response.status === 200) { // created or changed
+                    needRefresh = true;
+                    break;
+                }
+                // TODO: handle page deleted?
+            }
         }
-        return Promise.resolve(true);
+
+        if (needRefresh) {
+            try {
+                await this.#loadFeatureFlags();
+                this.#featureFlagRefreshTimer.reset();
+            } catch (error) {
+                // if refresh failed, backoff
+                this.#featureFlagRefreshTimer.backoff();
+                throw error;
+            }
+            return Promise.resolve(true);
+        }
+
+        return Promise.resolve(false);
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
