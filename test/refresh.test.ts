@@ -342,6 +342,9 @@ describe("dynamic refresh feature flags", function () {
         const settings = await load(connectionString, {
             featureFlagOptions: {
                 enabled: true,
+                selectors: [{
+                    keyFilter: "Beta"
+                }],
                 refresh: {
                     enabled: true,
                     refreshIntervalInMs: 2000 // 2 seconds for quick test.

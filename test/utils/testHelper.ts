@@ -14,30 +14,70 @@ const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
-// TODO: mock client.listConfigurationSettings().byPage() to test pagination
-function mockAppConfigurationClientListConfigurationSettings(kvList: ConfigurationSetting[]) {
-    function* testKvSetGenerator(kvs: any[]) {
-        yield* kvs;
-    }
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
-        const keyFilter = listOptions?.keyFilter ?? "*";
-        const labelFilter = listOptions?.labelFilter ?? "*";
-        const kvs = kvList.filter(kv => {
-            const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, -1)) : kv.key === keyFilter;
+function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
+    const keyFilter = listOptions?.keyFilter ?? "*";
+    const labelFilter = listOptions?.labelFilter ?? "*";
+    return unfilteredKvs.filter(kv => {
+        const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, -1)) : kv.key === keyFilter;
+        let labelMatched = false;
+        if (labelFilter === "*") {
+            labelMatched = true;
+        } else if (labelFilter === "\0") {
+            labelMatched = kv.label === undefined;
+        } else if (labelFilter.endsWith("*")) {
+            labelMatched = kv.label !== undefined && kv.label.startsWith(labelFilter.slice(0, -1));
+        } else {
+            labelMatched = kv.label === labelFilter;
+        }
+        return keyMatched && labelMatched;
+    })
+}
 
-            let labelMatched = false;
-            if (labelFilter === "*") {
-                labelMatched = true;
-            } else if (labelFilter === "\0") {
-                labelMatched = kv.label === undefined;
-            } else if (labelFilter.endsWith("*")) {
-                labelMatched = kv.label !== undefined && kv.label.startsWith(labelFilter.slice(0, -1));
-            } else {
-                labelMatched = kv.label === labelFilter;
+/**
+ * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
+ * E.g.
+ * - mockAppConfigurationClientListConfigurationSettings([item1, item2, item3])  // single page
+ * - mockAppConfigurationClientListConfigurationSettings([item1, item2], [item3], [item4])  // multiple pages
+ *
+ * @param pages List of pages, each page is a list of ConfigurationSetting
+ */
+function mockAppConfigurationClientListConfigurationSettings(...pages: ConfigurationSetting[][]) {
+
+    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+        let kvs = _filterKVs(pages.flat(), listOptions);
+
+        const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+            [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                kvs = _filterKVs(pages.flat(), listOptions);
+                return this;
+            },
+            next() {
+                const value = kvs.shift();
+                return Promise.resolve({ done: !value, value });
+            },
+            byPage(): AsyncIterableIterator<any> {
+                let remainingPages;
+                return {
+                    [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                        remainingPages = [ ...pages ];
+                        return this;
+                    },
+                    next() {
+                        const pageItems = remainingPages.shift();
+                        return Promise.resolve({
+                            done: pageItems === undefined,
+                            value: {
+                                items: _filterKVs(pageItems ?? [], listOptions),
+                                eTag: "etag",
+                                _response: { status: 200 } // TODO: 304 if etag matches
+                            }
+                        });
+                    }
+                }
             }
-            return keyMatched && labelMatched;
-        })
-        return testKvSetGenerator(kvs) as any;
+        };
+
+        return mockIterator as any;
     });
 }
 
@@ -114,7 +154,7 @@ const createMockedJsonKeyValue = (key: string, value: any): ConfigurationSetting
     isReadOnly: false
 });
 
-const createMockedKeyValue = (props: {[key: string]: any}): ConfigurationSetting => (Object.assign({
+const createMockedKeyValue = (props: { [key: string]: any }): ConfigurationSetting => (Object.assign({
     value: "TestValue",
     key: "TestKey",
     contentType: "",
