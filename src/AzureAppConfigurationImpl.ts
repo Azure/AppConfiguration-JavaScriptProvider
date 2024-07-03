@@ -446,12 +446,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#client,
                 listOptions
             ).byPage();
+
+            let pageCount = 0;
             for await (const page of pageIterator) {
                 if (page._response.status === 200) { // created or changed
                     needRefresh = true;
                     break;
                 }
-                // TODO: handle page deleted?
+                // unchanged, check next page
+                pageCount++;
+            }
+
+            if (pageCount !== selector.pageEtags?.length) {
+                needRefresh = true; // page count changed indicating feature flags are added or deleted
+            }
+
+            if (needRefresh) {
+                break; // short-circuit if result from any of the selectors is changed
             }
         }
 
