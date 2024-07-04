@@ -86,7 +86,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // TODO: should add more adapters to process different type of values
         // feature flag, others
+
+        // Note: the order matters. Results from the first adapter will be passed to the next one.
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        // Json adapter should be the last one.
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
@@ -325,7 +328,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
         for (const adapter of this.#adapters) {
             if (adapter.canProcess(setting)) {
-                return adapter.processKeyValue(setting);
+                await adapter.processKeyValue(setting);
             }
         }
         return [setting.key, setting.value];

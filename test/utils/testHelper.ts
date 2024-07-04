@@ -55,11 +55,11 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList) {
     });
 }
 
-// uriValueList: [["<secretUri>", "value"], ...]
-function mockSecretClientGetSecret(uriValueList: [string, string][]) {
+// uriValueList: [["<secretUri>", "value", optionalContentType], ...]
+function mockSecretClientGetSecret(uriValueList: [string, string, string | undefined][]) {
     const dict = new Map();
-    for (const [uri, value] of uriValueList) {
-        dict.set(uri, value);
+    for (const [uri, value, contentType] of uriValueList) {
+        dict.set(uri, { value, contentType });
     }
 
     sinon.stub(SecretClient.prototype, "getSecret").callsFake(async function (secretName, options) {
@@ -68,9 +68,13 @@ function mockSecretClientGetSecret(uriValueList: [string, string][]) {
         if (options?.version) {
             url.pathname += `/${options.version}`;
         }
+        const secret = dict.get(url.toString());
         return {
             name: secretName,
-            value: dict.get(url.toString())
+            value: secret.value,
+            properties: {
+                contentType: secret.contentType
+            }
         } as KeyVaultSecret;
     })
 }
@@ -113,7 +117,7 @@ const createMockedJsonKeyValue = (key: string, value: any): ConfigurationSetting
     isReadOnly: false
 });
 
-const createMockedKeyValue = (props: {[key: string]: any}): ConfigurationSetting => (Object.assign({
+const createMockedKeyValue = (props: { [key: string]: any }): ConfigurationSetting => (Object.assign({
     value: "TestValue",
     key: "TestKey",
     contentType: "",

@@ -20,7 +20,7 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         return isJsonContentType(setting.contentType);
     }
 
-    async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
+    async processKeyValue(setting: ConfigurationSetting): Promise<void> {
         let parsedValue: unknown;
         if (setting.value !== undefined) {
             try {
@@ -31,7 +31,7 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         } else {
             parsedValue = setting.value;
         }
-        return [setting.key, parsedValue];
+        (setting as ConfigurationSetting<any>).value = parsedValue;
     }
 }
 

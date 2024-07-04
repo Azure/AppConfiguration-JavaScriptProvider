@@ -21,7 +21,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         return isSecretReference(setting);
     }
 
-    async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
+    async processKeyValue(setting: ConfigurationSetting): Promise<void> {
         // TODO: cache results to save requests.
         if (!this.#keyVaultOptions) {
             throw new Error("Configure keyVaultOptions to resolve Key Vault Reference(s).");
@@ -36,11 +36,14 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (client) {
             // TODO: what if error occurs when reading a key vault value? Now it breaks the whole load.
             const secret = await client.getSecret(secretName, { version });
-            return [setting.key, secret.value];
+            setting.value = secret.value;
+            setting.contentType = secret.properties.contentType;
+            return;
         }
 
         if (this.#keyVaultOptions.secretResolver) {
-            return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
+            setting.value = await this.#keyVaultOptions.secretResolver(new URL(sourceId));
+            return;
         }
 
         throw new Error("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");

@@ -13,7 +13,8 @@ const mockedData = [
     // key, secretUri, value
     ["TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName", "SecretValue"],
     ["TestKeyFixedVersion", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName/741a0fc52610449baffd6e1c55b9d459", "OldSecretValue"],
-    ["TestKey2", "https://fake-vault-name2.vault.azure.net/secrets/fakeSecretName2", "SecretValue2"]
+    ["TestKey2", "https://fake-vault-name2.vault.azure.net/secrets/fakeSecretName2", "SecretValue2"],
+    ["TestJson", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretJson", "{\"value\": \"SecretMessage\"}", "application/json"]
 ];
 
 function mockAppConfigurationClient() {
@@ -24,7 +25,7 @@ function mockAppConfigurationClient() {
 
 function mockNewlyCreatedKeyVaultSecretClients() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    mockSecretClientGetSecret(mockedData.map(([_key, secretUri, value]) => [secretUri, value]));
+    mockSecretClientGetSecret(mockedData.map(([_key, secretUri, value, contentType]) => [secretUri, value, contentType]));
 }
 describe("key vault reference", function () {
     this.timeout(10000);
@@ -71,9 +72,9 @@ describe("key vault reference", function () {
 
         // mock specific behavior per secret client
         const client1 = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
-        sinon.stub(client1, "getSecret").returns(Promise.resolve({value: "SecretValueViaClient1" } as KeyVaultSecret));
+        sinon.stub(client1, "getSecret").returns(Promise.resolve({ value: "SecretValueViaClient1", properties: {} } as KeyVaultSecret));
         const client2 = new SecretClient("https://fake-vault-name2.vault.azure.net", createMockedTokenCredential());
-        sinon.stub(client2, "getSecret").returns(Promise.resolve({value: "SecretValueViaClient2" } as KeyVaultSecret));
+        sinon.stub(client2, "getSecret").returns(Promise.resolve({ value: "SecretValueViaClient2", properties: {} } as KeyVaultSecret));
         const settings = await load(createMockedConnectionString(), {
             keyVaultOptions: {
                 secretClients: [
@@ -110,5 +111,17 @@ describe("key vault reference", function () {
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("SecretValue");
         expect(settings.get("TestKey2")).eq("SecretValue2");
+    });
+
+    it("should correctly parse json string as secret value with application/json content type", async () => {
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                credential: createMockedTokenCredential()
+            }
+        });
+        expect(settings).not.undefined;
+        const jsonObject = settings.get("TestJson");
+        expect(typeof jsonObject).eq("object");
+        expect(jsonObject).deep.eq({ value: "SecretMessage"});
     });
 })
