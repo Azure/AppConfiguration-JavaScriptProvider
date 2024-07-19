@@ -55,7 +55,7 @@
     "uuid": "^9.0.1"
   },
   "dependencies": {
-    "@azure/app-configuration": "^1.6.0",
+    "@azure/app-configuration": "^1.6.1",
     "@azure/identity": "^4.2.1",
     "@azure/keyvault-secrets": "^4.7.0"
   }
