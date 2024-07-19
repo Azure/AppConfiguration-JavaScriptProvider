@@ -18,6 +18,7 @@ function updateSetting(key: string, value: any) {
         setting.etag = uuid.v4();
     }
 }
+
 function addSetting(key: string, value: any) {
     mockedKVs.push(createMockedKeyValue({ key, value }));
 }
@@ -43,7 +44,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         const refreshCall = settings.refresh();
-        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values and feature flags.");
+        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
     });
 
     it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
@@ -124,7 +125,7 @@ describe("dynamic refresh", function () {
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
-        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values.");
+        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values or feature flags.");
     });
 
     it("should only update values after refreshInterval", async () => {
@@ -326,11 +327,6 @@ describe("dynamic refresh feature flags", function () {
     this.timeout(10000);
 
     beforeEach(() => {
-        mockedKVs = [
-            createMockedFeatureFlag("Beta", { enabled: true })
-        ];
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
     });
 
     afterEach(() => {
@@ -338,6 +334,12 @@ describe("dynamic refresh feature flags", function () {
     })
 
     it("should refresh feature flags when enabled", async () => {
+        mockedKVs = [
+            createMockedFeatureFlag("Beta", { enabled: true })
+        ];
+        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
+
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             featureFlagOptions: {
@@ -375,4 +377,50 @@ describe("dynamic refresh feature flags", function () {
 
     });
 
+    it("should refresh feature flags only on change, based on page etags", async () => {
+        // mock multiple pages of feature flags
+        const page1 = [
+            createMockedFeatureFlag("Alpha_1", { enabled: true }),
+            createMockedFeatureFlag("Alpha_2", { enabled: true }),
+        ];
+        const page2 = [
+            createMockedFeatureFlag("Beta_1", { enabled: true }),
+            createMockedFeatureFlag("Beta_2", { enabled: true }),
+        ];
+        mockAppConfigurationClientListConfigurationSettings(page1, page2);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2]);
+
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*"
+                }],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 2000 // 2 seconds for quick test.
+                }
+            }
+        });
+
+        let refreshSuccessfulCount = 0;
+        settings.onRefresh(() => {
+            refreshSuccessfulCount++;
+        });
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(refreshSuccessfulCount).eq(0); // no change in feature flags, because page etags are the same.
+
+        // change feature flag Beta_1 to false
+        page2[0] = createMockedFeatureFlag("Beta_1", { enabled: false });
+        restoreMocks();
+        mockAppConfigurationClientListConfigurationSettings(page1, page2);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2]);
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(refreshSuccessfulCount).eq(1); // change in feature flags, because page etags are different.
+    });
 });

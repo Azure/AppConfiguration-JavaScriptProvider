@@ -9,10 +9,15 @@ import * as uuid from "uuid";
 import { RestError } from "@azure/core-rest-pipeline";
 import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
+import * as crypto from "crypto";
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
+
+function _sha256(input) {
+    return crypto.createHash("sha256").update(input).digest("hex");
+}
 
 function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     const keyFilter = listOptions?.keyFilter ?? "*";
@@ -45,7 +50,6 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
 
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         let kvs = _filterKVs(pages.flat(), listOptions);
-
         const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
             [Symbol.asyncIterator](): AsyncIterableIterator<any> {
                 kvs = _filterKVs(pages.flat(), listOptions);
@@ -57,21 +61,30 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
             },
             byPage(): AsyncIterableIterator<any> {
                 let remainingPages;
+                const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
                 return {
                     [Symbol.asyncIterator](): AsyncIterableIterator<any> {
-                        remainingPages = [ ...pages ];
+                        remainingPages = [...pages];
                         return this;
                     },
                     next() {
                         const pageItems = remainingPages.shift();
-                        return Promise.resolve({
-                            done: pageItems === undefined,
-                            value: {
-                                items: _filterKVs(pageItems ?? [], listOptions),
-                                eTag: "etag",
-                                _response: { status: 200 } // TODO: 304 if etag matches
-                            }
-                        });
+                        const pageEtag = pageEtags?.shift();
+                        if (pageItems === undefined) {
+                            return Promise.resolve({ done: true, value: undefined });
+                        } else {
+                            const items = _filterKVs(pageItems ?? [], listOptions);
+                            const etag = _sha256(JSON.stringify(items));
+                            const statusCode = pageEtag === etag ? 304 : 200;
+                            return Promise.resolve({
+                                done: false,
+                                value: {
+                                    items,
+                                    etag,
+                                    _response: { status: statusCode }
+                                }
+                            });
+                        }
                     }
                 }
             }

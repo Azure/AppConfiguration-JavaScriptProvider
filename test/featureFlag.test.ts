@@ -9,38 +9,38 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 
 const sampleVariantValue = JSON.stringify({
-	"id": "variant",
-	"description": "",
-	"enabled": true,
-	"variants": [
-		{
-			"name": "Off",
-			"configuration_value": false
-		},
-		{
-			"name": "On",
-			"configuration_value": true
-		}
-	],
-	"allocation": {
-		"percentile": [
-			{
-				"variant": "Off",
-				"from": 0,
-				"to": 40
-			},
-			{
-				"variant": "On",
-				"from": 49,
-				"to": 100
-			}
-		],
-		"default_when_enabled": "Off",
-		"default_when_disabled": "Off"
-	},
-	"telemetry": {
-		"enabled": false
-	}
+    "id": "variant",
+    "description": "",
+    "enabled": true,
+    "variants": [
+        {
+            "name": "Off",
+            "configuration_value": false
+        },
+        {
+            "name": "On",
+            "configuration_value": true
+        }
+    ],
+    "allocation": {
+        "percentile": [
+            {
+                "variant": "Off",
+                "from": 0,
+                "to": 40
+            },
+            {
+                "variant": "On",
+                "from": 49,
+                "to": 100
+            }
+        ],
+        "default_when_enabled": "Off",
+        "default_when_disabled": "Off"
+    },
+    "telemetry": {
+        "enabled": false
+    }
 });
 
 const mockedKVs = [{
@@ -51,9 +51,9 @@ const mockedKVs = [{
     value: sampleVariantValue,
     contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8",
 }].map(createMockedKeyValue).concat([
-    createMockedFeatureFlag("Beta", true),
-    createMockedFeatureFlag("Alpha_1", true),
-    createMockedFeatureFlag("Alpha2", false),
+    createMockedFeatureFlag("Beta", { enabled: true }),
+    createMockedFeatureFlag("Alpha_1", { enabled: true }),
+    createMockedFeatureFlag("Alpha_2", { enabled: false }),
 ]);
 
 describe("feature flags", function () {

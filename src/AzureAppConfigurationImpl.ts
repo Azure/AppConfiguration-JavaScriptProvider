@@ -351,7 +351,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values and feature flags.");
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
         const refreshTasks: Promise<boolean>[] = [];
@@ -482,8 +482,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.#refreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
         const boundedListener = listener.bind(thisArg);
