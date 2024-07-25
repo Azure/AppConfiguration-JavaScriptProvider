@@ -159,7 +159,7 @@ function isWebWorker() {
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
     const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
-    const isNavigatorDefinedAsExpected = typeof navigator === "object" && typeof WorkerNavigator !== "function" && navigator instanceof WorkerNavigator;
+    const isNavigatorDefinedAsExpected = typeof navigator === "object" && typeof WorkerNavigator === "function" && navigator instanceof WorkerNavigator;
     // https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers#importing_scripts_and_libraries
     const importScriptsAsGlobalFunction = typeof importScripts === "function";
 
