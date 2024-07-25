@@ -16,14 +16,14 @@
  *  - Because of the jitter, the maximum backoff time is actually `MaximumBackoffInMs` * (1 + `JitterRatio`).
  */
 
-const MinimumBackoffInMs = 30 * 1000; // 30s
-const MaximumBackoffInMs = 10 * 60 * 1000; // 10min
-const MaxSafeExponential = 30; // Used to avoid overflow. bitwise operations in JavaScript are limited to 32 bits. It overflows at 2^31 - 1.
-const JitterRatio = 0.25;
+const MIN_BACKOFF_IN_MS = 30 * 1000; // 30s
+const MAX_BACKOFF_IN_MS = 10 * 60 * 1000; // 10min
+const MAX_SAFE_EXPONENTIAL = 30; // Used to avoid overflow. bitwise operations in JavaScript are limited to 32 bits. It overflows at 2^31 - 1.
+const JITTER_RATIO = 0.25;
 
 export class RefreshTimer {
-    #minBackoff: number = MinimumBackoffInMs;
-    #maxBackoff: number = MaximumBackoffInMs;
+    #minBackoff: number = MIN_BACKOFF_IN_MS;
+    #maxBackoff: number = MAX_BACKOFF_IN_MS;
     #failedAttempts: number = 0;
     #backoffEnd: number; // Timestamp
     #interval: number;
@@ -70,14 +70,14 @@ export class RefreshTimer {
         }
 
         // exponential: minBackoffMs * 2^(failedAttempts-1)
-        const exponential = Math.min(this.#failedAttempts - 1, MaxSafeExponential);
+        const exponential = Math.min(this.#failedAttempts - 1, MAX_SAFE_EXPONENTIAL);
         let calculatedBackoffMs = minBackoffMs * (1 << exponential);
         if (calculatedBackoffMs > maxBackoffMs) {
             calculatedBackoffMs = maxBackoffMs;
         }
 
         // jitter: random value between [-1, 1) * jitterRatio * calculatedBackoffMs
-        const jitter = JitterRatio * (Math.random() * 2 - 1);
+        const jitter = JITTER_RATIO * (Math.random() * 2 - 1);
 
         return calculatedBackoffMs * (1 + jitter);
     }

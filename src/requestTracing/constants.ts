@@ -1,48 +1,48 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { Version } from "../version";
+import { VERSION } from "../version";
 
-export const RequestTracingDisabledEnvironmentVariable = "AZURE_APP_CONFIGURATION_TRACING_DISABLED";
+export const ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED = "AZURE_APP_CONFIGURATION_TRACING_DISABLED";
 
 // User Agent
-export const UserAgentPrefix = `javascript-appconfiguration-provider/${Version}`;
+export const USER_AGENT_PREFIX = `javascript-appconfiguration-provider/${VERSION}`;
 
 // Correlation Context
-export const CorrelationContextHeaderName = "Correlation-Context";
+export const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
 // Env
-export const NodeJSEnvironmentVariable = "NODE_ENV";
-export const NodeJSDevEnvironmentVariableValue = "development";
-export const EnvironmentKey = "Env";
-export const DevEnvironmentValue = "Dev";
+export const NODEJS_ENV_VAR = "NODE_ENV";
+export const NODEJS_DEV_ENV_VAL = "development";
+export const ENV_KEY = "Env";
+export const DEV_ENV_VAL = "Dev";
 
 // Host Type
-export const HostTypeKey = "Host";
+export const HOST_TYPE_KEY = "Host";
 export enum HostType {
-    AzureFunction = "AzureFunction",
-    AzureWebApp = "AzureWebApp",
-    ContainerApp = "ContainerApp",
-    Kubernetes = "Kubernetes",
-    ServiceFabric = "ServiceFabric",
+    AZURE_FUNCTION = "AzureFunction",
+    AZURE_WEB_APP = "AzureWebApp",
+    CONTAINER_APP = "ContainerApp",
+    KUBERNETES = "Kubernetes",
+    SERVICE_FABRIC = "ServiceFabric",
     // Client-side
-    Browser = "Web",
-    WebWorker = "WebWorker"
+    BROWSER = "Web",
+    WEB_WORKER = "WebWorker"
 }
 
 // Environment variables to identify Host type.
-export const AzureFunctionEnvironmentVariable = "FUNCTIONS_EXTENSION_VERSION";
-export const AzureWebAppEnvironmentVariable = "WEBSITE_SITE_NAME";
-export const ContainerAppEnvironmentVariable = "CONTAINER_APP_NAME";
-export const KubernetesEnvironmentVariable = "KUBERNETES_PORT";
-export const ServiceFabricEnvironmentVariable = "Fabric_NodeName"; // See: https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-environment-variables-reference
+export const AZURE_FUNCTION_ENV_VAR = "FUNCTIONS_EXTENSION_VERSION";
+export const AZURE_WEB_APP_ENV_VAR = "WEBSITE_SITE_NAME";
+export const CONTAINER_APP_ENV_VAR = "CONTAINER_APP_NAME";
+export const KUBERNETES_ENV_VAR = "KUBERNETES_PORT";
+export const SERVICE_FABRIC_ENV_VAR = "Fabric_NodeName"; // See: https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-environment-variables-reference
 
 // Request Type
-export const RequestTypeKey = "RequestType";
+export const REQUEST_TYPE_KEY = "RequestType";
 export enum RequestType {
-    Startup = "Startup",
-    Watch = "Watch"
+    STARTUP = "Startup",
+    WATCH = "Watch"
 }
 
 // Tag names
-export const KeyVaultConfiguredTag = "UsesKeyVault";
+export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";

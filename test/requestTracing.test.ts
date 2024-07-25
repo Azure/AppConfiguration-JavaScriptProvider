@@ -7,6 +7,7 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper";
 import { load } from "./exportedApi";
+
 class HttpRequestHeadersPolicy {
     headers: any;
     name: string;
@@ -147,5 +148,201 @@ describe("request tracing", function () {
         expect(correlationContext.includes("RequestType=Watch")).eq(true);
 
         restoreMocks();
+    });
+
+    describe("request tracing in Web Worker environment", () => {
+        let originalNavigator;
+        let originalWorkerNavigator;
+        let originalWorkerGlobalScope;
+        let originalImportScripts;
+
+        before(() => {
+            // Save the original values to restore them later
+            originalNavigator = (global as any).navigator;
+            originalWorkerNavigator = (global as any).WorkerNavigator;
+            originalWorkerGlobalScope = (global as any).WorkerGlobalScope;
+            originalImportScripts = (global as any).importScripts;
+        });
+
+        afterEach(() => {
+            // Restore the original values after each test
+            (global as any).navigator = originalNavigator;
+            (global as any).WorkerNavigator = originalWorkerNavigator;
+            (global as any).WorkerGlobalScope = originalWorkerGlobalScope;
+            (global as any).importScripts = originalImportScripts;
+        });
+
+        it("should identify WebWorker environment", async () => {
+            (global as any).WorkerNavigator = function WorkerNavigator() { };
+            (global as any).navigator = new (global as any).WorkerNavigator();
+            (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
+            (global as any).importScripts = function importScripts() { };
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=WebWorker")).eq(true);
+        });
+
+        it("is not WebWorker when WorkerNavigator is undefined", async () => {
+            (global as any).navigator = { userAgent: "node.js" } as any; // Mock navigator
+            (global as any).WorkerNavigator = undefined;
+            (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
+            (global as any).importScripts = function importScripts() { };
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=WebWorker")).eq(false);
+        });
+
+        it("is not WebWorker when navigator is not an instance of WorkerNavigator", async () => {
+            (global as any).navigator = { userAgent: "node.js" } as any; // Mock navigator but not an instance of WorkerNavigator
+            (global as any).WorkerNavigator = function WorkerNavigator() { };
+            (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
+            (global as any).importScripts = function importScripts() { };
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=WebWorker")).eq(false);
+        });
+
+        it("is not WebWorker when WorkerGlobalScope is undefined", async () => {
+            (global as any).WorkerNavigator = function WorkerNavigator() { };
+            (global as any).navigator = new (global as any).WorkerNavigator();
+            (global as any).WorkerGlobalScope = undefined;
+            (global as any).importScripts = function importScripts() { };
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=WebWorker")).eq(false);
+        });
+
+        it("is not WebWorker when importScripts is undefined", async () => {
+            (global as any).WorkerNavigator = function WorkerNavigator() { };
+            (global as any).navigator = new (global as any).WorkerNavigator();
+            (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
+            (global as any).importScripts = undefined;
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=WebWorker")).eq(false);
+        });
+    });
+
+    describe("request tracing in Web Browser environment", () => {
+        let originalWindowType;
+        let originalWindowObject;
+        let originalDocumentType;
+        let originalDocumentObject;
+
+        before(() => {
+            // Save the original values to restore them later
+            originalWindowType = (global as any).Window;
+            originalWindowObject = (global as any).window;
+            originalDocumentType = (global as any).Document;
+            originalDocumentObject = (global as any).document;
+        });
+
+        afterEach(() => {
+            // Restore the original values after each test
+            (global as any).Window = originalWindowType;
+            (global as any).window = originalWindowObject;
+            (global as any).Document = originalDocumentType;
+            (global as any).document = originalDocumentObject;
+        });
+
+        it("should identify Web environment", async () => {
+            (global as any).Window = function Window() { };
+            (global as any).window = new (global as any).Window();
+            (global as any).Document = function Document() { };
+            (global as any).document = new (global as any).Document();
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=Web")).eq(true);
+        });
+
+        it("is not Web when document is undefined", async () => {
+            (global as any).Window = function Window() { };
+            (global as any).window = new (global as any).Window();
+            (global as any).Document = function Document() { };
+            (global as any).document = undefined; // not an instance of Document
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=Web")).eq(false);
+        });
+
+        it("is not Web when document is not instance of Document", async () => {
+            (global as any).Window = function Window() { };
+            (global as any).window = new (global as any).Window();
+            (global as any).Document = function Document() { };
+            (global as any).document = {}; // Not an instance of Document
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=Web")).eq(false);
+        });
+
+        it("is not Web when window is undefined", async () => {
+            (global as any).Window = function Window() { };
+            (global as any).window = undefined; // not an instance of Window
+            (global as any).Document = function Document() { };
+            (global as any).document = new (global as any).Document();
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=Web")).eq(false);
+        });
+
+        it("is not Web when window is not instance of Window", async () => {
+            (global as any).Window = function Window() { };
+            (global as any).window = {}; // not an instance of Window
+            (global as any).Document = function Document() { };
+            (global as any).document = new (global as any).Document();
+
+            try {
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            } catch (e) { /* empty */ }
+            expect(headerPolicy.headers).not.undefined;
+            const correlationContext = headerPolicy.headers.get("Correlation-Context");
+            expect(correlationContext).not.undefined;
+            expect(correlationContext.includes("Host=Web")).eq(false);
+        });
     });
 });
