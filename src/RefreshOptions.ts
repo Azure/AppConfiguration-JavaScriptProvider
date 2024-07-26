@@ -3,8 +3,8 @@
 
 import { WatchedSetting } from "./WatchedSetting";
 
-export const DefaultRefreshIntervalInMs = 30 * 1000;
-export const MinimumRefreshIntervalInMs = 1 * 1000;
+export const DEFAULT_REFRESH_INTERVAL_IN_MS = 30 * 1000;
+export const MIN_REFRESH_INTERVAL_IN_MS = 1 * 1000;
 
 export interface RefreshOptions {
     /**
@@ -21,7 +21,7 @@ export interface RefreshOptions {
 
     /**
      * One or more configuration settings to be watched for changes on the server. 
-     * Any modifications to watched settings will refresh all settings loaded by the configuration provider.
+     * Any modifications to watched settings will refresh all settings loaded by the configuration provider when refresh() is called.
      */
     watchedSettings?: WatchedSetting[];
 }
