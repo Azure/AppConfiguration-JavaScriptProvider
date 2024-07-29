@@ -411,16 +411,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (needRefresh) {
             try {
                 await this.#loadSelectedAndWatchedKeyValues();
-                this.#refreshTimer.reset();
             } catch (error) {
                 // if refresh failed, backoff
                 this.#refreshTimer.backoff();
                 throw error;
             }
-            return Promise.resolve(true);
         }
 
-        return Promise.resolve(false);
+        this.#refreshTimer.reset();
+        return Promise.resolve(needRefresh);
     }
 
     /**
@@ -462,16 +461,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (needRefresh) {
             try {
                 await this.#loadFeatureFlags();
-                this.#featureFlagRefreshTimer.reset();
             } catch (error) {
                 // if refresh failed, backoff
                 this.#featureFlagRefreshTimer.backoff();
                 throw error;
             }
-            return Promise.resolve(true);
         }
 
-        return Promise.resolve(false);
+        this.#featureFlagRefreshTimer.reset();
+        return Promise.resolve(needRefresh);
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
