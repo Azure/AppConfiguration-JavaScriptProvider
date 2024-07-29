@@ -270,11 +270,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 listOptions
             ).byPage();
             for await (const page of pageIterator) {
-                if (page._response.status === 200) {
-                    if (page.etag) {
-                        pageEtags.push(page.etag);
-                    }
-                }
+                pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
                         featureFlagsMap.set(setting.key, setting.value);
