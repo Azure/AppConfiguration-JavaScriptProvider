@@ -10,7 +10,7 @@ export type AzureAppConfiguration = {
     refresh(): Promise<void>;
 
     /**
-     * API to register callback listeners, which will be called only when a refresh operation successfully updates key-values.
+     * API to register callback listeners, which will be called only when a refresh operation successfully updates key-values or feature flags.
      *
      * @param listener - Callback function to be registered.
      * @param thisArg - Optional. Value to use as `this` when executing callback.
