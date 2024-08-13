@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, isFeatureFlag } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
@@ -9,10 +9,18 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
+
+type PagedSettingSelector = SettingSelector & {
+    /**
+     * Key: page eTag, Value: feature flag configurations
+     */
+    pageEtags?: string[];
+};
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -39,6 +47,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #sentinels: ConfigurationSettingId[] = [];
     #refreshTimer: RefreshTimer;
+
+    // Feature flags
+    #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
+    #featureFlagRefreshTimer: RefreshTimer;
+
+    // selectors
+    #featureFlagSelectors: PagedSettingSelector[] = [];
 
     constructor(
         client: AppConfigurationClient,
@@ -84,13 +99,31 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
         }
 
-        // TODO: should add more adapters to process different type of values
-        // feature flag, others
+        // feature flag options
+        if (options?.featureFlagOptions?.enabled) {
+            // validate feature flag selectors
+            this.#featureFlagSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
+
+            if (options.featureFlagOptions.refresh?.enabled) {
+                const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
+                // custom refresh interval
+                if (refreshIntervalInMs !== undefined) {
+                    if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
+                        throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    } else {
+                        this.#featureFlagRefreshInterval = refreshIntervalInMs;
+                    }
+                }
+
+                this.#featureFlagRefreshTimer = new RefreshTimer(this.#featureFlagRefreshInterval);
+            }
+        }
+
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
-    // ReadonlyMap APIs
+    // #region ReadonlyMap APIs
     get<T>(key: string): T | undefined {
         return this.#configMap.get(key);
     }
@@ -122,16 +155,33 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     [Symbol.iterator](): IterableIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
+    // #endregion
 
     get #refreshEnabled(): boolean {
         return !!this.#options?.refreshOptions?.enabled;
+    }
+
+    get #featureFlagEnabled(): boolean {
+        return !!this.#options?.featureFlagOptions?.enabled;
+    }
+
+    get #featureFlagRefreshEnabled(): boolean {
+        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
+    }
+
+    get #requestTraceOptions() {
+        return {
+            requestTracingEnabled: this.#requestTracingEnabled,
+            initialLoadCompleted: this.#isInitialLoadCompleted,
+            appConfigOptions: this.#options
+        };
     }
 
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
         const loadedSettings: ConfigurationSetting[] = [];
 
         // validate selectors
-        const selectors = getValidSelectors(this.#options?.selectors);
+        const selectors = getValidKeyValueSelectors(this.#options?.selectors);
 
         for (const selector of selectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -139,13 +189,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter
             };
 
-            const requestTraceOptions = {
-                requestTracingEnabled: this.#requestTracingEnabled,
-                initialLoadCompleted: this.#isInitialLoadCompleted,
-                appConfigOptions: this.#options
-            };
             const settings = listConfigurationSettingsWithTrace(
-                requestTraceOptions,
+                this.#requestTraceOptions,
                 this.#client,
                 listOptions
             );
@@ -186,7 +231,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
-
         const loadedSettings = await this.#loadSelectedKeyValues();
         await this.#updateWatchedKeyValuesEtag(loadedSettings);
 
@@ -196,10 +240,51 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             keyValues.push([key, value]);
         }
 
-        this.#configMap.clear(); // clear existing key-values in case of configuration setting deletion
+        this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
             this.#configMap.set(k, v);
         }
+    }
+
+    async #clearLoadedKeyValues() {
+        for (const key of this.#configMap.keys()) {
+            if (key !== FEATURE_MANAGEMENT_KEY_NAME) {
+                this.#configMap.delete(key);
+            }
+        }
+    }
+
+    async #loadFeatureFlags() {
+        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
+        const featureFlagsMap = new Map<string, any>();
+        for (const selector of this.#featureFlagSelectors) {
+            const listOptions: ListConfigurationSettingsOptions = {
+                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                labelFilter: selector.labelFilter
+            };
+
+            const pageEtags: string[] = [];
+            const pageIterator = listConfigurationSettingsWithTrace(
+                this.#requestTraceOptions,
+                this.#client,
+                listOptions
+            ).byPage();
+            for await (const page of pageIterator) {
+                pageEtags.push(page.etag ?? "");
+                for (const setting of page.items) {
+                    if (isFeatureFlag(setting)) {
+                        featureFlagsMap.set(setting.key, setting.value);
+                    }
+                }
+            }
+            selector.pageEtags = pageEtags;
+        }
+
+        // parse feature flags
+        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
+
+        // feature_management is a reserved key, and feature_flags is an array of feature flags
+        this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
     }
 
     /**
@@ -207,6 +292,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
+        if (this.#featureFlagEnabled) {
+            await this.#loadFeatureFlags();
+        }
         // Mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
     }
@@ -258,13 +346,46 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Refresh the configuration store.
      */
     async refresh(): Promise<void> {
-        if (!this.#refreshEnabled) {
-            throw new Error("Refresh is not enabled.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
+        const refreshTasks: Promise<boolean>[] = [];
+        if (this.#refreshEnabled) {
+            refreshTasks.push(this.#refreshKeyValues());
+        }
+        if (this.#featureFlagRefreshEnabled) {
+            refreshTasks.push(this.#refreshFeatureFlags());
+        }
+
+        // wait until all tasks are either resolved or rejected
+        const results = await Promise.allSettled(refreshTasks);
+
+        // check if any refresh task failed
+        for (const result of results) {
+            if (result.status === "rejected") {
+                throw result.reason;
+            }
+        }
+
+        // check if any refresh task succeeded
+        const anyRefreshed = results.some(result => result.status === "fulfilled" && result.value === true);
+        if (anyRefreshed) {
+            // successfully refreshed, run callbacks in async
+            for (const listener of this.#onRefreshListeners) {
+                listener();
+            }
+        }
+    }
+
+    /**
+     * Refresh key-values.
+     * @returns true if key-values are refreshed, false otherwise.
+     */
+    async #refreshKeyValues(): Promise<boolean> {
         // if still within refresh interval/backoff, return
         if (!this.#refreshTimer.canRefresh()) {
-            return Promise.resolve();
+            return Promise.resolve(false);
         }
 
         // try refresh if any of watched settings is changed.
@@ -282,26 +403,74 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 break;
             }
         }
+
         if (needRefresh) {
             try {
                 await this.#loadSelectedAndWatchedKeyValues();
-                this.#refreshTimer.reset();
             } catch (error) {
                 // if refresh failed, backoff
                 this.#refreshTimer.backoff();
                 throw error;
             }
+        }
 
-            // successfully refreshed, run callbacks in async
-            for (const listener of this.#onRefreshListeners) {
-                listener();
+        this.#refreshTimer.reset();
+        return Promise.resolve(needRefresh);
+    }
+
+    /**
+     * Refresh feature flags.
+     * @returns true if feature flags are refreshed, false otherwise.
+     */
+    async #refreshFeatureFlags(): Promise<boolean> {
+        // if still within refresh interval/backoff, return
+        if (!this.#featureFlagRefreshTimer.canRefresh()) {
+            return Promise.resolve(false);
+        }
+
+        // check if any feature flag is changed
+        let needRefresh = false;
+        for (const selector of this.#featureFlagSelectors) {
+            const listOptions: ListConfigurationSettingsOptions = {
+                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                labelFilter: selector.labelFilter,
+                pageEtags: selector.pageEtags
+            };
+            const pageIterator = listConfigurationSettingsWithTrace(
+                this.#requestTraceOptions,
+                this.#client,
+                listOptions
+            ).byPage();
+
+            for await (const page of pageIterator) {
+                if (page._response.status === 200) { // created or changed
+                    needRefresh = true;
+                    break;
+                }
+            }
+
+            if (needRefresh) {
+                break; // short-circuit if result from any of the selectors is changed
             }
         }
+
+        if (needRefresh) {
+            try {
+                await this.#loadFeatureFlags();
+            } catch (error) {
+                // if refresh failed, backoff
+                this.#featureFlagRefreshTimer.backoff();
+                throw error;
+            }
+        }
+
+        this.#featureFlagRefreshTimer.reset();
+        return Promise.resolve(needRefresh);
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.#refreshEnabled) {
-            throw new Error("Refresh is not enabled.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -348,18 +517,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         let response: GetConfigurationSettingResponse | undefined;
         try {
-            const requestTraceOptions = {
-                requestTracingEnabled: this.#requestTracingEnabled,
-                initialLoadCompleted: this.#isInitialLoadCompleted,
-                appConfigOptions: this.#options
-            };
             response = await getConfigurationSettingWithTrace(
-                requestTraceOptions,
+                this.#requestTraceOptions,
                 this.#client,
                 configurationSettingId,
                 customOptions
             );
-
         } catch (error) {
             if (error instanceof RestError && error.statusCode === 404) {
                 response = undefined;
@@ -371,12 +534,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 }
 
-function getValidSelectors(selectors?: SettingSelector[]) {
-    if (!selectors || selectors.length === 0) {
-        // Default selector: key: *, label: \0
-        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
-    }
-
+function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
     // below code deduplicates selectors by keyFilter and labelFilter, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
@@ -400,4 +558,21 @@ function getValidSelectors(selectors?: SettingSelector[]) {
         }
         return selector;
     });
+}
+
+function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelector[] {
+    if (!selectors || selectors.length === 0) {
+        // Default selector: key: *, label: \0
+        return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
+    }
+    return getValidSelectors(selectors);
+}
+
+function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSelector[] {
+    if (!selectors || selectors.length === 0) {
+        // selectors must be explicitly provided.
+        throw new Error("Feature flag selectors must be provided.");
+    } else {
+        return getValidSelectors(selectors);
+    }
 }
