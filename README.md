@@ -1,7 +1,6 @@
 # Azure App Configuration - JavaScript Provider
 
-[![app-configuration-provider
-](https://img.shields.io/npm/v/@azure/app-configuration-provider?label=@azure/app-configuration-provider)](https://www.npmjs.com/package/@azure/app-configuration-provider)
+[![app-configuration-provider](https://img.shields.io/npm/v/@azure/app-configuration-provider?label=@azure/app-configuration-provider)](https://www.npmjs.com/package/@azure/app-configuration-provider)
 
 The [Azure App Configuration](https://docs.microsoft.com/en-us/azure/azure-app-configuration/overview) provider for JavaScript enables developers to configure their applications using centralized configuration located in Azure App Configuration. 
 
