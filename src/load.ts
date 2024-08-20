@@ -94,7 +94,7 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
     const defaultRetryOptions = {
         maxRetries: MaxRetries,
         maxRetryDelayInMs: MaxRetryDelayInMs,
-    }
+    };
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
 
     return Object.assign({}, options?.clientOptions, {

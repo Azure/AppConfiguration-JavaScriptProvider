@@ -37,7 +37,7 @@ describe("custom client options", function () {
 
     afterEach(() => {
         nock.restore();
-    })
+    });
 
     it("should retry 2 times by default", async () => {
         const countPolicy = new HttpRequestCountPolicy();
@@ -49,7 +49,7 @@ describe("custom client options", function () {
                         position: "perRetry"
                     }]
                 }
-            })
+            });
         };
         let error;
         try {
@@ -74,7 +74,7 @@ describe("custom client options", function () {
                         maxRetries
                     }
                 }
-            })
+            });
         };
 
         let error;
@@ -109,7 +109,7 @@ describe("custom client options", function () {
                         position: "perRetry"
                     }]
                 }
-            })
+            });
         };
         let error;
         try {
@@ -120,4 +120,4 @@ describe("custom client options", function () {
         expect(error).not.undefined;
         expect(countPolicy.count).eq(3);
     });
-})
+});

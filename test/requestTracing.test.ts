@@ -42,7 +42,7 @@ describe("request tracing", function () {
     });
 
     after(() => {
-    })
+    });
 
     it("should have correct user agent prefix", async () => {
         try {

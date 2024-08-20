@@ -17,7 +17,7 @@ describe("json", function () {
 
     afterEach(() => {
         restoreMocks();
-    })
+    });
 
     it("should load and parse if content type is application/json", async () => {
         mockAppConfigurationClientListConfigurationSettings([jsonKeyValue]);
@@ -86,4 +86,4 @@ describe("json", function () {
         expect(settings.get("json.settings.emptyString")).eq("", "is empty string");
         expect(settings.get("json.settings.illegalString")).eq("[unclosed", "is illegal string");
     });
-})
+});
