@@ -66,7 +66,7 @@ describe("feature flags", function () {
     after(() => {
         restoreMocks();
     });
-    
+
     it("should load feature flags if enabled", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
