@@ -33,12 +33,12 @@ describe("dynamic refresh", function () {
             { value: "30", key: "app.settings.fontSize", label: "prod" }
         ].map(createMockedKeyValue);
         mockAppConfigurationClientListConfigurationSettings(mockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs);
     });
 
     afterEach(() => {
         restoreMocks();
-    })
+    });
 
     it("should throw error when refresh is not enabled but refresh is called", async () => {
         const connectionString = createMockedConnectionString();
@@ -331,14 +331,14 @@ describe("dynamic refresh feature flags", function () {
 
     afterEach(() => {
         restoreMocks();
-    })
+    });
 
     it("should refresh feature flags when enabled", async () => {
         mockedKVs = [
             createMockedFeatureFlag("Beta", { enabled: true })
         ];
         mockAppConfigurationClientListConfigurationSettings(mockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(mockedKVs)
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {

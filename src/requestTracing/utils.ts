@@ -40,7 +40,7 @@ export function listConfigurationSettingsWithTrace(
             customHeaders: {
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
             }
-        }
+        };
     }
 
     return client.listConfigurationSettings(actualListOptions);
@@ -64,7 +64,7 @@ export function getConfigurationSettingWithTrace(
             customHeaders: {
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
             }
-        }
+        };
     }
 
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);

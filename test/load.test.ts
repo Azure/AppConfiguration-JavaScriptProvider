@@ -85,7 +85,8 @@ describe("load", function () {
 
     after(() => {
         restoreMocks();
-    })
+    });
+
     it("should load data from config store with connection string", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);

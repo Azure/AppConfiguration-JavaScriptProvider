@@ -35,7 +35,7 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
             labelMatched = kv.label === labelFilter;
         }
         return keyMatched && labelMatched;
-    })
+    });
 }
 
 /**
@@ -86,7 +86,7 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
                             });
                         }
                     }
-                }
+                };
             }
         };
 
@@ -126,7 +126,7 @@ function mockSecretClientGetSecret(uriValueList: [string, string][]) {
             name: secretName,
             value: dict.get(url.toString())
         } as KeyVaultSecret;
-    })
+    });
 }
 
 function restoreMocks() {
@@ -139,11 +139,11 @@ const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret 
     const toEncodeAsBytes = Buffer.from(secret);
     const returnValue = toEncodeAsBytes.toString("base64");
     return `Endpoint=${endpoint};Id=${id};Secret=${returnValue}`;
-}
+};
 
 const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_CLIENT_ID, clientSecret = TEST_CLIENT_SECRET) => {
     return new ClientSecretCredential(tenantId, clientId, clientSecret);
-}
+};
 
 const createMockedKeyVaultReference = (key: string, vaultUri: string): ConfigurationSetting => ({
     // https://${vaultName}.vault.azure.net/secrets/${secretName}
@@ -210,4 +210,4 @@ export {
     createMockedFeatureFlag,
 
     sleepInMs
-}
+};
