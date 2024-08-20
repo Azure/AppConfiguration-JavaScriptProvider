@@ -481,7 +481,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (index >= 0) {
                 this.#onRefreshListeners.splice(index, 1);
             }
-        }
+        };
         return new Disposable(remove);
     }
 
