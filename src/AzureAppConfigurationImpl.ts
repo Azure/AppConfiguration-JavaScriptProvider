@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
-import { RestError } from "@azure/core-rest-pipeline";
+import { isRestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { IKeyValueAdapter } from "./IKeyValueAdapter";
@@ -524,7 +524,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 customOptions
             );
         } catch (error) {
-            if (error instanceof RestError && error.statusCode === 404) {
+            if (isRestError(error) && error.statusCode === 404) {
                 response = undefined;
             } else {
                 throw error;
