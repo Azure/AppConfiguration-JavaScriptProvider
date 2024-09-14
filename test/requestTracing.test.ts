@@ -166,7 +166,12 @@ describe("request tracing", function () {
 
         afterEach(() => {
             // Restore the original values after each test
-            (global as any).navigator = originalNavigator;
+            // global.navigator was added in node 21, https://nodejs.org/api/globals.html#navigator_1
+            // global.navigator only has a getter, so we have to use Object.defineProperty to modify it
+            Object.defineProperty(global, "navigator", {
+                value: originalNavigator,
+                configurable: true
+            });
             (global as any).WorkerNavigator = originalWorkerNavigator;
             (global as any).WorkerGlobalScope = originalWorkerGlobalScope;
             (global as any).importScripts = originalImportScripts;
@@ -174,7 +179,10 @@ describe("request tracing", function () {
 
         it("should identify WebWorker environment", async () => {
             (global as any).WorkerNavigator = function WorkerNavigator() { };
-            (global as any).navigator = new (global as any).WorkerNavigator();
+            Object.defineProperty(global, "navigator", {
+                value: new (global as any).WorkerNavigator(),
+                configurable: true
+            });
             (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
             (global as any).importScripts = function importScripts() { };
 
@@ -188,7 +196,10 @@ describe("request tracing", function () {
         });
 
         it("is not WebWorker when WorkerNavigator is undefined", async () => {
-            (global as any).navigator = { userAgent: "node.js" } as any; // Mock navigator
+            Object.defineProperty(global, "navigator", {
+                value: { userAgent: "node.js" } as any, // Mock navigator
+                configurable: true
+            });
             (global as any).WorkerNavigator = undefined;
             (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
             (global as any).importScripts = function importScripts() { };
@@ -203,7 +214,10 @@ describe("request tracing", function () {
         });
 
         it("is not WebWorker when navigator is not an instance of WorkerNavigator", async () => {
-            (global as any).navigator = { userAgent: "node.js" } as any; // Mock navigator but not an instance of WorkerNavigator
+            Object.defineProperty(global, "navigator", {
+                value: { userAgent: "node.js" } as any, // Mock navigator but not an instance of WorkerNavigator
+                configurable: true
+            });
             (global as any).WorkerNavigator = function WorkerNavigator() { };
             (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
             (global as any).importScripts = function importScripts() { };
@@ -219,7 +233,10 @@ describe("request tracing", function () {
 
         it("is not WebWorker when WorkerGlobalScope is undefined", async () => {
             (global as any).WorkerNavigator = function WorkerNavigator() { };
-            (global as any).navigator = new (global as any).WorkerNavigator();
+            Object.defineProperty(global, "navigator", {
+                value: new (global as any).WorkerNavigator(),
+                configurable: true
+            });
             (global as any).WorkerGlobalScope = undefined;
             (global as any).importScripts = function importScripts() { };
 
@@ -234,7 +251,10 @@ describe("request tracing", function () {
 
         it("is not WebWorker when importScripts is undefined", async () => {
             (global as any).WorkerNavigator = function WorkerNavigator() { };
-            (global as any).navigator = new (global as any).WorkerNavigator();
+            Object.defineProperty(global, "navigator", {
+                value: new (global as any).WorkerNavigator(),
+                configurable: true
+            });
             (global as any).WorkerGlobalScope = function WorkerGlobalScope() { };
             (global as any).importScripts = undefined;
 
