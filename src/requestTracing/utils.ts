@@ -165,3 +165,11 @@ function isWebWorker() {
 
     return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }
+
+export function isFailoverableEnv() {
+    if (isBrowser() || isWebWorker()) {
+        return false;
+    }
+
+    return true;
+}

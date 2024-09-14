@@ -86,7 +86,7 @@ function instanceOfTokenCredential(obj: unknown) {
     return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }
 
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
+export function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
     // user-agent
     let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
     const userAgentOptions = options?.clientOptions?.userAgentOptions;

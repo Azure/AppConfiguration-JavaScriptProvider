@@ -35,6 +35,7 @@ import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAd
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
+import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -56,6 +57,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
+    #clientManager: ConfigurationClientManager;
     #client: AppConfigurationClient;
     #clientEndpoint: string | undefined;
     #options: AzureAppConfigurationOptions | undefined;
