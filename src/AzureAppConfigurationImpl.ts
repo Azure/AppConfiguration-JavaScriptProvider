@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
@@ -36,6 +36,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
     #client: AppConfigurationClient;
+    #clientEndpoint: string | undefined;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
 
@@ -57,9 +58,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     constructor(
         client: AppConfigurationClient,
+        clientEndpoint: string | undefined,
         options: AzureAppConfigurationOptions | undefined
     ) {
         this.#client = client;
+        this.#clientEndpoint = clientEndpoint;
         this.#options = options;
 
         // Enable request tracing if not opt-out
@@ -273,7 +276,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
-                        featureFlagsMap.set(setting.key, setting.value);
+                        featureFlagsMap.set(setting.key, setting);
                     }
                 }
             }
@@ -281,7 +284,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // parse feature flags
-        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
+        const featureFlags = Array.from(featureFlagsMap.values()).map(setting => this.#parseFeatureflag(setting));
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
@@ -531,6 +534,40 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    #parseFeatureflag(setting: ConfigurationSetting<string>): any{
+        const rawFlag = setting.value;
+        if (rawFlag === undefined) {
+            throw new Error("The value of configuration setting cannot be undefined.");
+        }
+        const featureFlag = JSON.parse(rawFlag);
+
+        if (featureFlag[TELEMETRY_KEY_NAME]) {
+            const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
+            featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
+                ETAG_KEY_NAME: setting.etag,
+                FEATURE_FLAG_ID_KEY_NAME: "1",
+                FEATURE_FLAG_REFERENCE_KEY_NAME: this.#createFeatureFlagReference(setting),
+                ...(metadata || {})
+            };
+        }
+        
+        console.log(featureFlag);
+
+        return featureFlag;
+    }
+
+    #calculateFeatureFlagId(setting: ConfigurationSetting<string>): string {
+        return ""
+    }
+
+    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
+        let featureFlagReference = `${this.#clientEndpoint}kv/${setting.key}`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            featureFlagReference += `?label=${setting.label}`;
+        }
+        return featureFlagReference;
     }
 }
 
