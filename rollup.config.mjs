@@ -4,7 +4,7 @@ import dts from "rollup-plugin-dts";
 
 export default [
   {
-    external: ["@azure/app-configuration", "@azure/keyvault-secrets", "@azure/core-rest-pipeline"],
+    external: ["@azure/app-configuration", "@azure/keyvault-secrets", "@azure/core-rest-pipeline", "crypto"],
     input: "src/index.ts",
     output: [
       {

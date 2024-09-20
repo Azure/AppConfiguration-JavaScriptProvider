@@ -284,7 +284,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // parse feature flags
-        const featureFlags = Array.from(featureFlagsMap.values()).map(setting => this.#parseFeatureflag(setting));
+        const featureFlags = await Promise.all(
+            Array.from(featureFlagsMap.values()).map(setting => this.#parseFeatureFlag(setting))
+        );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
@@ -536,7 +538,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
-    #parseFeatureflag(setting: ConfigurationSetting<string>): any{
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any>{
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
             throw new Error("The value of configuration setting cannot be undefined.");
@@ -546,20 +548,63 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (featureFlag[TELEMETRY_KEY_NAME]) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
-                ETAG_KEY_NAME: setting.etag,
-                FEATURE_FLAG_ID_KEY_NAME: "1",
-                FEATURE_FLAG_REFERENCE_KEY_NAME: this.#createFeatureFlagReference(setting),
+                [ETAG_KEY_NAME]: setting.etag,
+                [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
+                [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
                 ...(metadata || {})
             };
         }
-        
-        console.log(featureFlag);
 
         return featureFlag;
     }
 
-    #calculateFeatureFlagId(setting: ConfigurationSetting<string>): string {
-        return ""
+    async #calculateFeatureFlagId(setting: ConfigurationSetting<string>): Promise<string> {
+        let crypto;
+
+        // Check for browser environment
+        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+            crypto = window.crypto;
+        }
+        // Check for Node.js environment
+        else if (typeof global !== "undefined" && global.crypto) {
+            crypto = global.crypto;
+        }
+        // Fallback to native Node.js crypto module
+        else {
+            try {
+                if (typeof module !== "undefined" && module.exports) {
+                    crypto = require("crypto");
+                }
+                else {
+                    crypto = await import("crypto");
+                }
+            } catch (error) {
+                console.error("Failed to load the crypto module:", error.message);
+                throw error;
+            }
+        }
+
+        let baseString = `${setting.key}\n`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            baseString += `${setting.label}`;
+        }
+
+        // Convert to UTF-8 encoded bytes
+        const data = new TextEncoder().encode(baseString);
+
+        // In the browser, use crypto.subtle.digest
+        if (crypto.subtle) {
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = new Uint8Array(hashBuffer);
+            const base64String = btoa(String.fromCharCode(...hashArray));
+            const base64urlString = base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return base64urlString
+        }
+        // In Node.js, use the crypto module's hash function
+        else {
+            const hash = crypto.createHash("sha256").update(data).digest();
+            return hash.toString("base64url")
+        }
     }
 
     #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
