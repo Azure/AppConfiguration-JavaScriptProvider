@@ -4,7 +4,7 @@
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper";
+import { createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -54,6 +54,8 @@ const mockedKVs = [{
     createMockedFeatureFlag("Beta", { enabled: true }),
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
+    createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "Etag"}),
+    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "Etag", label: "Test"})
 ]);
 
 describe("feature flags", function () {
@@ -158,4 +160,44 @@ describe("feature flags", function () {
         expect(variant.telemetry).not.undefined;
     });
 
+    it("should populate telemetry metadata", async () => {
+        const connectionString = createMockedConnectionString();
+        let settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [
+                    {
+                        keyFilter: "Telemetry_1"
+                    },
+                    {
+                        keyFilter: "Telemetry_2",
+                        labelFilter: "Test"
+                    }
+                ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(2);
+
+        let featureFlag = featureFlags[0];
+        expect(featureFlag).not.undefined;
+        expect(featureFlag.id).equals("Telemetry_1");
+        expect(featureFlag.telemetry).not.undefined;
+        expect(featureFlag.telemetry.enabled).equals(true);
+        expect(featureFlag.telemetry.metadata.Etag).equals("Etag");
+        expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("krkOsu9dVV9huwbQDPR6gkV_2T0buWxOCS-nNsj5-6g");
+        expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_1`);
+    
+        featureFlag = featureFlags[1];
+        expect(featureFlag).not.undefined;
+        expect(featureFlag.id).equals("Telemetry_2");
+        expect(featureFlag.telemetry).not.undefined;
+        expect(featureFlag.telemetry.enabled).equals(true);
+        expect(featureFlag.telemetry.metadata.Etag).equals("Etag");
+        expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("Rc8Am7HIGDT7HC5Ovs3wKN_aGaaK_Uz1mH2e11gaK0o");
+        expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_2?label=Test`);
+    });
 });
