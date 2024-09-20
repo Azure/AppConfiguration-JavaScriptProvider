@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, ENABLED_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
@@ -545,7 +545,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         const featureFlag = JSON.parse(rawFlag);
 
-        if (featureFlag[TELEMETRY_KEY_NAME]) {
+        if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
