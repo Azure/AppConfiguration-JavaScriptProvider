@@ -46,8 +46,8 @@ export async function load(
         // ensure string is a valid URL.
         if (typeof connectionStringOrEndpoint === "string") {
             try {
-                let endpoint = new URL(connectionStringOrEndpoint);
-                clientEndpoint = endpoint.toString();
+                const endpointUrl = new URL(connectionStringOrEndpoint);
+                clientEndpoint = endpointUrl.toString();
             } catch (error) {
                 if (error.code === "ERR_INVALID_URL") {
                     throw new Error("Invalid endpoint URL.", { cause: error });
@@ -112,7 +112,7 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
 function parseEndpoint(connectionString: string): string | undefined {
     const parts = connectionString.split(";");
     const endpointPart = parts.find(part => part.startsWith("Endpoint="));
-    
+
     if (endpointPart) {
         let endpoint = endpointPart.split("=")[1];
         if (!endpoint.endsWith("/")) {

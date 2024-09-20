@@ -538,7 +538,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
-    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any>{
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
             throw new Error("The value of configuration setting cannot be undefined.");
@@ -597,13 +597,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const hashBuffer = await crypto.subtle.digest("SHA-256", data);
             const hashArray = new Uint8Array(hashBuffer);
             const base64String = btoa(String.fromCharCode(...hashArray));
-            const base64urlString = base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-            return base64urlString
+            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            return base64urlString;
         }
         // In Node.js, use the crypto module's hash function
         else {
             const hash = crypto.createHash("sha256").update(data).digest();
-            return hash.toString("base64url")
+            return hash.toString("base64url");
         }
     }
 
