@@ -162,7 +162,7 @@ describe("feature flags", function () {
 
     it("should populate telemetry metadata", async () => {
         const connectionString = createMockedConnectionString();
-        let settings = await load(connectionString, {
+        const settings = await load(connectionString, {
             featureFlagOptions: {
                 enabled: true,
                 selectors: [
@@ -190,7 +190,7 @@ describe("feature flags", function () {
         expect(featureFlag.telemetry.metadata.Etag).equals("Etag");
         expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("krkOsu9dVV9huwbQDPR6gkV_2T0buWxOCS-nNsj5-6g");
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_1`);
-    
+
         featureFlag = featureFlags[1];
         expect(featureFlag).not.undefined;
         expect(featureFlag.id).equals("Telemetry_2");
