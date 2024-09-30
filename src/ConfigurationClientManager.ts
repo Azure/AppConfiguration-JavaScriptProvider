@@ -4,11 +4,13 @@
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper"
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
-import { getClientOptions } from "./load";
+import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
+import { isFailoverableEnv } from "./requestTracing/utils";
+import * as RequestTracing from "./requestTracing/constants";
 
 const TCP_ORIGIN = "_origin._tcp";
 const ALT = "_alt";
+const TCP = "_tcp";
 const EndpointSection = "Endpoint";
 const IdSection = "Id";
 const SecretSection = "Secret";
@@ -16,9 +18,7 @@ const AzConfigDomainLabel = ".azconfig."
 const AppConfigDomainLabel = ".appconfig."
 const FallbackClientRefreshExpireInterval = 60 * 60 * 1000; // 1 hour in milliseconds
 const MinimalClientRefreshInterval = 30 * 1000; // 30 seconds in milliseconds
-const MaxBackoffDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
-const MinBackoffDuration = 30 * 1000; // 30 seconds in milliseconds
-const dns = require('dns').promises;
+const SrvQueryTimeout = 5000; // 5 seconds
 
 interface IConfigurationClientManager {
     getClients(): ConfigurationClientWrapper[];
@@ -26,7 +26,7 @@ interface IConfigurationClientManager {
 }
 
 export class ConfigurationClientManager {
-    #isFailoverable: boolean;
+    isFailoverable: boolean;
     #endpoint: string;
     #secret : string;
     #id : string;
@@ -35,9 +35,8 @@ export class ConfigurationClientManager {
     #validDomain: string;
     #staticClients: ConfigurationClientWrapper[];
     #dynamicClients: ConfigurationClientWrapper[];
-    #lastFallbackClientRefreshTime: number;
-    #lastFallbackClientRefreshAttempt: number;
-
+    #lastFallbackClientRefreshTime: number = 0;
+    #lastFallbackClientRefreshAttempt: number = 0;
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -65,23 +64,24 @@ export class ConfigurationClientManager {
             this.#endpoint = connectionStringOrEndpoint.toString();
             this.#credential = credential;
         } else {
-            throw new Error("Invalid endpoint URL.");
+            throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.#endpoint, staticClient)];
         this.#validDomain = getValidDomain(this.#endpoint);
-        
+        this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();  
     }
 
     async getClients() {
-        if (!this.#isFailoverable) {
+        if (!this.isFailoverable) {
             return this.#staticClients;
         }
 
         const currentTime = Date.now();
         if (this.#isFallbackClientDiscoveryDue(currentTime)) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
-            await this.#discoverFallbackClients(this.#endpoint);
+            const host = new URL(this.#endpoint).hostname;
+            await this.#discoverFallbackClients(host);
         }
 
         // Filter static clients where BackoffEndTime is less than or equal to now
@@ -98,7 +98,7 @@ export class ConfigurationClientManager {
 
     async refreshClients() {
         const currentTime = Date.now();
-        if (this.#isFailoverable &&
+        if (this.isFailoverable &&
             currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval).getTime()) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
             const url = new URL(this.#endpoint);
@@ -108,8 +108,8 @@ export class ConfigurationClientManager {
 
     async #discoverFallbackClients(host) {
         const timeout = setTimeout(() => {
-        }, 10000); // 10 seconds
-        const srvResults = querySrvTargetHost(host);
+        }, SrvQueryTimeout);
+        const srvResults = await querySrvTargetHost(host);
 
         try {
             const result = await Promise.race([srvResults, timeout]);
@@ -168,6 +168,13 @@ export class ConfigurationClientManager {
  */
 async function querySrvTargetHost(host) {
     const results: string[] = [];
+    let dns;
+
+    if (isFailoverableEnv()) {
+        dns = require('dns/promises');
+    } else {
+        return results;
+    }
 
     try {
         // Look up SRV records for the origin host
@@ -185,7 +192,7 @@ async function querySrvTargetHost(host) {
         while (true) {
             const currentAlt = `${ALT}${index}`;
             try {
-                const altRecords = await dns.resolveSrv(`_${currentAlt}._tcp.${originHost}`);
+                const altRecords = await dns.resolveSrv(`${currentAlt}.${TCP}.${originHost}`);
                 if (altRecords.length === 0) {
                     break; // No more alternate records, exit loop
                 }
@@ -298,5 +305,26 @@ function isValidEndpoint(host, validDomain) {
     return host.toLowerCase().endsWith(validDomain.toLowerCase());
 }
 
+export function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
+    // user-agent
+    let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
+    const userAgentOptions = options?.clientOptions?.userAgentOptions;
+    if (userAgentOptions?.userAgentPrefix) {
+        userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
+    }
 
+    // retry options
+    const defaultRetryOptions = {
+        maxRetries: MaxRetries,
+        maxRetryDelayInMs: MaxRetryDelayInMs,
+    }
+    const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
+
+    return Object.assign({}, options?.clientOptions, {
+        retryOptions,
+        userAgentOptions: {
+            userAgentPrefix
+        }
+    });
+}
 

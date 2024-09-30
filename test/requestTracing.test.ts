@@ -25,6 +25,7 @@ class HttpRequestHeadersPolicy {
 describe("request tracing", function () {
     this.timeout(15000);
 
+    const replicaDiscoveryEnabled = false;
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
     const position: "perCall" | "perRetry" = "perCall";
@@ -46,7 +47,9 @@ describe("request tracing", function () {
 
     it("should have correct user agent prefix", async () => {
         try {
-            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+            await load(createMockedConnectionString(fakeEndpoint), {
+                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                clientOptions });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
@@ -55,6 +58,7 @@ describe("request tracing", function () {
     it("should have request type in correlation-context header", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
+                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions
             });
         } catch (e) { /* empty */ }
@@ -65,6 +69,7 @@ describe("request tracing", function () {
     it("should have key vault tag in correlation-context header", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
+                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions,
                 keyVaultOptions: {
                     credential: createMockedTokenCredential()
@@ -81,6 +86,7 @@ describe("request tracing", function () {
         process.env.NODE_ENV = "development";
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
+                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions
             });
         } catch (e) { /* empty */ }
@@ -95,6 +101,7 @@ describe("request tracing", function () {
         process.env.WEBSITE_SITE_NAME = "website-name";
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
+                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions
             });
         } catch (e) { /* empty */ }
@@ -110,6 +117,7 @@ describe("request tracing", function () {
             process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED = indicator;
             try {
                 await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                     clientOptions
                 });
             } catch (e) { /* empty */ }
@@ -129,6 +137,7 @@ describe("request tracing", function () {
         }].map(createMockedKeyValue));
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             clientOptions,
             refreshOptions: {
                 enabled: true,
@@ -187,7 +196,9 @@ describe("request tracing", function () {
             (global as any).importScripts = function importScripts() { };
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -205,7 +216,9 @@ describe("request tracing", function () {
             (global as any).importScripts = function importScripts() { };
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -223,7 +236,9 @@ describe("request tracing", function () {
             (global as any).importScripts = function importScripts() { };
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -241,7 +256,9 @@ describe("request tracing", function () {
             (global as any).importScripts = function importScripts() { };
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -259,7 +276,9 @@ describe("request tracing", function () {
             (global as any).importScripts = undefined;
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -297,7 +316,9 @@ describe("request tracing", function () {
             (global as any).document = new (global as any).Document();
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -312,7 +333,9 @@ describe("request tracing", function () {
             (global as any).document = undefined; // not an instance of Document
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -327,7 +350,9 @@ describe("request tracing", function () {
             (global as any).document = {}; // Not an instance of Document
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -342,7 +367,9 @@ describe("request tracing", function () {
             (global as any).document = new (global as any).Document();
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -357,7 +384,9 @@ describe("request tracing", function () {
             (global as any).document = new (global as any).Document();
 
             try {
-                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+                await load(createMockedConnectionString(fakeEndpoint), {
+                    replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+                    clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
