@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
+import { AppConfigurationClient, AppConfigurationClientOptions, ConfigurationSetting } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -10,6 +10,8 @@ import { RestError } from "@azure/core-rest-pipeline";
 import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
 import * as crypto from "crypto";
+import { ConfigurationClientManager } from "../../src/ConfigurationClientManager";
+import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper";
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -91,6 +93,26 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
         };
 
         return mockIterator as any;
+    });
+}
+
+function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptions?: AppConfigurationClientOptions) {
+    // Stub the getClients method on the class prototype
+    sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+        let clients: ConfigurationClientWrapper[] = [];
+        const fakeEndpoint = createMockedEndpoint("fake");
+        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint), clientOptions));
+        clients.push(fakeStaticClientWrapper);
+
+        if (!isFailoverable) {
+            return clients;
+        }
+
+        const fakeReplicaEndpoint = createMockedEndpoint(`fake-replica`);
+        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint), clientOptions));
+        clients.push(fakeDynamicClientWrapper);
+
+        return clients;
     });
 }
 
@@ -198,6 +220,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,
 
@@ -210,4 +233,4 @@ export {
     createMockedFeatureFlag,
 
     sleepInMs
-};
+}
