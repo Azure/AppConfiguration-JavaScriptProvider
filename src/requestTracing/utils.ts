@@ -111,7 +111,7 @@ export function requestTracingEnabled(): boolean {
 
 function getEnvironmentVariable(name: string) {
     // Make it compatible with non-Node.js runtime
-    if (typeof process?.env === "object") {
+    if (typeof process !== "undefined" && typeof process?.env === "object") {
         return process.env[name];
     } else {
         return undefined;
