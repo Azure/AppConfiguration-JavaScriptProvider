@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper"
+import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
 import { isFailoverableEnv } from "./requestTracing/utils";
@@ -14,18 +14,18 @@ const TCP = "_tcp";
 const EndpointSection = "Endpoint";
 const IdSection = "Id";
 const SecretSection = "Secret";
-const AzConfigDomainLabel = ".azconfig."
-const AppConfigDomainLabel = ".appconfig."
+const AzConfigDomainLabel = ".azconfig.";
+const AppConfigDomainLabel = ".appconfig.";
 const FallbackClientRefreshExpireInterval = 60 * 60 * 1000; // 1 hour in milliseconds
 const MinimalClientRefreshInterval = 30 * 1000; // 30 seconds in milliseconds
 const SrvQueryTimeout = 5000; // 5 seconds
 
 interface IConfigurationClientManager {
-    getClients(): ConfigurationClientWrapper[];
+    getClients(): Promise<ConfigurationClientWrapper[]>;
     refreshClients(): Promise<void>;
 }
 
-export class ConfigurationClientManager {
+export class ConfigurationClientManager implements IConfigurationClientManager {
     isFailoverable: boolean;
     #endpoint: string;
     #secret : string;
@@ -55,7 +55,7 @@ export class ConfigurationClientManager {
             this.#id = parseConnectionString(connectionString, IdSection);
             // TODO: need to check if it's CDN or not
             this.#endpoint = parseConnectionString(connectionString, EndpointSection);
-            
+
         } else if (connectionStringOrEndpoint instanceof URL) {
             const credential = credentialOrOptions as TokenCredential;
             options = appConfigOptions as AzureAppConfigurationOptions;
@@ -69,7 +69,7 @@ export class ConfigurationClientManager {
 
         this.#staticClients = [new ConfigurationClientWrapper(this.#endpoint, staticClient)];
         this.#validDomain = getValidDomain(this.#endpoint);
-        this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();  
+        this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();
     }
 
     async getClients() {
@@ -93,7 +93,7 @@ export class ConfigurationClientManager {
                     .filter(client => client.backoffEndTime <= currentTime));
         }
 
-        return availableClients
+        return availableClients;
     }
 
     async refreshClients() {
@@ -155,7 +155,7 @@ export class ConfigurationClientManager {
 
     #isFallbackClientDiscoveryDue(dateTime) {
         return dateTime >= this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval
-            && (!this.#dynamicClients 
+            && (!this.#dynamicClients
                 || this.#dynamicClients.every(client => dateTime < client.backoffEndTime)
                 || dateTime >= this.#lastFallbackClientRefreshTime + FallbackClientRefreshExpireInterval);
     }
@@ -171,7 +171,7 @@ async function querySrvTargetHost(host) {
     let dns;
 
     if (isFailoverableEnv()) {
-        dns = require('dns/promises');
+        dns = require("dns/promises");
     } else {
         return results;
     }
@@ -184,16 +184,18 @@ async function querySrvTargetHost(host) {
         }
 
         // Add the first origin record to results
-        const originHost = originRecords[0].name
+        const originHost = originRecords[0].name;
         results.push(originHost);
-        
+
         // Look up SRV records for alternate hosts
         let index = 0;
-        while (true) {
+        let moreAltRecordsExist = true;
+        while (moreAltRecordsExist) {
             const currentAlt = `${ALT}${index}`;
             try {
                 const altRecords = await dns.resolveSrv(`${currentAlt}.${TCP}.${originHost}`);
                 if (altRecords.length === 0) {
+                    moreAltRecordsExist = false;
                     break; // No more alternate records, exit loop
                 }
 
@@ -205,7 +207,7 @@ async function querySrvTargetHost(host) {
                 });
                 index++;
             } catch (err) {
-                if (err.code === 'ENOTFOUND') {
+                if (err.code === "ENOTFOUND") {
                     break; // No more alternate records, exit loop
                 } else {
                     throw new Error(`Failed to lookup alternate SRV records: ${err.message}`);
@@ -221,7 +223,7 @@ async function querySrvTargetHost(host) {
 
 /**
  * Parses the connection string to extract the value associated with a specific token.
- * 
+ *
  * @param {string} connectionString - The connection string containing tokens.
  * @param {string} token - The token whose value needs to be extracted.
  * @returns {string} The value associated with the token, or an empty string if not found.
@@ -241,7 +243,7 @@ function parseConnectionString(connectionString, token) {
 
     // Move startIndex to the beginning of the token value
     const valueStartIndex = startIndex + searchToken.length;
-    const endIndex = connectionString.indexOf(';', valueStartIndex);
+    const endIndex = connectionString.indexOf(";", valueStartIndex);
     const valueEndIndex = endIndex === -1 ? connectionString.length : endIndex;
 
     // Extract and return the token value
@@ -251,7 +253,7 @@ function parseConnectionString(connectionString, token) {
 /**
  * Builds a connection string from the given endpoint, secret, and id.
  * Returns an empty string if either secret or id is empty.
- * 
+ *
  * @param {string} endpoint - The endpoint to include in the connection string.
  * @param {string} secret - The secret to include in the connection string.
  * @param {string} id - The ID to include in the connection string.
@@ -259,7 +261,7 @@ function parseConnectionString(connectionString, token) {
  */
 function buildConnectionString(endpoint, secret, id) {
     if (!secret || !id) {
-        return '';
+        return "";
     }
 
     return `${EndpointSection}=${endpoint};${IdSection}=${id};${SecretSection}=${secret}`;
@@ -276,7 +278,7 @@ function getValidDomain(endpoint) {
         const url = new URL(endpoint);
         const trustedDomainLabels = [AzConfigDomainLabel, AppConfigDomainLabel];
         const host = url.hostname.toLowerCase();
-        
+
         for (const label of trustedDomainLabels) {
             const index = host.lastIndexOf(label);
             if (index !== -1) {
@@ -292,7 +294,7 @@ function getValidDomain(endpoint) {
 
 /**
  * Checks if the given host ends with the valid domain.
- * 
+ *
  * @param {string} host - The host to be validated.
  * @param {string} validDomain - The valid domain to check against.
  * @returns {boolean} - True if the host ends with the valid domain, false otherwise.
@@ -317,7 +319,7 @@ export function getClientOptions(options?: AzureAppConfigurationOptions): AppCon
     const defaultRetryOptions = {
         maxRetries: MaxRetries,
         maxRetryDelayInMs: MaxRetryDelayInMs,
-    }
+    };
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
 
     return Object.assign({}, options?.clientOptions, {

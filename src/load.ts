@@ -4,7 +4,7 @@
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
 import { ConfigurationClientManager } from "./ConfigurationClientManager";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
