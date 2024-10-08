@@ -13,7 +13,7 @@ export const MaxRetryDelayInMs = 60000;
 export interface AzureAppConfigurationOptions {
     /**
      * Specifies whether enable replica discovery or not.
-     * 
+     *
      * @remarks
      * If not specified, the default value is true.
      */
