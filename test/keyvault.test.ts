@@ -119,4 +119,4 @@ describe("key vault reference", function () {
         expect(settings.get("TestKey")).eq("SecretValue");
         expect(settings.get("TestKey2")).eq("SecretValue2");
     });
-})
+});
