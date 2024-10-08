@@ -62,7 +62,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     constructor(
         clientManager: ConfigurationClientManager,
-        options: AzureAppConfigurationOptions | undefined, 
+        options: AzureAppConfigurationOptions | undefined,
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
@@ -323,7 +323,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         }
                     }
                 }
-                selector.pageEtags = pageEtags;        
+                selector.pageEtags = pageEtags;
             }
 
             this.#featureFlagSelectors = selectors;
@@ -507,10 +507,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
             return needRefresh;
         };
-        
-        let needRefresh: boolean;
-        needRefresh = await this.#executeWithFailoverPolicy(funcToExecute);
 
+        const needRefresh: boolean = await this.#executeWithFailoverPolicy(funcToExecute);
         if (needRefresh) {
             try {
                 await this.#loadFeatureFlags();

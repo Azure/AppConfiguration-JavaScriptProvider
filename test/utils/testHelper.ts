@@ -99,7 +99,7 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
 function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptions?: AppConfigurationClientOptions) {
     // Stub the getClients method on the class prototype
     sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
-        let clients: ConfigurationClientWrapper[] = [];
+        const clients: ConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
         const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint), clientOptions));
         clients.push(fakeStaticClientWrapper);
@@ -108,7 +108,7 @@ function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptio
             return clients;
         }
 
-        const fakeReplicaEndpoint = createMockedEndpoint(`fake-replica`);
+        const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
         const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint), clientOptions));
         clients.push(fakeDynamicClientWrapper);
 
@@ -233,4 +233,4 @@ export {
     createMockedFeatureFlag,
 
     sleepInMs
-}
+};
