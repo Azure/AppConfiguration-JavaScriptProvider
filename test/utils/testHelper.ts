@@ -131,6 +131,57 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList) {
     });
 }
 
+function mockAppConfigurationClientListConfigurationSettingsWithFailure(...pages: ConfigurationSetting[][]) {
+    const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+
+    // Configure the stub to throw an error on the first call and return mockedKVs on the second call
+    stub.onFirstCall().throws(new RestError("Internal Server Error", { statusCode: 500 }));
+    stub.callsFake((listOptions) => {
+        let kvs = _filterKVs(pages.flat(), listOptions);
+        const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+            [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                kvs = _filterKVs(pages.flat(), listOptions);
+                return this;
+            },
+            next() {
+                const value = kvs.shift();
+                return Promise.resolve({ done: !value, value });
+            },
+            byPage(): AsyncIterableIterator<any> {
+                let remainingPages;
+                const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
+                return {
+                    [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                        remainingPages = [...pages];
+                        return this;
+                    },
+                    next() {
+                        const pageItems = remainingPages.shift();
+                        const pageEtag = pageEtags?.shift();
+                        if (pageItems === undefined) {
+                            return Promise.resolve({ done: true, value: undefined });
+                        } else {
+                            const items = _filterKVs(pageItems ?? [], listOptions);
+                            const etag = _sha256(JSON.stringify(items));
+                            const statusCode = pageEtag === etag ? 304 : 200;
+                            return Promise.resolve({
+                                done: false,
+                                value: {
+                                    items,
+                                    etag,
+                                    _response: { status: statusCode }
+                                }
+                            });
+                        }
+                    }
+                };
+            }
+        };
+
+        return mockIterator as any;
+    });
+}
+
 // uriValueList: [["<secretUri>", "value"], ...]
 function mockSecretClientGetSecret(uriValueList: [string, string][]) {
     const dict = new Map();
@@ -220,6 +271,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockAppConfigurationClientListConfigurationSettingsWithFailure,
     mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,
