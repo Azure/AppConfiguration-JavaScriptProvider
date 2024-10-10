@@ -10,6 +10,7 @@ import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurati
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
+const replicaDiscoveryEnabled = false;
 
 function updateSetting(key: string, value: any) {
     const setting = mockedKVs.find(elem => elem.key === key);
@@ -42,7 +43,9 @@ describe("dynamic refresh", function () {
 
     it("should throw error when refresh is not enabled but refresh is called", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled
+        });
         const refreshCall = settings.refresh();
         return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
     });
@@ -50,12 +53,14 @@ describe("dynamic refresh", function () {
     it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithEmptyWatchedSettings = load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 watchedSettings: []
             }
         });
         const loadWithUndefinedWatchedSettings = load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true
             }
@@ -69,6 +74,7 @@ describe("dynamic refresh", function () {
     it("should not allow refresh interval less than 1 second", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithInvalidRefreshInterval = load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 watchedSettings: [
@@ -83,6 +89,7 @@ describe("dynamic refresh", function () {
     it("should not allow '*' in key or label", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithInvalidKey = load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 watchedSettings: [
@@ -91,6 +98,7 @@ describe("dynamic refresh", function () {
             }
         });
         const loadWithInvalidKey2 = load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 watchedSettings: [
@@ -124,13 +132,16 @@ describe("dynamic refresh", function () {
 
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
+        const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
+        });
         expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values or feature flags.");
     });
 
     it("should only update values after refreshInterval", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -159,6 +170,7 @@ describe("dynamic refresh", function () {
     it("should update values when watched setting is deleted", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -185,6 +197,7 @@ describe("dynamic refresh", function () {
     it("should not update values when unwatched setting changes", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -206,6 +219,7 @@ describe("dynamic refresh", function () {
     it("should watch multiple settings if specified", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -231,6 +245,7 @@ describe("dynamic refresh", function () {
     it("should execute callbacks on successful refresh", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -260,6 +275,7 @@ describe("dynamic refresh", function () {
     it("should not include watched settings into configuration if not specified in selectors", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             selectors: [
                 { keyFilter: "app.settings.fontColor" }
             ],
@@ -279,6 +295,7 @@ describe("dynamic refresh", function () {
     it("should refresh when watched setting is added", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -301,6 +318,7 @@ describe("dynamic refresh", function () {
     it("should not refresh when watched setting keeps not existing", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 2000,
@@ -342,6 +360,7 @@ describe("dynamic refresh feature flags", function () {
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [{
@@ -392,6 +411,7 @@ describe("dynamic refresh feature flags", function () {
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
+            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [{

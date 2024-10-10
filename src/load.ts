@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
-import * as RequestTracing from "./requestTracing/constants";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
+import { ConfigurationClientManager } from "./ConfigurationClientManager";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
@@ -31,15 +30,14 @@ export async function load(
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
-    let client: AppConfigurationClient;
     let options: AzureAppConfigurationOptions | undefined;
+    let clientManager: ConfigurationClientManager;
 
     // input validation
     if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
         const connectionString = connectionStringOrEndpoint;
         options = credentialOrOptions as AzureAppConfigurationOptions;
-        const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(connectionString, clientOptions);
+        clientManager = new ConfigurationClientManager(connectionString, options);
     } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
         let endpoint = connectionStringOrEndpoint;
         // ensure string is a valid URL.
@@ -56,14 +54,13 @@ export async function load(
         }
         const credential = credentialOrOptions as TokenCredential;
         options = appConfigOptions;
-        const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(endpoint.toString(), credential, clientOptions);
+        clientManager = new ConfigurationClientManager(endpoint, credential, options);
     } else {
         throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(client, options);
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -80,27 +77,4 @@ export async function load(
 
 function instanceOfTokenCredential(obj: unknown) {
     return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
-}
-
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
-    // user-agent
-    let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
-    const userAgentOptions = options?.clientOptions?.userAgentOptions;
-    if (userAgentOptions?.userAgentPrefix) {
-        userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
-    }
-
-    // retry options
-    const defaultRetryOptions = {
-        maxRetries: MaxRetries,
-        maxRetryDelayInMs: MaxRetryDelayInMs,
-    };
-    const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
-
-    return Object.assign({}, options?.clientOptions, {
-        retryOptions,
-        userAgentOptions: {
-            userAgentPrefix
-        }
-    });
 }
