@@ -273,7 +273,7 @@ function buildConnectionString(endpoint, secret, id) {
  * @param {string} endpoint - The endpoint URL.
  * @returns {string} - The valid domain or an empty string if no valid domain is found.
  */
-function getValidDomain(endpoint) {
+export function getValidDomain(endpoint) {
     try {
         const url = new URL(endpoint);
         const trustedDomainLabels = [AzConfigDomainLabel, AppConfigDomainLabel];
@@ -299,7 +299,7 @@ function getValidDomain(endpoint) {
  * @param {string} validDomain - The valid domain to check against.
  * @returns {boolean} - True if the host ends with the valid domain, false otherwise.
  */
-function isValidEndpoint(host, validDomain) {
+export function isValidEndpoint(host, validDomain) {
     if (!validDomain) {
         return false;
     }
