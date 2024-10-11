@@ -78,6 +78,57 @@ export async function load(
     }
 }
 
+/**
+ * Loads the data from a CDN and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The URL to the CDN.
+ * @param options  Optional parameters.
+ */
+export async function loadCdn(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
+export async function loadCdn(
+    endpoint: string | URL,
+    appConfigOptions?: AzureAppConfigurationOptions
+): Promise<AzureAppConfiguration> {
+    const startTimestamp = Date.now();
+    let client: AppConfigurationClient;
+    let options: AzureAppConfigurationOptions | undefined;
+
+    if (typeof endpoint === "string") {
+        try {
+            endpoint = new URL(endpoint);
+        } catch (error) {
+            if (error.code === "ERR_INVALID_URL") {
+                throw new Error("Invalid endpoint URL.", { cause: error });
+            } else {
+                throw error;
+            }
+        }
+    }
+    const emptyTokenCredential: TokenCredential = {
+        getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
+    };
+    options = appConfigOptions;
+    const clientOptions = getClientOptions(options);
+    // App Configuration SDK will not distinguish between CDN and App Configuration endpoints. The SDK will just send request to the endpoint with the given token credential.
+    // CDN should be the front door of App Configuration and forward the request to the App Configuration service.
+    client = new AppConfigurationClient(endpoint.toString(), emptyTokenCredential, clientOptions);
+
+    try {
+        const appConfiguration = new AzureAppConfigurationImpl(client, options);
+        await appConfiguration.load();
+        return appConfiguration;
+    } catch (error) {
+        // load() method is called in the application's startup code path.
+        // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+        // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
+        const delay = MIN_DELAY_FOR_UNHANDLED_ERROR - (Date.now() - startTimestamp);
+        if (delay > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+        throw error;
+    }
+}
+
 function instanceOfTokenCredential(obj: unknown) {
     return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }
