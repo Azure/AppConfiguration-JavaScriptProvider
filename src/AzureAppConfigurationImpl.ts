@@ -258,8 +258,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
-        const featureFlagsMap = new Map<string, any>();
+        const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -276,7 +275,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
-                        featureFlagsMap.set(setting.key, setting);
+                        featureFlagSettings.push(setting);
                     }
                 }
             }
@@ -285,7 +284,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // parse feature flags
         const featureFlags = await Promise.all(
-            Array.from(featureFlagsMap.values()).map(setting => this.#parseFeatureFlag(setting))
+            featureFlagSettings.map(setting => this.#parseFeatureFlag(setting))
         );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
