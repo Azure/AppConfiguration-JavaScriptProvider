@@ -41,7 +41,7 @@ export async function load(
         options = credentialOrOptions as AzureAppConfigurationOptions;
         const clientOptions = getClientOptions(options);
         client = new AppConfigurationClient(connectionString, clientOptions);
-        clientEndpoint = parseEndpoint(connectionStringOrEndpoint);
+        clientEndpoint = getEndpoint(connectionStringOrEndpoint);
     } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
         // ensure string is a valid URL.
         if (typeof connectionStringOrEndpoint === "string") {
@@ -109,7 +109,7 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
     });
 }
 
-function parseEndpoint(connectionString: string): string | undefined {
+function getEndpoint(connectionString: string): string | undefined {
     const parts = connectionString.split(";");
     const endpointPart = parts.find(part => part.startsWith("Endpoint="));
 
