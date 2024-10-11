@@ -90,9 +90,6 @@ export async function loadCdn(
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
-    let client: AppConfigurationClient;
-    let options: AzureAppConfigurationOptions | undefined;
-
     if (typeof endpoint === "string") {
         try {
             endpoint = new URL(endpoint);
@@ -107,11 +104,11 @@ export async function loadCdn(
     const emptyTokenCredential: TokenCredential = {
         getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
     };
-    options = appConfigOptions;
+    const options = appConfigOptions;
     const clientOptions = getClientOptions(options);
     // App Configuration SDK will not distinguish between CDN and App Configuration endpoints. The SDK will just send request to the endpoint with the given token credential.
     // CDN should be the front door of App Configuration and forward the request to the App Configuration service.
-    client = new AppConfigurationClient(endpoint.toString(), emptyTokenCredential, clientOptions);
+    const client = new AppConfigurationClient(endpoint.toString(), emptyTokenCredential, clientOptions);
 
     try {
         const appConfiguration = new AzureAppConfigurationImpl(client, options);
