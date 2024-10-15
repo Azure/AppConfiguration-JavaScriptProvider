@@ -3,5 +3,5 @@
 
 export { AzureAppConfiguration } from "./AzureAppConfiguration";
 export { Disposable } from "./common/disposable";
-export { load, loadCdn } from "./load";
+export { load, loadFromCdn } from "./load";
 export { KeyFilter, LabelFilter } from "./types";
