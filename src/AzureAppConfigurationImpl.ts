@@ -595,7 +595,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (crypto.subtle) {
             const hashBuffer = await crypto.subtle.digest("SHA-256", data);
             const hashArray = new Uint8Array(hashBuffer);
-            const base64String = window.btoa(String.fromCharCode(...hashArray));
+            const base64String = btoa(String.fromCharCode(...hashArray));
             const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
             return base64urlString;
         }
