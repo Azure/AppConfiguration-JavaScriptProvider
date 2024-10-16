@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, ENABLED_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
@@ -36,6 +36,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
     #client: AppConfigurationClient;
+    #clientEndpoint: string | undefined;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
 
@@ -57,9 +58,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     constructor(
         client: AppConfigurationClient,
+        clientEndpoint: string | undefined,
         options: AzureAppConfigurationOptions | undefined
     ) {
         this.#client = client;
+        this.#clientEndpoint = clientEndpoint;
         this.#options = options;
 
         // Enable request tracing if not opt-out
@@ -255,8 +258,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
-        const featureFlagsMap = new Map<string, any>();
+        const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -273,7 +275,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
-                        featureFlagsMap.set(setting.key, setting.value);
+                        featureFlagSettings.push(setting);
                     }
                 }
             }
@@ -281,7 +283,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // parse feature flags
-        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
+        const featureFlags = await Promise.all(
+            featureFlagSettings.map(setting => this.#parseFeatureFlag(setting))
+        );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
@@ -531,6 +535,83 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
+        const rawFlag = setting.value;
+        if (rawFlag === undefined) {
+            throw new Error("The value of configuration setting cannot be undefined.");
+        }
+        const featureFlag = JSON.parse(rawFlag);
+
+        if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
+            const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
+            featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
+                [ETAG_KEY_NAME]: setting.etag,
+                [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
+                [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
+                ...(metadata || {})
+            };
+        }
+
+        return featureFlag;
+    }
+
+    async #calculateFeatureFlagId(setting: ConfigurationSetting<string>): Promise<string> {
+        let crypto;
+
+        // Check for browser environment
+        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+            crypto = window.crypto;
+        }
+        // Check for Node.js environment
+        else if (typeof global !== "undefined" && global.crypto) {
+            crypto = global.crypto;
+        }
+        // Fallback to native Node.js crypto module
+        else {
+            try {
+                if (typeof module !== "undefined" && module.exports) {
+                    crypto = require("crypto");
+                }
+                else {
+                    crypto = await import("crypto");
+                }
+            } catch (error) {
+                console.error("Failed to load the crypto module:", error.message);
+                throw error;
+            }
+        }
+
+        let baseString = `${setting.key}\n`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            baseString += `${setting.label}`;
+        }
+
+        // Convert to UTF-8 encoded bytes
+        const data = new TextEncoder().encode(baseString);
+
+        // In the browser, use crypto.subtle.digest
+        if (crypto.subtle) {
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = new Uint8Array(hashBuffer);
+            const base64String = btoa(String.fromCharCode(...hashArray));
+            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            return base64urlString;
+        }
+        // In Node.js, use the crypto module's hash function
+        else {
+            const hash = crypto.createHash("sha256").update(data).digest();
+            return hash.toString("base64url");
+        }
+    }
+
+    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
+        let featureFlagReference = `${this.#clientEndpoint}kv/${setting.key}`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            featureFlagReference += `?label=${setting.label}`;
+        }
+        return featureFlagReference;
     }
 }
 

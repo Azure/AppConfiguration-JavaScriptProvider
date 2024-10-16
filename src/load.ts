@@ -32,6 +32,7 @@ export async function load(
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
     let client: AppConfigurationClient;
+    let clientEndpoint: string | undefined;
     let options: AzureAppConfigurationOptions | undefined;
 
     // input validation
@@ -40,12 +41,13 @@ export async function load(
         options = credentialOrOptions as AzureAppConfigurationOptions;
         const clientOptions = getClientOptions(options);
         client = new AppConfigurationClient(connectionString, clientOptions);
+        clientEndpoint = getEndpoint(connectionStringOrEndpoint);
     } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
-        let endpoint = connectionStringOrEndpoint;
         // ensure string is a valid URL.
-        if (typeof endpoint === "string") {
+        if (typeof connectionStringOrEndpoint === "string") {
             try {
-                endpoint = new URL(endpoint);
+                const endpointUrl = new URL(connectionStringOrEndpoint);
+                clientEndpoint = endpointUrl.toString();
             } catch (error) {
                 if (error.code === "ERR_INVALID_URL") {
                     throw new Error("Invalid endpoint URL.", { cause: error });
@@ -53,17 +55,19 @@ export async function load(
                     throw error;
                 }
             }
+        } else {
+            clientEndpoint = connectionStringOrEndpoint.toString();
         }
         const credential = credentialOrOptions as TokenCredential;
         options = appConfigOptions;
         const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(endpoint.toString(), credential, clientOptions);
+        client = new AppConfigurationClient(clientEndpoint, credential, clientOptions);
     } else {
         throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(client, options);
+        const appConfiguration = new AzureAppConfigurationImpl(client, clientEndpoint, options);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -120,4 +124,19 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
             userAgentPrefix
         }
     });
+}
+
+function getEndpoint(connectionString: string): string | undefined {
+    const parts = connectionString.split(";");
+    const endpointPart = parts.find(part => part.startsWith("Endpoint="));
+
+    if (endpointPart) {
+        let endpoint = endpointPart.split("=")[1];
+        if (!endpoint.endsWith("/")) {
+            endpoint += "/";
+        }
+        return endpoint;
+    }
+
+    return undefined;
 }
