@@ -1,20 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import {
-    CUSTOM_FILTER_KEY,
-    TIME_WINDOW_FILTER_KEY,
-    TARGETING_FILTER_KEY,
-    DELIMITER
-} from "./constants";
+import { TIME_WINDOW_FILTER_NAMES, TARGETING_FILTER_NAMES } from "../featureManagement/constants";
+import { CUSTOM_FILTER_KEY, TIME_WINDOW_FILTER_KEY, TARGETING_FILTER_KEY, DELIMITER } from "./constants";
 
 /**
  * Tracing for tracking feature flag usage.
  */
-export class FeatureFlagTracing {
-    #timeWindowFilterNames: string[] = ["TimeWindow", "Microsoft.TimeWindow", "TimeWindowFilter", "Microsoft.TimeWindowFilter"];
-    #targetingFilterNames: string[] = ["Targeting", "Microsoft.Targeting", "TargetingFilter", "Microsoft.TargetingFilter"];
-
+export class FeatureFlagTracingOptions {
     /**
      * Built-in feature filter usage.
      */
@@ -29,9 +22,9 @@ export class FeatureFlagTracing {
     }
 
     updateFeatureFilterTracing(filterName: string): void {
-        if (this.#timeWindowFilterNames.some(name => name.toLowerCase() === filterName.toLowerCase())) {
+        if (TIME_WINDOW_FILTER_NAMES.some(name => name === filterName)) {
             this.usesTimeWindowFilter = true;
-        } else if (this.#targetingFilterNames.some(name => name.toLowerCase() === filterName.toLowerCase())) {
+        } else if (TARGETING_FILTER_NAMES.some(name => name === filterName)) {
             this.usesTargetingFilter = true;
         } else {
             this.usesCustomFilter = true;

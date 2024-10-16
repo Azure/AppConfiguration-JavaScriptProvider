@@ -9,11 +9,11 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME, NAME_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
-import { FeatureFlagTracing } from "./requestTracing/FeatureFlagTracing";
+import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 type PagedSettingSelector = SettingSelector & {
@@ -39,7 +39,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
-    #featureFlagTracing: FeatureFlagTracing = new FeatureFlagTracing();
+    #featureFlagTracing: FeatureFlagTracingOptions = new FeatureFlagTracingOptions();
 
     // Refresh
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
@@ -258,6 +258,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
+        this.#featureFlagTracing.resetFeatureFlagTracing();
         const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -544,7 +545,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         const featureFlag = JSON.parse(rawFlag);
 
-        
+        if (featureFlag[CONDITIONS_KEY_NAME] && featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+            for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+                this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
+            }
+        }
 
         return featureFlag;
     }

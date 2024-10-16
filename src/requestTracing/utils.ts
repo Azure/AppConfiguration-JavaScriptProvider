@@ -3,7 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
-import { FeatureFlagTracing } from "./FeatureFlagTracing";
+import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
@@ -11,6 +11,7 @@ import {
     DEV_ENV_VAL,
     ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED,
     ENV_KEY,
+    FEATURE_FILTER_TYPE_KEY,
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
@@ -29,18 +30,18 @@ export function listConfigurationSettingsWithTrace(
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
-        featureFlagTracingOptions: FeatureFlagTracing | undefined;
+        featureFlagTracingOptions: FeatureFlagTracingOptions | undefined;
     },
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, featureFlagTracingOptions } = requestTracingOptions;
 
     const actualListOptions = { ...listOptions };
     if (requestTracingEnabled) {
         actualListOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, featureFlagTracingOptions, initialLoadCompleted)
             }
         };
     }
@@ -53,18 +54,19 @@ export function getConfigurationSettingWithTrace(
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
+        featureFlagTracingOptions: FeatureFlagTracingOptions | undefined;
     },
     client: AppConfigurationClient,
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, featureFlagTracingOptions } = requestTracingOptions;
     const actualGetOptions = { ...getOptions };
 
     if (requestTracingEnabled) {
         actualGetOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, featureFlagTracingOptions, initialLoadCompleted)
             }
         };
     }
@@ -72,7 +74,7 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
+export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, featureFlagTracing: FeatureFlagTracingOptions | undefined, isInitialLoadCompleted: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -83,6 +85,7 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
+    keyValues.set(FEATURE_FILTER_TYPE_KEY, featureFlagTracing?.usesAnyFeatureFilter() ? featureFlagTracing.createFeatureFiltersString() : undefined);
 
     const tags: string[] = [];
     if (options?.keyVaultOptions) {
