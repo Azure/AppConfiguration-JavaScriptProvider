@@ -3,6 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
+import { FeatureFlagTracing } from "./FeatureFlagTracing";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
@@ -28,6 +29,7 @@ export function listConfigurationSettingsWithTrace(
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
+        featureFlagTracingOptions: FeatureFlagTracing | undefined;
     },
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions

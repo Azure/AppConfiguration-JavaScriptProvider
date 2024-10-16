@@ -3,3 +3,5 @@
 
 export const FEATURE_MANAGEMENT_KEY_NAME = "feature_management";
 export const FEATURE_FLAGS_KEY_NAME = "feature_flags";
+export const CONDITIONS_KEY_NAME = "conditions";
+export const CLIENT_FILTERS_KEY_NAME = "client_filters";

@@ -46,3 +46,10 @@ export enum RequestType {
 
 // Tag names
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
+
+// Feature Flag Usage Tracing
+export const CUSTOM_FILTER_KEY = "CSTM";
+export const TIME_WINDOW_FILTER_KEY = "TIME";
+export const TARGETING_FILTER_KEY = "TRGT";
+
+export const DELIMITER = "+";

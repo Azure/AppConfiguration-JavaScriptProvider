@@ -9,10 +9,11 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME } from "./featureManagement/constants";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
 import { RefreshTimer } from "./refresh/RefreshTimer";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
+import { FeatureFlagTracing } from "./requestTracing/FeatureFlagTracing";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types";
 
 type PagedSettingSelector = SettingSelector & {
@@ -38,6 +39,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
+    #featureFlagTracing: FeatureFlagTracing = new FeatureFlagTracing();
 
     // Refresh
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
@@ -173,7 +175,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return {
             requestTracingEnabled: this.#requestTracingEnabled,
             initialLoadCompleted: this.#isInitialLoadCompleted,
-            appConfigOptions: this.#options
+            appConfigOptions: this.#options,
+            featureFlagTracingOptions: this.#featureFlagTracing
         };
     }
 
@@ -255,8 +258,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
-        const featureFlagsMap = new Map<string, any>();
+        const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -273,7 +275,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
-                        featureFlagsMap.set(setting.key, setting.value);
+                        featureFlagSettings.push(setting);
                     }
                 }
             }
@@ -281,7 +283,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // parse feature flags
-        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
+        const featureFlags = await Promise.all(
+            featureFlagSettings.map(setting => this.#parseFeatureFlag(setting))
+        );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
@@ -531,6 +535,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
+        const rawFlag = setting.value;
+        if (rawFlag === undefined) {
+            throw new Error("The value of configuration setting cannot be undefined.");
+        }
+        const featureFlag = JSON.parse(rawFlag);
+
+        
+
+        return featureFlag;
     }
 }
 
