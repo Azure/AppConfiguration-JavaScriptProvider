@@ -5,8 +5,8 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi";
-import { createMockedConnectionString } from "./utils/testHelper";
+import { load } from "./exportedApi.js";
+import { createMockedConnectionString } from "./utils/testHelper.js";
 import * as nock from "nock";
 
 class HttpRequestCountPolicy {

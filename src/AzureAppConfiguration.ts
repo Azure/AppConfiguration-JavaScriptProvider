@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { Disposable } from "./common/disposable";
+import { Disposable } from "./common/disposable.js";
 
 export type AzureAppConfiguration = {
     /**
