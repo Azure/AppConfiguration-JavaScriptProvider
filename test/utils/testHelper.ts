@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
+import { AppConfigurationClient, AppConfigurationClientOptions, ConfigurationSetting } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -10,6 +10,8 @@ import { RestError } from "@azure/core-rest-pipeline";
 import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
 import * as crypto from "crypto";
+import { ConfigurationClientManager } from "../../src/ConfigurationClientManager";
+import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper";
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -94,6 +96,26 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
     });
 }
 
+function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptions?: AppConfigurationClientOptions) {
+    // Stub the getClients method on the class prototype
+    sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+        const clients: ConfigurationClientWrapper[] = [];
+        const fakeEndpoint = createMockedEndpoint("fake");
+        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint), clientOptions));
+        clients.push(fakeStaticClientWrapper);
+
+        if (!isFailoverable) {
+            return clients;
+        }
+
+        const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
+        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint), clientOptions));
+        clients.push(fakeDynamicClientWrapper);
+
+        return clients;
+    });
+}
+
 function mockAppConfigurationClientGetConfigurationSetting(kvList) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         const found = kvList.find(elem => elem.key === settingId.key && elem.label === settingId.label);
@@ -106,6 +128,57 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList) {
         } else {
             throw new RestError("", { statusCode: 404 });
         }
+    });
+}
+
+function mockAppConfigurationClientListConfigurationSettingsWithFailure(...pages: ConfigurationSetting[][]) {
+    const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+
+    // Configure the stub to throw an error on the first call and return mockedKVs on the second call
+    stub.onFirstCall().throws(new RestError("Internal Server Error", { statusCode: 500 }));
+    stub.callsFake((listOptions) => {
+        let kvs = _filterKVs(pages.flat(), listOptions);
+        const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+            [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                kvs = _filterKVs(pages.flat(), listOptions);
+                return this;
+            },
+            next() {
+                const value = kvs.shift();
+                return Promise.resolve({ done: !value, value });
+            },
+            byPage(): AsyncIterableIterator<any> {
+                let remainingPages;
+                const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
+                return {
+                    [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                        remainingPages = [...pages];
+                        return this;
+                    },
+                    next() {
+                        const pageItems = remainingPages.shift();
+                        const pageEtag = pageEtags?.shift();
+                        if (pageItems === undefined) {
+                            return Promise.resolve({ done: true, value: undefined });
+                        } else {
+                            const items = _filterKVs(pageItems ?? [], listOptions);
+                            const etag = _sha256(JSON.stringify(items));
+                            const statusCode = pageEtag === etag ? 304 : 200;
+                            return Promise.resolve({
+                                done: false,
+                                value: {
+                                    items,
+                                    etag,
+                                    _response: { status: statusCode }
+                                }
+                            });
+                        }
+                    }
+                };
+            }
+        };
+
+        return mockIterator as any;
     });
 }
 
@@ -198,6 +271,8 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockAppConfigurationClientListConfigurationSettingsWithFailure,
+    mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,
 
