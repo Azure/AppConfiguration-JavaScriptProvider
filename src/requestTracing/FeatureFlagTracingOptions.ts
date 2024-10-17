@@ -30,7 +30,7 @@ export class FeatureFlagTracingOptions {
             this.usesCustomFilter = true;
         }
     }
-    
+
     usesAnyFeatureFilter(): boolean {
         return this.usesCustomFilter || this.usesTimeWindowFilter || this.usesTargetingFilter;
     }
@@ -39,27 +39,27 @@ export class FeatureFlagTracingOptions {
         if (!this.usesAnyFeatureFilter()) {
             return "";
         }
-        
+
         let result: string = "";
-        
+
         if (this.usesCustomFilter) {
-            result += CUSTOM_FILTER_KEY
+            result += CUSTOM_FILTER_KEY;
         }
-        
+
         if (this.usesTimeWindowFilter) {
             if (result !== "") {
                 result += DELIMITER;
             }
             result += TIME_WINDOW_FILTER_KEY;
         }
-        
+
         if (this.usesTargetingFilter) {
             if (result !== "") {
                 result += DELIMITER;
             }
             result += TARGETING_FILTER_KEY;
         }
-        
+
         return result;
     }
 }

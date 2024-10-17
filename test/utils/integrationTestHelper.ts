@@ -6,7 +6,7 @@ import * as fs from "fs";
 let server;
 
 const domain = "localhost";
-const port = 443
+const port = 443;
 
 function startMockServer(settings: ConfigurationSetting[]) {
     const attrs = [{ name: "commonName", value: domain }];
@@ -20,16 +20,16 @@ function startMockServer(settings: ConfigurationSetting[]) {
         key: fs.readFileSync("server.key"),
         cert: fs.readFileSync("server.cert")
     };
-      
+
     const responseBody = {
         items: [...settings]
     };
 
     server = https.createServer(options, (req, res) => {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(responseBody));  
+        res.end(JSON.stringify(responseBody));
     });
-      
+
     server.listen(port);
 }
 
@@ -43,4 +43,4 @@ export {
     startMockServer,
     closeMockServer,
     mockServerEndpoint
-}
+};
