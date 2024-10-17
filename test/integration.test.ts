@@ -46,12 +46,17 @@ describe("integration test", function () {
                 }
             }
         });
+        expect(headerPolicy.headers).not.undefined;
+        let correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("RequestType=Startup")).eq(true);
+
         await sleepInMs(1000 + 1);
         try {
             await settings.refresh();
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
-        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("RequestType=Watch")).eq(true);
         expect(correlationContext.includes("Filter=CSTM+TIME+TRGT")).eq(true);
