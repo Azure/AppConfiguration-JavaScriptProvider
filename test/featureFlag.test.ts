@@ -3,8 +3,8 @@
 
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
-import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper";
+import { load } from "./exportedApi.js";
+import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 

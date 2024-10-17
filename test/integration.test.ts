@@ -5,9 +5,9 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedFeatureFlag, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper";
-import { mockServerEndpoint, startMockServer, closeMockServer } from "./utils/integrationTestHelper";
-import { load } from "./exportedApi";
+import { createMockedConnectionString, createMockedFeatureFlag, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper.js";
+import { mockServerEndpoint, startMockServer, closeMockServer } from "./utils/integrationTestHelper.js";
+import { load } from "./exportedApi.js";
 
 describe("integration test", function () {
     this.timeout(15000);

@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
-import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions";
-import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions";
+import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
+import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,

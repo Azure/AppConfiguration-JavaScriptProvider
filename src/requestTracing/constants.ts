@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { VERSION } from "../version";
+import { VERSION } from "../version.js";
 
 export const ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED = "AZURE_APP_CONFIGURATION_TRACING_DISABLED";
 
