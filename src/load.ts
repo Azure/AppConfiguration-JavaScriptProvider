@@ -87,7 +87,7 @@ export async function load(
  * @param cdnEndpoint  The URL to the CDN.
  * @param appConfigOptions  Optional parameters.
  */
-export async function loadFromCdn(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+export async function loadFromCdn(cdnEndpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 
 export async function loadFromCdn(
     cdnEndpoint: string | URL,
