@@ -54,8 +54,8 @@ const mockedKVs = [{
     createMockedFeatureFlag("Beta", { enabled: true }),
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
-    createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { ETag: "ETag"}),
-    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { ETag: "ETag", label: "Test"})
+    createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag"}),
+    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag", label: "Test"})
 ]);
 
 describe("feature flags", function () {
