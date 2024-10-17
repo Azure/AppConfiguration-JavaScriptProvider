@@ -54,8 +54,8 @@ const mockedKVs = [{
     createMockedFeatureFlag("Beta", { enabled: true }),
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
-    createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "Etag"}),
-    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "Etag", label: "Test"})
+    createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag"}),
+    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag", label: "Test"})
 ]);
 
 describe("feature flags", function () {
@@ -187,7 +187,7 @@ describe("feature flags", function () {
         expect(featureFlag.id).equals("Telemetry_1");
         expect(featureFlag.telemetry).not.undefined;
         expect(featureFlag.telemetry.enabled).equals(true);
-        expect(featureFlag.telemetry.metadata.Etag).equals("Etag");
+        expect(featureFlag.telemetry.metadata.ETag).equals("ETag");
         expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("krkOsu9dVV9huwbQDPR6gkV_2T0buWxOCS-nNsj5-6g");
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_1`);
 
@@ -196,7 +196,7 @@ describe("feature flags", function () {
         expect(featureFlag.id).equals("Telemetry_2");
         expect(featureFlag.telemetry).not.undefined;
         expect(featureFlag.telemetry.enabled).equals(true);
-        expect(featureFlag.telemetry.metadata.Etag).equals("Etag");
+        expect(featureFlag.telemetry.metadata.ETag).equals("ETag");
         expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("Rc8Am7HIGDT7HC5Ovs3wKN_aGaaK_Uz1mH2e11gaK0o");
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_2?label=Test`);
     });
