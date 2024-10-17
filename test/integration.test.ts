@@ -25,7 +25,7 @@ describe("integration test", function () {
         }]
     };
 
-    it("should have request type in correlation-context header if feature flags use feature filters", async () => {
+    it("should have filter type in correlation-context header if feature flags use feature filters", async () => {
         // We are using self-signed certificate
         process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 

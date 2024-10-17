@@ -6,7 +6,7 @@ import * as fs from "fs";
 let server;
 
 const domain = "localhost";
-const port = 443;
+const port = 8443;
 
 function startMockServer(settings: ConfigurationSetting[]) {
     const attrs = [{ name: "commonName", value: domain }];
@@ -37,7 +37,7 @@ function closeMockServer() {
     server.close();
 }
 
-const mockServerEndpoint = "https://localhost:443";
+const mockServerEndpoint = `https://localhost:${port}`;
 
 export {
     startMockServer,
