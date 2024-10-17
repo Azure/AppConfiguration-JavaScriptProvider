@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
+import { ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
@@ -347,7 +347,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             this.#featureFlagSelectors = selectors;
             return featureFlagSettings;
-        }
+        };
 
         let featureFlagSettings: ConfigurationSetting[] = [];
         featureFlagSettings = await this.#executeWithFailoverPolicy(funcToExecute);
