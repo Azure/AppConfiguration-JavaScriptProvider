@@ -6,7 +6,7 @@ import * as fs from "fs";
 let server;
 
 const domain = "localhost";
-const port = 8443;
+const port = 54321;
 
 function startMockServer(settings: ConfigurationSetting[]) {
     const attrs = [{ name: "commonName", value: domain }];
