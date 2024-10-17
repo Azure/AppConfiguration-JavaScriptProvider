@@ -38,8 +38,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
     #clientManager: ConfigurationClientManager;
-    #client: AppConfigurationClient;
-    #clientEndpoint: string | undefined;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
@@ -662,7 +660,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientEndpoint}kv/${setting.key}`;
+        let featureFlagReference = `${this.#clientManager.endpoint}/kv/${setting.key}`;
         if (setting.label && setting.label.trim().length !== 0) {
             featureFlagReference += `?label=${setting.label}`;
         }
