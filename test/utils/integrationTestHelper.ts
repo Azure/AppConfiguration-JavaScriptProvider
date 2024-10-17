@@ -34,7 +34,7 @@ function startMockServer(settings: ConfigurationSetting[]) {
 }
 
 function closeMockServer() {
-    server.close();
+    server?.close();
 }
 
 const mockServerEndpoint = `https://localhost:${port}`;
