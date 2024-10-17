@@ -12,7 +12,6 @@ export const FEATURE_FLAG_ID_KEY_NAME = "FeatureFlagId";
 export const FEATURE_FLAG_REFERENCE_KEY_NAME = "FeatureFlagReference";
 export const ALLOCATION_KEY_NAME = "allocation";
 export const DEFAULT_WHEN_ENABLED_KEY_NAME = "default_when_enabled";
-export const DEFAULT_WHEN_DISABLED_KEY_NAME = "default_when_disabled";
 export const PERCENTILE_KEY_NAME = "percentile";
 export const FROM_KEY_NAME = "from";
 export const TO_KEY_NAME = "to";

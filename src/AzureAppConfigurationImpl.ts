@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
-import { 
+import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
     NAME_KEY_NAME,
@@ -21,7 +21,6 @@ import {
     FEATURE_FLAG_REFERENCE_KEY_NAME,
     ALLOCATION_KEY_NAME,
     DEFAULT_WHEN_ENABLED_KEY_NAME,
-    DEFAULT_WHEN_DISABLED_KEY_NAME,
     PERCENTILE_KEY_NAME,
     FROM_KEY_NAME,
     TO_KEY_NAME,
@@ -650,15 +649,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
             }
 
-            rawAllocationId += `\npercentiles=`;
+            rawAllocationId += "\npercentiles=";
 
             const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
             if (percentileList) {
                 const sortedPercentileList = percentileList
-                    .filter(p => 
-                        (p[FROM_KEY_NAME] !== undefined) && 
-                        (p[TO_KEY_NAME] !== undefined) && 
-                        (p[VARIANT_KEY_NAME] !== undefined) && 
+                    .filter(p =>
+                        (p[FROM_KEY_NAME] !== undefined) &&
+                        (p[TO_KEY_NAME] !== undefined) &&
+                        (p[VARIANT_KEY_NAME] !== undefined) &&
                         (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
                     .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
 
@@ -670,9 +669,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 rawAllocationId += percentileAllocation.join(";");
             }
         }
-        
+
         if (variantsForExperiementation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
-            // All fields required for generating allocation id are missing, short-circuit and return empty string 
+            // All fields required for generating allocation id are missing, short-circuit and return empty string
             return "";
         }
 
@@ -682,15 +681,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const variantsList = featureFlag[VARIANTS_KEY_NAME];
             if (variantsList) {
                 const sortedVariantsList = variantsList
-                    .filter(v => 
-                        (v[NAME_KEY_NAME] !== undefined) && 
+                    .filter(v =>
+                        (v[NAME_KEY_NAME] !== undefined) &&
                         variantsForExperiementation.includes(v[NAME_KEY_NAME]))
                     .sort((a, b) => (a.name > b.name ? 1 : -1));
-                
+
                     const variantConfiguration: string[] = [];
                     for (const variant of sortedVariantsList) {
                         const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], null, 0) ?? "";
-                        variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`)
+                        variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`);
                     }
                     rawAllocationId += variantConfiguration.join(";");
             }
