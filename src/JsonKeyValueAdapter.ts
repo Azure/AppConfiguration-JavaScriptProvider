@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
-import { IKeyValueAdapter } from "./IKeyValueAdapter";
+import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 
 export class JsonKeyValueAdapter implements IKeyValueAdapter {
     static readonly #ExcludedJsonContentTypes: string[] = [

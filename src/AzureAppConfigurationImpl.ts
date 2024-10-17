@@ -3,17 +3,17 @@
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
-import { IKeyValueAdapter } from "./IKeyValueAdapter";
-import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
-import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants";
-import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
-import { RefreshTimer } from "./refresh/RefreshTimer";
-import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
-import { KeyFilter, LabelFilter, SettingSelector } from "./types";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
+import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
+import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
+import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
+import { Disposable } from "./common/disposable.js";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants.js";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
+import { RefreshTimer } from "./refresh/RefreshTimer.js";
+import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
