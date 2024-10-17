@@ -411,3 +411,7 @@ types/
 
 # examples
 examples/package-lock.json
+
+# cert
+*.cert
+*.key

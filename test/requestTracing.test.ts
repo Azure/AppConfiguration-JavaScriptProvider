@@ -5,22 +5,8 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper.js";
 import { load } from "./exportedApi.js";
-
-class HttpRequestHeadersPolicy {
-    headers: any;
-    name: string;
-
-    constructor() {
-        this.headers = {};
-        this.name = "HttpRequestHeadersPolicy";
-    }
-    sendRequest(req, next) {
-        this.headers = req.headers;
-        return next(req).then(resp => resp);
-    }
-}
 
 describe("request tracing", function () {
     this.timeout(15000);
