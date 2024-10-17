@@ -670,7 +670,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
 
-        if (variantsForExperiementation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
+        if (featureFlag[ALLOCATION_KEY_NAME] === undefined || (variantsForExperiementation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined)) {
             // All fields required for generating allocation id are missing, short-circuit and return empty string
             return "";
         }
