@@ -258,7 +258,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        this.#featureFlagTracing.resetFeatureFlagTracing();
         const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
@@ -282,6 +281,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
             selector.pageEtags = pageEtags;
         }
+
+        this.#featureFlagTracing.resetFeatureFlagTracing();
 
         // parse feature flags
         const featureFlags = await Promise.all(
