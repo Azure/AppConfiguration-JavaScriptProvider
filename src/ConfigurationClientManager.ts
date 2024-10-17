@@ -27,7 +27,7 @@ interface IConfigurationClientManager {
 
 export class ConfigurationClientManager implements IConfigurationClientManager {
     isFailoverable: boolean;
-    #endpoint: string;
+    endpoint: string;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
@@ -54,21 +54,21 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
             this.#secret = parseConnectionString(connectionString, SecretSection);
             this.#id = parseConnectionString(connectionString, IdSection);
             // TODO: need to check if it's CDN or not
-            this.#endpoint = parseConnectionString(connectionString, EndpointSection);
+            this.endpoint = parseConnectionString(connectionString, EndpointSection);
 
         } else if (connectionStringOrEndpoint instanceof URL) {
             const credential = credentialOrOptions as TokenCredential;
             options = appConfigOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(options);
             staticClient = new AppConfigurationClient(connectionStringOrEndpoint.toString(), credential, this.#clientOptions);
-            this.#endpoint = connectionStringOrEndpoint.toString();
+            this.endpoint = connectionStringOrEndpoint.toString();
             this.#credential = credential;
         } else {
             throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
-        this.#staticClients = [new ConfigurationClientWrapper(this.#endpoint, staticClient)];
-        this.#validDomain = getValidDomain(this.#endpoint);
+        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint, staticClient)];
+        this.#validDomain = getValidDomain(this.endpoint);
         this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();
     }
 
@@ -80,7 +80,7 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
         const currentTime = Date.now();
         if (this.#isFallbackClientDiscoveryDue(currentTime)) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
-            const host = new URL(this.#endpoint).hostname;
+            const host = new URL(this.endpoint).hostname;
             await this.#discoverFallbackClients(host);
         }
 
@@ -101,7 +101,7 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
         if (this.isFailoverable &&
             currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval).getTime()) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
-            const url = new URL(this.#endpoint);
+            const url = new URL(this.endpoint);
             await this.#discoverFallbackClients(url.hostname);
         }
     }
@@ -129,7 +129,7 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
             for (const host of srvTargetHosts) {
                 if (isValidEndpoint(host, this.#validDomain)) {
                     const targetEndpoint = `https://${host}`;
-                    if (targetEndpoint.toLowerCase() === this.#endpoint.toLowerCase()) {
+                    if (targetEndpoint.toLowerCase() === this.endpoint.toLowerCase()) {
                         continue;
                     }
                     const client = this.#newConfigurationClient(targetEndpoint);
