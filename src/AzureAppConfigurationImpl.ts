@@ -19,6 +19,7 @@ import {
     ETAG_KEY_NAME,
     FEATURE_FLAG_ID_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
+    ALLOCATION_ID_KEY_NAME,
     ALLOCATION_KEY_NAME,
     DEFAULT_WHEN_ENABLED_KEY_NAME,
     PERCENTILE_KEY_NAME,
@@ -565,11 +566,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
+            const allocationId = await this.#generateAllocationId(featureFlag);
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
                 [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
-                [ALLOCATION_KEY_NAME]: await this.#generateAllocationId(featureFlag),
+                ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
         }
