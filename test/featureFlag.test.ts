@@ -55,7 +55,62 @@ const mockedKVs = [{
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
     createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag"}),
-    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag", label: "Test"})
+    createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag", label: "Test"}),
+    createMockedFeatureFlag("NoPercentileAndSeed", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ { name: "Control" }, { name: "Test" } ],
+        allocation: {
+            default_when_disabled: "Control",
+            user: [ {users: ["Jeff"], variant: "Test"} ]
+        }
+    }),
+    createMockedFeatureFlag("SeedOnly", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ { name: "Control" }, { name: "Test" } ],
+        allocation: {
+            default_when_disabled: "Control",
+            user: [ {users: ["Jeff"], variant: "Test"} ],
+            seed: "123"
+        }
+    }),
+    createMockedFeatureFlag("DefaultWhenEnabledOnly", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ { name: "Control" }, { name: "Test" } ],
+        allocation: {
+            default_when_enabled: "Control"
+        }
+    }),
+    createMockedFeatureFlag("PercentileOnly", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ ],
+        allocation: {
+            percentile: [ { from: 0, to: 50, variant: "Control" }, { from: 50, to: 100, variant: "Test" } ]
+        }
+    }),
+    createMockedFeatureFlag("SimpleConfigurationValue", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ { name: "Control", configuration_value: "standard" }, { name: "Test", configuration_value: "special" } ],
+        allocation: {
+            default_when_enabled: "Control",
+            percentile: [ { from: 0, to: 50, variant: "Control" }, { from: 50, to: 100, variant: "Test" } ],
+            seed: "123"
+        }
+    }),
+    createMockedFeatureFlag("ComplexConfigurationValue", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [ { name: "Control", configuration_value: { title: { size: 100, color: "red" }, options: [ 1, 2, 3 ]} }, { name: "Test", configuration_value: { title: { size: 200, color: "blue" }, options: [ "1", "2", "3" ]} } ],
+        allocation: {
+            default_when_enabled: "Control",
+            percentile: [ { from: 0, to: 50, variant: "Control" }, { from: 50, to: 100, variant: "Test" } ],
+            seed: "123"
+        }
+    }),
 ]);
 
 describe("feature flags", function () {
@@ -199,5 +254,57 @@ describe("feature flags", function () {
         expect(featureFlag.telemetry.metadata.ETag).equals("ETag");
         expect(featureFlag.telemetry.metadata.FeatureFlagId).equals("Rc8Am7HIGDT7HC5Ovs3wKN_aGaaK_Uz1mH2e11gaK0o");
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_2?label=Test`);
+    });
+
+    it("should not populate allocation id", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { keyFilter: "*" } ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+
+        const NoPercentileAndSeed = (featureFlags as any[]).find(item => item.id === "NoPercentileAndSeed");
+        expect(NoPercentileAndSeed).not.undefined;
+        expect(NoPercentileAndSeed?.telemetry.metadata.AllocationId).to.be.undefined;
+    });
+
+    it("should populate allocation id", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { keyFilter: "*" } ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+
+        const SeedOnly = (featureFlags as any[]).find(item => item.id === "SeedOnly");
+        expect(SeedOnly).not.undefined;
+        expect(SeedOnly?.telemetry.metadata.AllocationId).equals("qZApcKdfXscxpgn_8CMf");
+
+        const DefaultWhenEnabledOnly = (featureFlags as any[]).find(item => item.id === "DefaultWhenEnabledOnly");
+        expect(DefaultWhenEnabledOnly).not.undefined;
+        expect(DefaultWhenEnabledOnly?.telemetry.metadata.AllocationId).equals("k486zJjud_HkKaL1C4qB");
+
+        const PercentileOnly = (featureFlags as any[]).find(item => item.id === "PercentileOnly");
+        expect(PercentileOnly).not.undefined;
+        expect(PercentileOnly?.telemetry.metadata.AllocationId).equals("5YUbmP0P5s47zagO_LvI");
+
+        const SimpleConfigurationValue = (featureFlags as any[]).find(item => item.id === "SimpleConfigurationValue");
+        expect(SimpleConfigurationValue).not.undefined;
+        expect(SimpleConfigurationValue?.telemetry.metadata.AllocationId).equals("QIOEOTQJr2AXo4dkFFqy");
+
+        const ComplexConfigurationValue = (featureFlags as any[]).find(item => item.id === "ComplexConfigurationValue");
+        expect(ComplexConfigurationValue).not.undefined;
+        expect(ComplexConfigurationValue?.telemetry.metadata.AllocationId).equals("72A0b4sZ5HSAtaQxFe73");
     });
 });
