@@ -140,19 +140,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#configMap.size;
     }
 
-    entries(): IterableIterator<[string, any]> {
+    entries(): MapIterator<[string, any]> {
         return this.#configMap.entries();
     }
 
-    keys(): IterableIterator<string> {
+    keys(): MapIterator<string> {
         return this.#configMap.keys();
     }
 
-    values(): IterableIterator<any> {
+    values(): MapIterator<any> {
         return this.#configMap.values();
     }
 
-    [Symbol.iterator](): IterableIterator<[string, any]> {
+    [Symbol.iterator](): MapIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
     // #endregion
