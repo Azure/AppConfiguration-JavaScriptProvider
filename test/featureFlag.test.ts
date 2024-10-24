@@ -111,6 +111,34 @@ const mockedKVs = [{
             seed: "123"
         }
     }),
+    createMockedFeatureFlag("TelemetryVariantPercentile", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [
+            {
+                name: "True_Override",
+                configuration_value: {
+                    someOtherKey: {
+                        someSubKey: "someSubValue"
+                    },
+                    someKey4: [3, 1, 4,  true],
+                    someKey: "someValue",
+                    someKey3: 3.14,
+                    someKey2: 3                                    
+                }
+            }
+        ],
+        allocation: {
+            default_when_enabled: "True_Override",
+            percentile: [
+                {
+                    variant: "True_Override",
+                    from: 0,
+                    to: 100
+                }
+            ]
+        }
+    })
 ]);
 
 describe("feature flags", function () {
@@ -305,6 +333,10 @@ describe("feature flags", function () {
 
         const ComplexConfigurationValue = (featureFlags as any[]).find(item => item.id === "ComplexConfigurationValue");
         expect(ComplexConfigurationValue).not.undefined;
-        expect(ComplexConfigurationValue?.telemetry.metadata.AllocationId).equals("72A0b4sZ5HSAtaQxFe73");
+        expect(ComplexConfigurationValue?.telemetry.metadata.AllocationId).equals("4Bes0AlwuO8kYX-YkBWs");
+
+        const TelemetryVariantPercentile = (featureFlags as any[]).find(item => item.id === "TelemetryVariantPercentile");
+        expect(TelemetryVariantPercentile).not.undefined;
+        expect(TelemetryVariantPercentile?.telemetry.metadata.AllocationId).equals("YsdJ4pQpmhYa8KEhRLUn");
     });
 });

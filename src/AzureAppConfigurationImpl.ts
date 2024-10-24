@@ -9,6 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
 import { Disposable } from "./common/disposable";
+import { base64Helper, jsonSorter } from "./common/utils";
 import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
@@ -690,7 +691,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                     const variantConfiguration: string[] = [];
                     for (const variant of sortedVariantsList) {
-                        const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], null, 0) ?? "";
+                        const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], jsonSorter) ?? "";
                         variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`);
                     }
                     rawAllocationId += variantConfiguration.join(";");
@@ -748,15 +749,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return first15Bytes.toString("base64url");
         }
     }
-}
-
-function base64Helper(str: string): string {
-    const bytes = new TextEncoder().encode(str); // UTF-8 encoding
-    let chars = "";
-    for (let i = 0; i < bytes.length; i++) {
-        chars += String.fromCharCode(bytes[i]);
-    }
-    return btoa(chars);
 }
 
 function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
