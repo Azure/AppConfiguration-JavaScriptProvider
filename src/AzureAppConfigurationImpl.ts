@@ -65,7 +65,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#options = options;
 
         // Enable request tracing if not opt-out
-        this.#requestTracingEnabled = requestTracingEnabled();
+        this.#requestTracingEnabled = options?.requestTracingOptions?.enabled ?? requestTracingEnabled();
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
@@ -142,19 +142,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#configMap.size;
     }
 
-    entries(): IterableIterator<[string, any]> {
+    entries(): MapIterator<[string, any]> {
         return this.#configMap.entries();
     }
 
-    keys(): IterableIterator<string> {
+    keys(): MapIterator<string> {
         return this.#configMap.keys();
     }
 
-    values(): IterableIterator<any> {
+    values(): MapIterator<any> {
         return this.#configMap.values();
     }
 
-    [Symbol.iterator](): IterableIterator<[string, any]> {
+    [Symbol.iterator](): MapIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
     // #endregion
