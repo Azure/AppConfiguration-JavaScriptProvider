@@ -121,10 +121,10 @@ const mockedKVs = [{
                     someOtherKey: {
                         someSubKey: "someSubValue"
                     },
-                    someKey4: [3, 1, 4,  true],
+                    someKey4: [3, 1, 4, true],
                     someKey: "someValue",
                     someKey3: 3.14,
-                    someKey2: 3                                    
+                    someKey2: 3
                 }
             }
         ],
