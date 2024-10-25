@@ -11,9 +11,9 @@ import * as RequestTracing from "./requestTracing/constants";
 const TCP_ORIGIN = "_origin._tcp";
 const ALT = "_alt";
 const TCP = "_tcp";
-const EndpointSection = "Endpoint";
-const IdSection = "Id";
-const SecretSection = "Secret";
+const Endpoint = "Endpoint";
+const Id = "Id";
+const Secret = "Secret";
 const AzConfigDomainLabel = ".azconfig.";
 const AppConfigDomainLabel = ".appconfig.";
 const FallbackClientRefreshExpireInterval = 60 * 60 * 1000; // 1 hour in milliseconds
@@ -51,10 +51,10 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
             options = credentialOrOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(options);
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
-            this.#secret = parseConnectionString(connectionString, SecretSection);
-            this.#id = parseConnectionString(connectionString, IdSection);
+            this.#secret = parseConnectionString(connectionString, Secret);
+            this.#id = parseConnectionString(connectionString, Id);
             // TODO: need to check if it's CDN or not
-            this.endpoint = parseConnectionString(connectionString, EndpointSection);
+            this.endpoint = parseConnectionString(connectionString, Endpoint);
 
         } else if (connectionStringOrEndpoint instanceof URL) {
             const credential = credentialOrOptions as TokenCredential;
@@ -173,7 +173,7 @@ async function querySrvTargetHost(host) {
     if (isFailoverableEnv()) {
         dns = require("dns/promises");
     } else {
-        return results;
+        throw new Error("Failover is not supported in the current environment.");
     }
 
     try {
@@ -215,7 +215,11 @@ async function querySrvTargetHost(host) {
             }
         }
     } catch (err) {
-        throw new Error(`Failed to lookup origin SRV records: ${err.message}`);
+        if (err.code === "ENOTFOUND") {
+            return results; // No SRV records found, return empty array
+        } else {
+            throw new Error(`Failed to lookup SRV records: ${err.message}`);
+        }
     }
 
     return results;
@@ -264,7 +268,7 @@ function buildConnectionString(endpoint, secret, id) {
         return "";
     }
 
-    return `${EndpointSection}=${endpoint};${IdSection}=${id};${SecretSection}=${secret}`;
+    return `${Endpoint}=${endpoint};${Id}=${id};${Secret}=${secret}`;
 }
 
 /**
