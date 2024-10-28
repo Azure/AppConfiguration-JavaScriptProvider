@@ -138,6 +138,63 @@ const mockedKVs = [{
                 }
             ]
         }
+    }),
+    createMockedFeatureFlag("Complete", {
+        enabled: true,
+        telemetry: { enabled: true },
+        variants: [
+            {
+                name: "Large",
+                configuration_value: 100
+            },
+            {
+                name: "Medium",
+                configuration_value: 50
+            },
+            {
+                name: "Small",
+                configuration_value: 10
+            }
+        ],
+        allocation: {
+            percentile: [
+                {
+                    variant: "Large",
+                    from: 0,
+                    to: 25
+                },
+                {
+                    variant: "Medium",
+                    from: 25,
+                    to: 55
+                },
+                {
+                    variant: "Small",
+                    from: 55,
+                    to: 95
+                },
+                {
+                    variant: "Large",
+                    from: 95,
+                    to: 100
+                }
+            ],
+            group: [
+                {
+                    variant: "Large",
+                    groups: ["beta"]
+                }
+            ],
+            user: [
+                {
+                    variant: "Small",
+                    users: ["Richel"]
+                }
+            ],
+            seed: "test-seed",
+            default_when_enabled: "Medium",
+            default_when_disabled: "Medium"
+        }
     })
 ]);
 
@@ -338,5 +395,9 @@ describe("feature flags", function () {
         const TelemetryVariantPercentile = (featureFlags as any[]).find(item => item.id === "TelemetryVariantPercentile");
         expect(TelemetryVariantPercentile).not.undefined;
         expect(TelemetryVariantPercentile?.telemetry.metadata.AllocationId).equals("YsdJ4pQpmhYa8KEhRLUn");
+
+        const Complete = (featureFlags as any[]).find(item => item.id === "Complete");
+        expect(Complete).not.undefined;
+        // expect(Complete?.telemetry.metadata.AllocationId).equals("CgBF0x9j_Ip5ccCrdiNO");
     });
 });
