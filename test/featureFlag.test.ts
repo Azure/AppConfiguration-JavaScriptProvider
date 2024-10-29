@@ -398,6 +398,6 @@ describe("feature flags", function () {
 
         const Complete = (featureFlags as any[]).find(item => item.id === "Complete");
         expect(Complete).not.undefined;
-        // expect(Complete?.telemetry.metadata.AllocationId).equals("CgBF0x9j_Ip5ccCrdiNO");
+        expect(Complete?.telemetry.metadata.AllocationId).equals("DER2rF-ZYog95c4CBZoi");
     });
 });
