@@ -3,17 +3,17 @@
 
 import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions";
-import { IKeyValueAdapter } from "./IKeyValueAdapter";
-import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter";
-import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions";
-import { Disposable } from "./common/disposable";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, ENABLED_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants";
-import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter";
-import { RefreshTimer } from "./refresh/RefreshTimer";
-import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils";
-import { KeyFilter, LabelFilter, SettingSelector } from "./types";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
+import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
+import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
+import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
+import { Disposable } from "./common/disposable.js";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, TELEMETRY_KEY_NAME, ENABLED_KEY_NAME, METADATA_KEY_NAME, ETAG_KEY_NAME, FEATURE_FLAG_ID_KEY_NAME, FEATURE_FLAG_REFERENCE_KEY_NAME } from "./featureManagement/constants.js";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
+import { RefreshTimer } from "./refresh/RefreshTimer.js";
+import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -66,7 +66,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#options = options;
 
         // Enable request tracing if not opt-out
-        this.#requestTracingEnabled = requestTracingEnabled();
+        this.#requestTracingEnabled = options?.requestTracingOptions?.enabled ?? requestTracingEnabled();
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
@@ -143,19 +143,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#configMap.size;
     }
 
-    entries(): IterableIterator<[string, any]> {
+    entries(): MapIterator<[string, any]> {
         return this.#configMap.entries();
     }
 
-    keys(): IterableIterator<string> {
+    keys(): MapIterator<string> {
         return this.#configMap.keys();
     }
 
-    values(): IterableIterator<any> {
+    values(): MapIterator<any> {
         return this.#configMap.values();
     }
 
-    [Symbol.iterator](): IterableIterator<[string, any]> {
+    [Symbol.iterator](): MapIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
     // #endregion

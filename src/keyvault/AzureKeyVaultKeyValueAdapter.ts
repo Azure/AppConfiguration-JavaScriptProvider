@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
-import { IKeyValueAdapter } from "../IKeyValueAdapter";
-import { KeyVaultOptions } from "./KeyVaultOptions";
+import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
+import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
