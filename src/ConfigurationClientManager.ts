@@ -72,7 +72,7 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
         this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();
     }
 
-    async getClients() {
+    async getClients() : Promise<ConfigurationClientWrapper[]> {
         if (!this.isFailoverable) {
             return this.#staticClients;
         }
@@ -163,10 +163,8 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
 
 /**
  * Query SRV records and return target hosts.
- * @param {string} host - The host to query.
- * @returns {Promise<string[]>} - A promise that resolves to an array of target hosts.
  */
-async function querySrvTargetHost(host) {
+async function querySrvTargetHost(host: string): Promise<string[]> {
     const results: string[] = [];
     let dns;
 
@@ -227,13 +225,8 @@ async function querySrvTargetHost(host) {
 
 /**
  * Parses the connection string to extract the value associated with a specific token.
- *
- * @param {string} connectionString - The connection string containing tokens.
- * @param {string} token - The token whose value needs to be extracted.
- * @returns {string} The value associated with the token, or an empty string if not found.
- * @throws {Error} If the connection string is empty or the token is not found.
  */
-function parseConnectionString(connectionString, token) {
+function parseConnectionString(connectionString, token: string): string {
     if (!connectionString) {
         throw new Error("connectionString is empty");
     }
@@ -257,13 +250,8 @@ function parseConnectionString(connectionString, token) {
 /**
  * Builds a connection string from the given endpoint, secret, and id.
  * Returns an empty string if either secret or id is empty.
- *
- * @param {string} endpoint - The endpoint to include in the connection string.
- * @param {string} secret - The secret to include in the connection string.
- * @param {string} id - The ID to include in the connection string.
- * @returns {string} - The formatted connection string or an empty string if invalid input.
  */
-function buildConnectionString(endpoint, secret, id) {
+function buildConnectionString(endpoint, secret, id: string): string {
     if (!secret || !id) {
         return "";
     }
@@ -273,11 +261,8 @@ function buildConnectionString(endpoint, secret, id) {
 
 /**
  * Extracts a valid domain from the given endpoint URL based on trusted domain labels.
- *
- * @param {string} endpoint - The endpoint URL.
- * @returns {string} - The valid domain or an empty string if no valid domain is found.
  */
-export function getValidDomain(endpoint) {
+export function getValidDomain(endpoint: string): string {
     try {
         const url = new URL(endpoint);
         const trustedDomainLabels = [AzConfigDomainLabel, AppConfigDomainLabel];
@@ -298,12 +283,8 @@ export function getValidDomain(endpoint) {
 
 /**
  * Checks if the given host ends with the valid domain.
- *
- * @param {string} host - The host to be validated.
- * @param {string} validDomain - The valid domain to check against.
- * @returns {boolean} - True if the host ends with the valid domain, false otherwise.
  */
-export function isValidEndpoint(host, validDomain) {
+export function isValidEndpoint(host: string, validDomain: string): boolean {
     if (!validDomain) {
         return false;
     }

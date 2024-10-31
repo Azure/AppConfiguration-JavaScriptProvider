@@ -203,23 +203,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #executeWithFailoverPolicy(funcToExecute) {
-        const clients = await this.#clientManager.getClients();
-        if (clients.length === 0) {
+        const clientWrappers = await this.#clientManager.getClients();
+        if (clientWrappers.length === 0) {
             this.#clientManager.refreshClients();
             throw new Error("No client is available to connect to the target App Configuration store.");
         }
 
-        for (const client of clients) {
+        for (const clientWrapper of clientWrappers) {
             let successful = false;
             try {
-                const result = await funcToExecute(client.client);
+                const result = await funcToExecute(clientWrapper.client);
                 this.#isFailoverRequest = false;
                 successful = true;
-                updateClientBackoffStatus(client, successful);
+                updateClientBackoffStatus(clientWrapper, successful);
                 return result;
             } catch (error) {
                 if (isFailoverableError(error)) {
-                    updateClientBackoffStatus(client, successful);
+                    updateClientBackoffStatus(clientWrapper, successful);
                     this.#isFailoverRequest = true;
                     continue;
                 }
@@ -318,6 +318,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
         const funcToExecute = async (client) => {
             const featureFlagSettings: ConfigurationSetting[] = [];
+            // deep copy selectors to avoid modification if current client fails
             const selectors = JSON.parse(
                 JSON.stringify(this.#featureFlagSelectors)
             );
