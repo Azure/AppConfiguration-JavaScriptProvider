@@ -3,10 +3,10 @@
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfiguration } from "./AzureAppConfiguration";
-import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
-import * as RequestTracing from "./requestTracing/constants";
+import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
+import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
+import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
+import * as RequestTracing from "./requestTracing/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
@@ -80,6 +80,23 @@ export async function load(
         }
         throw error;
     }
+}
+
+/**
+ * Loads the data from a CDN and returns an instance of AzureAppConfiguration.
+ * @param cdnEndpoint  The URL to the CDN.
+ * @param appConfigOptions  Optional parameters.
+ */
+export async function loadFromCdn(cdnEndpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
+export async function loadFromCdn(
+    cdnEndpoint: string | URL,
+    appConfigOptions?: AzureAppConfigurationOptions
+): Promise<AzureAppConfiguration> {
+    const emptyTokenCredential: TokenCredential = {
+        getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
+    };
+    return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
 }
 
 function instanceOfTokenCredential(obj: unknown) {

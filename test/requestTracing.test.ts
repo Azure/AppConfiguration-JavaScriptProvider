@@ -5,8 +5,8 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper";
-import { load } from "./exportedApi";
+import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { load } from "./exportedApi.js";
 
 class HttpRequestHeadersPolicy {
     headers: any;
@@ -120,6 +120,20 @@ describe("request tracing", function () {
 
         // clean up
         delete process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED;
+    });
+
+    it("should disable request tracing by RequestTracingOptions", async () => {
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions,
+                requestTracingOptions: {
+                    enabled: false
+                }
+            });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).undefined;
     });
 
     it("should have request type in correlation-context header when refresh is enabled", async () => {
