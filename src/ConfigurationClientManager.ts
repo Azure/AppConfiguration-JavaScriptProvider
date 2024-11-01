@@ -8,24 +8,20 @@ import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./A
 import { isFailoverableEnv } from "./requestTracing/utils";
 import * as RequestTracing from "./requestTracing/constants";
 
-const TCP_ORIGIN = "_origin._tcp";
-const ALT = "_alt";
-const TCP = "_tcp";
-const Endpoint = "Endpoint";
-const Id = "Id";
-const Secret = "Secret";
+const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
+const ALT_KEY_NAME = "_alt";
+const TCP_KEY_NAME = "_tcp";
+const Endpoint_KEY_NAME = "Endpoint";
+const Id_KEY_NAME = "Id";
+const Secret_KEY_NAME = "Secret";
+const ConnectionStringRegex = /Endpoint=(.*);Id=(.*);Secret=(.*)/;
 const AzConfigDomainLabel = ".azconfig.";
 const AppConfigDomainLabel = ".appconfig.";
 const FallbackClientRefreshExpireInterval = 60 * 60 * 1000; // 1 hour in milliseconds
 const MinimalClientRefreshInterval = 30 * 1000; // 30 seconds in milliseconds
-const SrvQueryTimeout = 5000; // 5 seconds
+const SrvQueryTimeout = 5* 1000; // 5 seconds in milliseconds
 
-interface IConfigurationClientManager {
-    getClients(): Promise<ConfigurationClientWrapper[]>;
-    refreshClients(): Promise<void>;
-}
-
-export class ConfigurationClientManager implements IConfigurationClientManager {
+export class ConfigurationClientManager {
     isFailoverable: boolean;
     endpoint: string;
     #secret : string;
@@ -44,24 +40,41 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
         appConfigOptions?: AzureAppConfigurationOptions
     ) {
         let staticClient: AppConfigurationClient;
-        let options: AzureAppConfigurationOptions;
+        let options: AzureAppConfigurationOptions | undefined;
 
-        if (typeof connectionStringOrEndpoint === "string") {
+        if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
             const connectionString = connectionStringOrEndpoint;
             options = credentialOrOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(options);
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
-            this.#secret = parseConnectionString(connectionString, Secret);
-            this.#id = parseConnectionString(connectionString, Id);
-            // TODO: need to check if it's CDN or not
-            this.endpoint = parseConnectionString(connectionString, Endpoint);
+            const regexMatch = connectionString.match(ConnectionStringRegex);
+            if (regexMatch) {
+                this.endpoint = regexMatch[1];
+                this.#id = regexMatch[2];
+                this.#secret = regexMatch[3];
+            } else {
+                throw new Error(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
+            }
+        } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
+            let endpoint = connectionStringOrEndpoint;
+            // ensure string is a valid URL.
+            if (typeof endpoint === "string") {
+                try {
+                    endpoint = new URL(endpoint);
+                } catch (error) {
+                    if (error.code === "ERR_INVALID_URL") {
+                        throw new Error("Invalid endpoint URL.", { cause: error });
+                    } else {
+                        throw error;
+                    }
+                }
+            }
 
-        } else if (connectionStringOrEndpoint instanceof URL) {
             const credential = credentialOrOptions as TokenCredential;
             options = appConfigOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(options);
             staticClient = new AppConfigurationClient(connectionStringOrEndpoint.toString(), credential, this.#clientOptions);
-            this.endpoint = connectionStringOrEndpoint.toString();
+            this.endpoint = endpoint.toString();
             this.#credential = credential;
         } else {
             throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
@@ -84,7 +97,7 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
             await this.#discoverFallbackClients(host);
         }
 
-        // Filter static clients where BackoffEndTime is less than or equal to now
+        // Filter static clients whose backoff time has ended
         let availableClients = this.#staticClients.filter(client => client.backoffEndTime <= currentTime);
         // If there are dynamic clients, filter and concatenate them
         if (this.#dynamicClients && this.#dynamicClients.length > 0) {
@@ -101,8 +114,8 @@ export class ConfigurationClientManager implements IConfigurationClientManager {
         if (this.isFailoverable &&
             currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval).getTime()) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
-            const url = new URL(this.endpoint);
-            await this.#discoverFallbackClients(url.hostname);
+            const host = new URL(this.endpoint).hostname;
+            await this.#discoverFallbackClients(host);
         }
     }
 
@@ -176,7 +189,7 @@ async function querySrvTargetHost(host: string): Promise<string[]> {
 
     try {
         // Look up SRV records for the origin host
-        const originRecords = await dns.resolveSrv(`${TCP_ORIGIN}.${host}`);
+        const originRecords = await dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
         if (originRecords.length === 0) {
             return results;
         }
@@ -189,9 +202,9 @@ async function querySrvTargetHost(host: string): Promise<string[]> {
         let index = 0;
         let moreAltRecordsExist = true;
         while (moreAltRecordsExist) {
-            const currentAlt = `${ALT}${index}`;
+            const currentAlt = `${ALT_KEY_NAME}${index}`;
             try {
-                const altRecords = await dns.resolveSrv(`${currentAlt}.${TCP}.${originHost}`);
+                const altRecords = await dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
                 if (altRecords.length === 0) {
                     moreAltRecordsExist = false;
                     break; // No more alternate records, exit loop
@@ -224,30 +237,6 @@ async function querySrvTargetHost(host: string): Promise<string[]> {
 }
 
 /**
- * Parses the connection string to extract the value associated with a specific token.
- */
-function parseConnectionString(connectionString, token: string): string {
-    if (!connectionString) {
-        throw new Error("connectionString is empty");
-    }
-
-    // Token format is "token="
-    const searchToken = `${token}=`;
-    const startIndex = connectionString.indexOf(searchToken);
-    if (startIndex === -1) {
-        throw new Error(`Token ${token} not found in connectionString`);
-    }
-
-    // Move startIndex to the beginning of the token value
-    const valueStartIndex = startIndex + searchToken.length;
-    const endIndex = connectionString.indexOf(";", valueStartIndex);
-    const valueEndIndex = endIndex === -1 ? connectionString.length : endIndex;
-
-    // Extract and return the token value
-    return connectionString.substring(valueStartIndex, valueEndIndex);
-}
-
-/**
  * Builds a connection string from the given endpoint, secret, and id.
  * Returns an empty string if either secret or id is empty.
  */
@@ -256,7 +245,7 @@ function buildConnectionString(endpoint, secret, id: string): string {
         return "";
     }
 
-    return `${Endpoint}=${endpoint};${Id}=${id};${Secret}=${secret}`;
+    return `${Endpoint_KEY_NAME}=${endpoint};${Id_KEY_NAME}=${id};${Secret_KEY_NAME}=${secret}`;
 }
 
 /**
@@ -313,5 +302,9 @@ export function getClientOptions(options?: AzureAppConfigurationOptions): AppCon
             userAgentPrefix
         }
     });
+}
+
+export function instanceOfTokenCredential(obj: unknown) {
+    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }
 
