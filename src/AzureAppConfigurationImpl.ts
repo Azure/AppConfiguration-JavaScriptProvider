@@ -567,7 +567,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
-            const allocationId = await this.#generateAllocationId(featureFlag);
+            let allocationId = "";
+            if (featureFlag[ALLOCATION_KEY_NAME] !== undefined) {
+                allocationId = await this.#generateAllocationId(featureFlag);
+            }
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
                 [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
@@ -642,51 +645,50 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         let rawAllocationId = "";
         // Only default variant when enabled and variants allocated by percentile involve in the experimentation
         // The allocation id is genearted from default variant when enabled and percentile allocation
-        const variantsForExperiementation: string[] = [];
+        const variantsForExperimentation: string[] = [];
 
-        if (featureFlag[ALLOCATION_KEY_NAME]) {
-            rawAllocationId += `seed=${featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] ?? ""}\ndefault_when_enabled=`;
+        rawAllocationId += `seed=${featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] ?? ""}\ndefault_when_enabled=`;
 
-            if (featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]) {
-                variantsForExperiementation.push(featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]);
-                rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
-            }
-
-            rawAllocationId += "\npercentiles=";
-
-            const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
-            if (percentileList) {
-                const sortedPercentileList = percentileList
-                    .filter(p =>
-                        (p[FROM_KEY_NAME] !== undefined) &&
-                        (p[TO_KEY_NAME] !== undefined) &&
-                        (p[VARIANT_KEY_NAME] !== undefined) &&
-                        (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
-                    .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
-
-                const percentileAllocation: string[] = [];
-                for (const percentile of sortedPercentileList) {
-                    variantsForExperiementation.push(percentile[VARIANT_KEY_NAME]);
-                    percentileAllocation.push(`${percentile[FROM_KEY_NAME]},${base64Helper(percentile[VARIANT_KEY_NAME])},${percentile[TO_KEY_NAME]}`);
-                }
-                rawAllocationId += percentileAllocation.join(";");
-            }
+        if (featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]) {
+            variantsForExperimentation.push(featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]);
+            rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
         }
 
-        if (featureFlag[ALLOCATION_KEY_NAME] === undefined || (variantsForExperiementation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined)) {
+        rawAllocationId += "\npercentiles=";
+
+        const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
+        if (percentileList) {
+            const sortedPercentileList = percentileList
+                .filter(p =>
+                    (p[FROM_KEY_NAME] !== undefined) &&
+                    (p[TO_KEY_NAME] !== undefined) &&
+                    (p[VARIANT_KEY_NAME] !== undefined) &&
+                    (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
+                .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
+
+            const percentileAllocation: string[] = [];
+            for (const percentile of sortedPercentileList) {
+                variantsForExperimentation.push(percentile[VARIANT_KEY_NAME]);
+                percentileAllocation.push(`${percentile[FROM_KEY_NAME]},${base64Helper(percentile[VARIANT_KEY_NAME])},${percentile[TO_KEY_NAME]}`);
+            }
+            rawAllocationId += percentileAllocation.join(";");
+        }
+        
+
+        if (variantsForExperimentation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
             // All fields required for generating allocation id are missing, short-circuit and return empty string
             return "";
         }
 
         rawAllocationId += "\nvariants=";
 
-        if (variantsForExperiementation.length !== 0) {
+        if (variantsForExperimentation.length !== 0) {
             const variantsList = featureFlag[VARIANTS_KEY_NAME];
             if (variantsList) {
                 const sortedVariantsList = variantsList
                     .filter(v =>
                         (v[NAME_KEY_NAME] !== undefined) &&
-                        variantsForExperiementation.includes(v[NAME_KEY_NAME]))
+                        variantsForExperimentation.includes(v[NAME_KEY_NAME]))
                     .sort((a, b) => (a.name > b.name ? 1 : -1));
 
                     const variantConfiguration: string[] = [];
