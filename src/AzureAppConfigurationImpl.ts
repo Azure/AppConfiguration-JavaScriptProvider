@@ -673,7 +673,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
             rawAllocationId += percentileAllocation.join(";");
         }
-        
 
         if (variantsForExperimentation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
             // All fields required for generating allocation id are missing, short-circuit and return empty string
