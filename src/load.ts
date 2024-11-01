@@ -5,7 +5,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
-import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { ConfigurationClientManager, instanceOfTokenCredential } from "./ConfigurationClientManager.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
@@ -31,32 +31,12 @@ export async function load(
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
     let options: AzureAppConfigurationOptions | undefined;
-    let clientManager: ConfigurationClientManager;
+    const clientManager = new ConfigurationClientManager(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
 
-    // input validation
-    if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
-        const connectionString = connectionStringOrEndpoint;
+    if (!instanceOfTokenCredential(credentialOrOptions)) {
         options = credentialOrOptions as AzureAppConfigurationOptions;
-        clientManager = new ConfigurationClientManager(connectionString, options);
-    } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
-        let endpoint = connectionStringOrEndpoint;
-        // ensure string is a valid URL.
-        if (typeof endpoint === "string") {
-            try {
-                endpoint = new URL(endpoint);
-            } catch (error) {
-                if (error.code === "ERR_INVALID_URL") {
-                    throw new Error("Invalid endpoint URL.", { cause: error });
-                } else {
-                    throw error;
-                }
-            }
-        }
-        const credential = credentialOrOptions as TokenCredential;
-        options = appConfigOptions;
-        clientManager = new ConfigurationClientManager(endpoint, credential, options);
     } else {
-        throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
+        options = appConfigOptions;
     }
 
     try {
@@ -73,8 +53,4 @@ export async function load(
         }
         throw error;
     }
-}
-
-function instanceOfTokenCredential(obj: unknown) {
-    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }

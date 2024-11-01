@@ -206,11 +206,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const clientWrappers = await this.#clientManager.getClients();
         if (clientWrappers.length === 0) {
             this.#clientManager.refreshClients();
-            throw new Error("No client is available to connect to the target App Configuration store.");
+            throw new Error("No client is available to connect to the target app configuration store.");
         }
 
+        let successful: boolean;
         for (const clientWrapper of clientWrappers) {
-            let successful = false;
+            successful = false;
             try {
                 const result = await funcToExecute(clientWrapper.client);
                 this.#isFailoverRequest = false;
@@ -235,7 +236,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
         // validate selectors
         const selectors = getValidKeyValueSelectors(this.#options?.selectors);
-        let loadedSettings: ConfigurationSetting[] = [];
 
         const funcToExecute = async (client) => {
             const loadedSettings: ConfigurationSetting[] = [];
@@ -260,8 +260,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return loadedSettings;
         };
 
-        loadedSettings = await this.#executeWithFailoverPolicy(funcToExecute);
-        return loadedSettings;
+        return await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
     }
 
     /**
@@ -350,8 +349,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return featureFlagSettings;
         };
 
-        let featureFlagSettings: ConfigurationSetting[] = [];
-        featureFlagSettings = await this.#executeWithFailoverPolicy(funcToExecute);
+        const featureFlagSettings = await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -480,13 +478,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (needRefresh) {
-            try {
-                await this.#loadSelectedAndWatchedKeyValues();
-            } catch (error) {
-                // if refresh failed, backoff
-                this.#refreshTimer.backoff();
-                throw error;
-            }
+            await this.#loadSelectedAndWatchedKeyValues();
         }
 
         this.#refreshTimer.reset();
@@ -505,7 +497,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // check if any feature flag is changed
         const funcToExecute = async (client) => {
-            const needRefresh = false;
             for (const selector of this.#featureFlagSelectors) {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -525,18 +516,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     }
                 }
             }
-            return needRefresh;
+            return false;
         };
 
         const needRefresh: boolean = await this.#executeWithFailoverPolicy(funcToExecute);
         if (needRefresh) {
-            try {
-                await this.#loadFeatureFlags();
-            } catch (error) {
-                // if refresh failed, backoff
-                this.#featureFlagRefreshTimer.backoff();
-                throw error;
-            }
+            await this.#loadFeatureFlags();
         }
 
         this.#featureFlagRefreshTimer.reset();
@@ -850,5 +835,6 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
 }
 
 function isFailoverableError(error: any): boolean {
-    return isRestError(error) && (error.statusCode === 408 || error.statusCode === 429 || (error.statusCode !== undefined && error.statusCode >= 500));
+    return isRestError(error) && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 || error.statusCode === 429 ||
+        (error.statusCode !== undefined && error.statusCode >= 500));
 }

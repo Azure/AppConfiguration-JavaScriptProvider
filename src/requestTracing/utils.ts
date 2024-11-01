@@ -20,7 +20,7 @@ import {
     RequestType,
     SERVICE_FABRIC_ENV_VAR,
     CORRELATION_CONTEXT_HEADER_NAME,
-    FAILOVER_REQUEST_TYPE
+    FAILOVER_REQUEST_TAG
 } from "./constants";
 
 // Utils
@@ -104,7 +104,7 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     }
 
     if (isFailoverRequest) {
-        contextParts.push(FAILOVER_REQUEST_TYPE);
+        contextParts.push(FAILOVER_REQUEST_TAG);
     }
 
     return contextParts.join(",");
