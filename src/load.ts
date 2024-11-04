@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
+import { PipelinePolicy, PipelineRequest, SendRequest } from "@azure/core-rest-pipeline";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
@@ -96,6 +97,27 @@ export async function loadFromCdn(
     const emptyTokenCredential: TokenCredential = {
         getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
     };
+    // the api version supports sas token authentication
+    const apiVersion = "2024-09-01-preview";
+    const policyName = "CdnRequestApiVersionPolicy";
+    
+    const apiVersionPolicy: PipelinePolicy = {
+        name: policyName,
+        sendRequest: async (request: PipelineRequest, next: SendRequest) => {
+            const url = new URL(request.url);
+            url.searchParams.set("api-version", apiVersion);
+            request.url = url.toString();       
+            return next(request);
+        },
+    };
+
+    if (appConfigOptions === undefined) {
+        appConfigOptions = { clientOptions: {}};
+    }
+    const policies = appConfigOptions.clientOptions?.additionalPolicies || [];
+    policies.push({policy: apiVersionPolicy, position: "perCall"});
+    appConfigOptions.clientOptions = { ...appConfigOptions.clientOptions,  additionalPolicies: policies};
+
     return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
 }
 
