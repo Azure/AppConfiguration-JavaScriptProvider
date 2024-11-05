@@ -66,7 +66,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#options = options;
 
         // Enable request tracing if not opt-out
-        this.#requestTracingEnabled = options?.requestTracingOptions?.enabled ?? requestTracingEnabled();
+        this.#requestTracingEnabled = requestTracingEnabled();
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));

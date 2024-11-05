@@ -6,7 +6,6 @@ import { KeyVaultOptions } from "./keyvault/KeyVaultOptions.js";
 import { RefreshOptions } from "./RefreshOptions.js";
 import { SettingSelector } from "./types.js";
 import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions.js";
-import { RequestTracingOptions } from "./requestTracing/RequestTracingOptions.js";
 
 export const MaxRetries = 2;
 export const MaxRetryDelayInMs = 60000;
@@ -48,9 +47,4 @@ export interface AzureAppConfigurationOptions {
      * Specifies options used to configure feature flags.
      */
     featureFlagOptions?: FeatureFlagOptions;
-
-    /**
-     * Specifies options used to configure request tracing.
-     */
-    requestTracingOptions?: RequestTracingOptions;
 }
