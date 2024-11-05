@@ -2,24 +2,23 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper";
+import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions";
-import { isFailoverableEnv } from "./requestTracing/utils";
-import * as RequestTracing from "./requestTracing/constants";
+import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
+import { isFailoverableEnv } from "./requestTracing/utils.js";
+import * as RequestTracing from "./requestTracing/constants.js";
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
 const TCP_KEY_NAME = "_tcp";
-const Endpoint_KEY_NAME = "Endpoint";
-const Id_KEY_NAME = "Id";
-const Secret_KEY_NAME = "Secret";
-const ConnectionStringRegex = /Endpoint=(.*);Id=(.*);Secret=(.*)/;
-const AzConfigDomainLabel = ".azconfig.";
-const AppConfigDomainLabel = ".appconfig.";
-const FallbackClientRefreshExpireInterval = 60 * 60 * 1000; // 1 hour in milliseconds
-const MinimalClientRefreshInterval = 30 * 1000; // 30 seconds in milliseconds
-const SrvQueryTimeout = 5* 1000; // 5 seconds in milliseconds
+const ENDPOINT_KEY_NAME = "Endpoint";
+const ID_KEY_NAME = "Id";
+const SECRET_KEY_NAME = "Secret";
+const AZCONFIG_DOMAIN_LABEL = ".azconfig.";
+const APPCONFIG_DOMAIN_LABEL = ".appconfig.";
+const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
+const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
+const SRV_QUERY_TIMEOUT = 5* 1000; // 5 seconds in milliseconds
 
 export class ConfigurationClientManager {
     isFailoverable: boolean;
@@ -47,6 +46,7 @@ export class ConfigurationClientManager {
             options = credentialOrOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(options);
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
+            const ConnectionStringRegex = /Endpoint=(.*);Id=(.*);Secret=(.*)/;
             const regexMatch = connectionString.match(ConnectionStringRegex);
             if (regexMatch) {
                 this.endpoint = regexMatch[1];
@@ -112,7 +112,7 @@ export class ConfigurationClientManager {
     async refreshClients() {
         const currentTime = Date.now();
         if (this.isFailoverable &&
-            currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval).getTime()) {
+            currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL).getTime()) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
             const host = new URL(this.endpoint).hostname;
             await this.#discoverFallbackClients(host);
@@ -121,7 +121,7 @@ export class ConfigurationClientManager {
 
     async #discoverFallbackClients(host) {
         const timeout = setTimeout(() => {
-        }, SrvQueryTimeout);
+        }, SRV_QUERY_TIMEOUT);
         const srvResults = await querySrvTargetHost(host);
 
         try {
@@ -167,10 +167,10 @@ export class ConfigurationClientManager {
     }
 
     #isFallbackClientDiscoveryDue(dateTime) {
-        return dateTime >= this.#lastFallbackClientRefreshAttempt + MinimalClientRefreshInterval
+        return dateTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL
             && (!this.#dynamicClients
                 || this.#dynamicClients.every(client => dateTime < client.backoffEndTime)
-                || dateTime >= this.#lastFallbackClientRefreshTime + FallbackClientRefreshExpireInterval);
+                || dateTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL);
     }
 }
 
@@ -181,8 +181,8 @@ async function querySrvTargetHost(host: string): Promise<string[]> {
     const results: string[] = [];
     let dns;
 
-    if (isFailoverableEnv()) {
-        dns = require("dns/promises");
+    if (typeof global !== "undefined" && global.dns) {
+        dns = global.dns;
     } else {
         throw new Error("Failover is not supported in the current environment.");
     }
@@ -245,7 +245,7 @@ function buildConnectionString(endpoint, secret, id: string): string {
         return "";
     }
 
-    return `${Endpoint_KEY_NAME}=${endpoint};${Id_KEY_NAME}=${id};${Secret_KEY_NAME}=${secret}`;
+    return `${ENDPOINT_KEY_NAME}=${endpoint};${ID_KEY_NAME}=${id};${SECRET_KEY_NAME}=${secret}`;
 }
 
 /**
@@ -254,7 +254,7 @@ function buildConnectionString(endpoint, secret, id: string): string {
 export function getValidDomain(endpoint: string): string {
     try {
         const url = new URL(endpoint);
-        const trustedDomainLabels = [AzConfigDomainLabel, AppConfigDomainLabel];
+        const trustedDomainLabels = [AZCONFIG_DOMAIN_LABEL, APPCONFIG_DOMAIN_LABEL];
         const host = url.hostname.toLowerCase();
 
         for (const label of trustedDomainLabels) {

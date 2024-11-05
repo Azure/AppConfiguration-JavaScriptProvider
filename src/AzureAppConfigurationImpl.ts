@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
@@ -181,7 +181,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         };
     }
 
-    async #executeWithFailoverPolicy(funcToExecute) {
+    async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         const clientWrappers = await this.#clientManager.getClients();
         if (clientWrappers.length === 0) {
             this.#clientManager.refreshClients();
