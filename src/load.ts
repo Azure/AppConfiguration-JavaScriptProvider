@@ -82,23 +82,6 @@ export async function load(
     }
 }
 
-/**
- * Loads the data from a CDN and returns an instance of AzureAppConfiguration.
- * @param cdnEndpoint  The URL to the CDN.
- * @param appConfigOptions  Optional parameters.
- */
-export async function loadFromCdn(cdnEndpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
-
-export async function loadFromCdn(
-    cdnEndpoint: string | URL,
-    appConfigOptions?: AzureAppConfigurationOptions
-): Promise<AzureAppConfiguration> {
-    const emptyTokenCredential: TokenCredential = {
-        getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
-    };
-    return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
-}
-
 function instanceOfTokenCredential(obj: unknown) {
     return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
 }
