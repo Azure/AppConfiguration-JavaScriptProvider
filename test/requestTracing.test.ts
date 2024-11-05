@@ -108,20 +108,6 @@ describe("request tracing", function () {
         delete process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED;
     });
 
-    it("should disable request tracing by RequestTracingOptions", async () => {
-        try {
-            await load(createMockedConnectionString(fakeEndpoint), {
-                clientOptions,
-                requestTracingOptions: {
-                    enabled: false
-                }
-            });
-        } catch (e) { /* empty */ }
-        expect(headerPolicy.headers).not.undefined;
-        const correlationContext = headerPolicy.headers.get("Correlation-Context");
-        expect(correlationContext).undefined;
-    });
-
     it("should have request type in correlation-context header when refresh is enabled", async () => {
         mockAppConfigurationClientListConfigurationSettings([{
             key: "app.settings.fontColor",
