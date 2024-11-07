@@ -2,7 +2,6 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
-import { PipelinePolicy, PipelineRequest, SendRequest } from "@azure/core-rest-pipeline";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
