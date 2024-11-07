@@ -153,7 +153,7 @@ function isDevEnvironment(): boolean {
     return false;
 }
 
-function isBrowser() {
+export function isBrowser() {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window
     const isWindowDefinedAsExpected = typeof window === "object" && typeof Window === "function" && window instanceof Window;
     // https://developer.mozilla.org/en-US/docs/Web/API/Document
@@ -162,7 +162,7 @@ function isBrowser() {
     return isWindowDefinedAsExpected && isDocumentDefinedAsExpected;
 }
 
-function isWebWorker() {
+export function isWebWorker() {
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
     const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
@@ -173,10 +173,3 @@ function isWebWorker() {
     return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }
 
-export function isFailoverableEnv() {
-    if (isBrowser() || isWebWorker()) {
-        return false;
-    }
-
-    return true;
-}
