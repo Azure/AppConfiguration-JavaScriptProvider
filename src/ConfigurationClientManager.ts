@@ -5,7 +5,7 @@ import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/ap
 import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
-import { isFailoverableEnv } from "./requestTracing/utils.js";
+import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
@@ -14,19 +14,20 @@ const TCP_KEY_NAME = "_tcp";
 const ENDPOINT_KEY_NAME = "Endpoint";
 const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
-const AZCONFIG_DOMAIN_LABEL = ".azconfig.";
-const APPCONFIG_DOMAIN_LABEL = ".appconfig.";
+const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
 const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const SRV_QUERY_TIMEOUT = 5* 1000; // 5 seconds in milliseconds
+const SRV_QUERY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
 
 export class ConfigurationClientManager {
     isFailoverable: boolean;
+    dns: any;
     endpoint: string;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
     #clientOptions: AppConfigurationClientOptions | undefined;
+    #appConfigOptions: AzureAppConfigurationOptions | undefined;
     #validDomain: string;
     #staticClients: ConfigurationClientWrapper[];
     #dynamicClients: ConfigurationClientWrapper[];
@@ -39,12 +40,11 @@ export class ConfigurationClientManager {
         appConfigOptions?: AzureAppConfigurationOptions
     ) {
         let staticClient: AppConfigurationClient;
-        let options: AzureAppConfigurationOptions | undefined;
 
         if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
             const connectionString = connectionStringOrEndpoint;
-            options = credentialOrOptions as AzureAppConfigurationOptions;
-            this.#clientOptions = getClientOptions(options);
+            this.#appConfigOptions = credentialOrOptions as AzureAppConfigurationOptions;
+            this.#clientOptions = getClientOptions(this.#appConfigOptions);
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
             const ConnectionStringRegex = /Endpoint=(.*);Id=(.*);Secret=(.*)/;
             const regexMatch = connectionString.match(ConnectionStringRegex);
@@ -71,8 +71,8 @@ export class ConfigurationClientManager {
             }
 
             const credential = credentialOrOptions as TokenCredential;
-            options = appConfigOptions as AzureAppConfigurationOptions;
-            this.#clientOptions = getClientOptions(options);
+            this.#appConfigOptions = appConfigOptions as AzureAppConfigurationOptions;
+            this.#clientOptions = getClientOptions(this.#appConfigOptions);
             staticClient = new AppConfigurationClient(connectionStringOrEndpoint.toString(), credential, this.#clientOptions);
             this.endpoint = endpoint.toString();
             this.#credential = credential;
@@ -82,7 +82,23 @@ export class ConfigurationClientManager {
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint, staticClient)];
         this.#validDomain = getValidDomain(this.endpoint);
-        this.isFailoverable = (options?.replicaDiscoveryEnabled ?? true) && isFailoverableEnv();
+    }
+
+    async init() {
+        if (this.#appConfigOptions?.replicaDiscoveryEnabled === false || isBrowser() || isWebWorker()) {
+            this.isFailoverable = false;
+            return;
+        }
+
+        try {
+            this.dns = await import("dns/promises");
+        }catch (error) {
+            this.isFailoverable = false;
+            console.warn("Failed to load the dns module:", error.message);
+            return;
+        }
+
+        this.isFailoverable = true;
     }
 
     async getClients() : Promise<ConfigurationClientWrapper[]> {
@@ -120,50 +136,37 @@ export class ConfigurationClientManager {
     }
 
     async #discoverFallbackClients(host) {
-        const timeout = setTimeout(() => {
-        }, SRV_QUERY_TIMEOUT);
-        const srvResults = await querySrvTargetHost(host);
-
+        let result;
         try {
-            const result = await Promise.race([srvResults, timeout]);
+            result = await Promise.race([
+                new Promise((_, reject) => setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
+                this.#querySrvTargetHost(host)
+            ]);
+        } catch (error) {
+            throw new Error(`Fail to build fallback clients, ${error.message}`);
+        }
 
-            if (result === timeout) {
-                throw new Error("SRV record query timed out.");
-            }
+        const srvTargetHosts = result as string[];
+        // Shuffle the list of SRV target hosts
+        for (let i = srvTargetHosts.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [srvTargetHosts[i], srvTargetHosts[j]] = [srvTargetHosts[j], srvTargetHosts[i]];
+        }
 
-            const srvTargetHosts = result as string[];
-            // Shuffle the list of SRV target hosts
-            for (let i = srvTargetHosts.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [srvTargetHosts[i], srvTargetHosts[j]] = [srvTargetHosts[j], srvTargetHosts[i]];
-            }
-
-            const newDynamicClients: ConfigurationClientWrapper[] = [];
-            for (const host of srvTargetHosts) {
-                if (isValidEndpoint(host, this.#validDomain)) {
-                    const targetEndpoint = `https://${host}`;
-                    if (targetEndpoint.toLowerCase() === this.endpoint.toLowerCase()) {
-                        continue;
-                    }
-                    const client = this.#newConfigurationClient(targetEndpoint);
-                    newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
+        const newDynamicClients: ConfigurationClientWrapper[] = [];
+        for (const host of srvTargetHosts) {
+            if (isValidEndpoint(host, this.#validDomain)) {
+                const targetEndpoint = `https://${host}`;
+                if (targetEndpoint.toLowerCase() === this.endpoint.toLowerCase()) {
+                    continue;
                 }
+                const client = this.#credential ? new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) : new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
+                newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
             }
-
-            this.#dynamicClients = newDynamicClients;
-            this.#lastFallbackClientRefreshTime = Date.now();
-        } catch (err) {
-            console.warn(`Fail to build fallback clients, ${err.message}`);
-        }
-    }
-
-    #newConfigurationClient(endpoint) {
-        if (this.#credential) {
-            return new AppConfigurationClient(endpoint, this.#credential, this.#clientOptions);
         }
 
-        const connectionStr = buildConnectionString(endpoint, this.#secret, this.#id);
-        return new AppConfigurationClient(connectionStr, this.#clientOptions);
+        this.#dynamicClients = newDynamicClients;
+        this.#lastFallbackClientRefreshTime = Date.now();
     }
 
     #isFallbackClientDiscoveryDue(dateTime) {
@@ -172,41 +175,31 @@ export class ConfigurationClientManager {
                 || this.#dynamicClients.every(client => dateTime < client.backoffEndTime)
                 || dateTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL);
     }
-}
 
-/**
+    /**
  * Query SRV records and return target hosts.
  */
-async function querySrvTargetHost(host: string): Promise<string[]> {
-    const results: string[] = [];
-    let dns;
+    async #querySrvTargetHost(host: string): Promise<string[]> {
+        const results: string[] = [];
 
-    if (typeof global !== "undefined" && global.dns) {
-        dns = global.dns;
-    } else {
-        throw new Error("Failover is not supported in the current environment.");
-    }
+        try {
+            // Look up SRV records for the origin host
+            const originRecords = await this.dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
+            if (originRecords.length === 0) {
+                return results;
+            }
 
-    try {
-        // Look up SRV records for the origin host
-        const originRecords = await dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
-        if (originRecords.length === 0) {
-            return results;
-        }
+            // Add the first origin record to results
+            const originHost = originRecords[0].name;
+            results.push(originHost);
 
-        // Add the first origin record to results
-        const originHost = originRecords[0].name;
-        results.push(originHost);
-
-        // Look up SRV records for alternate hosts
-        let index = 0;
-        let moreAltRecordsExist = true;
-        while (moreAltRecordsExist) {
-            const currentAlt = `${ALT_KEY_NAME}${index}`;
-            try {
-                const altRecords = await dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
+            // Look up SRV records for alternate hosts
+            let index = 0;
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+                const currentAlt = `${ALT_KEY_NAME}${index}`;
+                const altRecords = await this.dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
                 if (altRecords.length === 0) {
-                    moreAltRecordsExist = false;
                     break; // No more alternate records, exit loop
                 }
 
@@ -217,23 +210,17 @@ async function querySrvTargetHost(host: string): Promise<string[]> {
                     }
                 });
                 index++;
-            } catch (err) {
-                if (err.code === "ENOTFOUND") {
-                    break; // No more alternate records, exit loop
-                } else {
-                    throw new Error(`Failed to lookup alternate SRV records: ${err.message}`);
-                }
+            }
+        } catch (err) {
+            if (err.code === "ENOTFOUND") {
+                return results; // No more SRV records found, return results
+            } else {
+                throw new Error(`Failed to lookup SRV records: ${err.message}`);
             }
         }
-    } catch (err) {
-        if (err.code === "ENOTFOUND") {
-            return results; // No SRV records found, return empty array
-        } else {
-            throw new Error(`Failed to lookup SRV records: ${err.message}`);
-        }
-    }
 
-    return results;
+        return results;
+    }
 }
 
 /**
@@ -254,10 +241,9 @@ function buildConnectionString(endpoint, secret, id: string): string {
 export function getValidDomain(endpoint: string): string {
     try {
         const url = new URL(endpoint);
-        const trustedDomainLabels = [AZCONFIG_DOMAIN_LABEL, APPCONFIG_DOMAIN_LABEL];
         const host = url.hostname.toLowerCase();
 
-        for (const label of trustedDomainLabels) {
+        for (const label of TRUSTED_DOMAIN_LABELS) {
             const index = host.lastIndexOf(label);
             if (index !== -1) {
                 return host.substring(index);

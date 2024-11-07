@@ -32,6 +32,7 @@ export async function load(
     const startTimestamp = Date.now();
     let options: AzureAppConfigurationOptions | undefined;
     const clientManager = new ConfigurationClientManager(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
+    await clientManager.init();
 
     if (!instanceOfTokenCredential(credentialOrOptions)) {
         options = credentialOrOptions as AzureAppConfigurationOptions;
