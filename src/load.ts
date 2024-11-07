@@ -98,26 +98,11 @@ export async function loadFromCdn(
         getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
     };
 
-    // the api version supports sas token authentication
-    const apiVersion = "2024-09-01-preview";
-    const policyName = "CdnRequestApiVersionPolicy";
-    const apiVersionPolicy: PipelinePolicy = {
-        name: policyName,
-        sendRequest: async (request: PipelineRequest, next: SendRequest) => {
-            const url = new URL(request.url);
-            url.searchParams.set("api-version", apiVersion);
-            request.url = url.toString();
-            return next(request);
-        },
-    };
     if (appConfigOptions === undefined) {
         appConfigOptions = { clientOptions: {}};
     }
-    const policies = appConfigOptions.clientOptions?.additionalPolicies || [];
-    // The policy position should be perRetry so that the policy will be processed after the api version policy added by the SDK.
-    // https://learn.microsoft.com/en-us/dotnet/api/azure.core.httppipelineposition?view=azure-dotnet#fields
-    policies.push({policy: apiVersionPolicy, position: "perRetry"});
-    appConfigOptions.clientOptions = { ...appConfigOptions.clientOptions, additionalPolicies: policies};
+    // Specify the api version that supports sas token authentication
+    appConfigOptions.clientOptions = { ...appConfigOptions.clientOptions, apiVersion: "2024-09-01-preview"};
 
     return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
 }
