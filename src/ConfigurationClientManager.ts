@@ -177,8 +177,8 @@ export class ConfigurationClientManager {
     }
 
     /**
- * Query SRV records and return target hosts.
- */
+     * Query SRV records and return target hosts.
+     */
     async #querySrvTargetHost(host: string): Promise<string[]> {
         const results: string[] = [];
 
