@@ -55,4 +55,12 @@ export interface AzureAppConfigurationOptions {
      * If not specified, the default value is true.
      */
     replicaDiscoveryEnabled?: boolean;
+
+    /**
+     * Specifies whether to enable load balancing or not.
+     *
+     * @remarks
+     * If not specified, the default value is false.
+     */
+    loadBalancingEnabled?: boolean;
 }
