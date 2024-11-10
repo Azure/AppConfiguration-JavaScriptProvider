@@ -10,6 +10,11 @@ import * as RequestTracing from "./requestTracing/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
+// Empty token credential to be used when loading from CDN
+const emptyTokenCredential: TokenCredential = {
+    getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
+};
+
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
  * @param connectionString  The connection string for the App Configuration store.
@@ -67,7 +72,7 @@ export async function load(
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(client, clientEndpoint, options);
+        const appConfiguration = new AzureAppConfigurationImpl(client, clientEndpoint, options, credentialOrOptions === emptyTokenCredential);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -93,10 +98,6 @@ export async function loadFromCdn(
     cdnEndpoint: string | URL,
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
-    const emptyTokenCredential: TokenCredential = {
-        getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
-    };
-
     if (appConfigOptions === undefined) {
         appConfigOptions = { clientOptions: {}};
     }

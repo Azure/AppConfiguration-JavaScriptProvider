@@ -13,6 +13,7 @@ import {
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
+    CDN_USED_TAG,
     KUBERNETES_ENV_VAR,
     NODEJS_DEV_ENV_VAL,
     NODEJS_ENV_VAR,
@@ -27,18 +28,19 @@ export function listConfigurationSettingsWithTrace(
     requestTracingOptions: {
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
+        isCdnUsed: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
     },
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
 
     const actualListOptions = { ...listOptions };
     if (requestTracingEnabled) {
         actualListOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
             }
         };
     }
@@ -50,19 +52,20 @@ export function getConfigurationSettingWithTrace(
     requestTracingOptions: {
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
+        isCdnUsed: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
     },
     client: AppConfigurationClient,
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions } = requestTracingOptions;
+    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
     const actualGetOptions = { ...getOptions };
 
     if (requestTracingEnabled) {
         actualGetOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
             }
         };
     }
@@ -70,7 +73,7 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean): string {
+export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isCdnUsed: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -88,6 +91,9 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
             tags.push(KEY_VAULT_CONFIGURED_TAG);
         }
+    }
+    if (isCdnUsed) {
+        tags.push(CDN_USED_TAG);
     }
 
     const contextParts: string[] = [];

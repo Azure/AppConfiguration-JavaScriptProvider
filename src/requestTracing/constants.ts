@@ -46,3 +46,4 @@ export enum RequestType {
 
 // Tag names
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
+export const CDN_USED_TAG = "CDN";

@@ -59,6 +59,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #client: AppConfigurationClient;
     #clientEndpoint: string | undefined;
     #options: AzureAppConfigurationOptions | undefined;
+    #isCdnUsed: boolean;
     #isInitialLoadCompleted: boolean = false;
 
     // Refresh
@@ -80,11 +81,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     constructor(
         client: AppConfigurationClient,
         clientEndpoint: string | undefined,
-        options: AzureAppConfigurationOptions | undefined
+        options: AzureAppConfigurationOptions | undefined,
+        isCdnUsed: boolean
     ) {
         this.#client = client;
         this.#clientEndpoint = clientEndpoint;
         this.#options = options;
+        this.#isCdnUsed = isCdnUsed;
 
         // Enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -197,6 +200,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return {
             requestTracingEnabled: this.#requestTracingEnabled,
             initialLoadCompleted: this.#isInitialLoadCompleted,
+            isCdnUsed: this.#isCdnUsed,
             appConfigOptions: this.#options
         };
     }
