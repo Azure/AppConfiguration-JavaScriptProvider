@@ -835,6 +835,6 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
 }
 
 function isFailoverableError(error: any): boolean {
-    return isRestError(error) && (error.code === 'ENOTFOUND' ||
+    return isRestError(error) && (error.code === "ENOTFOUND" ||
         (error.statusCode !== undefined && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500)));
 }
