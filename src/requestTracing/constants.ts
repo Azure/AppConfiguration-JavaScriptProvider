@@ -43,7 +43,7 @@ export enum RequestType {
     STARTUP = "Startup",
     WATCH = "Watch"
 }
-export const FAILOVER_REQUEST_TAG = "Failover";
 
 // Tag names
+export const FAILOVER_REQUEST_TAG = "Failover";
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
