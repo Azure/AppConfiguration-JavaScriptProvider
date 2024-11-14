@@ -421,11 +421,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         let needRefresh = false;
         for (const sentinel of this.#sentinels.values()) {
             const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
+                onlyIfChanged: !this.#isCdnUsed // if CDN is used, do not send conditional request
             });
 
-            if (response?.statusCode === 200 // created or changed
-                || (response === undefined && sentinel.etag !== undefined) // deleted
+            if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) || 
+                (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
                 needRefresh = true;
