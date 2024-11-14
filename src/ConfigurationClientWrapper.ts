@@ -12,21 +12,21 @@ export class ConfigurationClientWrapper {
     endpoint: string;
     client: AppConfigurationClient;
     backoffEndTime: number = 0; // Timestamp
-    failedAttempts: number = 0;
+    #failedAttempts: number = 0;
 
     constructor(endpoint: string, client: AppConfigurationClient) {
         this.endpoint = endpoint;
         this.client = client;
     }
-}
 
-export function updateClientBackoffStatus(clientWrapper: ConfigurationClientWrapper, successfull: boolean) {
-    if (successfull) {
-        clientWrapper.failedAttempts = 0;
-        clientWrapper.backoffEndTime = Date.now();
-    } else {
-        clientWrapper.failedAttempts += 1;
-        clientWrapper.backoffEndTime = Date.now() + calculateBackoffDuration(clientWrapper.failedAttempts);
+    updateBackoffStatus(successfull: boolean) {
+        if (successfull) {
+            this.#failedAttempts = 0;
+            this.backoffEndTime = Date.now();
+        } else {
+            this.#failedAttempts += 1;
+            this.backoffEndTime = Date.now() + calculateBackoffDuration(this.#failedAttempts);
+        }
     }
 }
 
@@ -35,7 +35,7 @@ export function calculateBackoffDuration(failedAttempts: number) {
         return MinBackoffDuration;
     }
 
-    // exponential: minBackoff * 2^(failedAttempts-1)
+    // exponential: minBackoff * 2 ^ (failedAttempts - 1)
     const exponential = Math.min(failedAttempts - 1, MAX_SAFE_EXPONENTIAL);
     let calculatedBackoffDuration = MinBackoffDuration * (1 << exponential);
     if (calculatedBackoffDuration > MaxBackoffDuration) {

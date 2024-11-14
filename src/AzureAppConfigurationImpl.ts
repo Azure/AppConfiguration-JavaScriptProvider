@@ -36,7 +36,6 @@ import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { updateClientBackoffStatus } from "./ConfigurationClientWrapper.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -206,7 +205,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const clientWrappers = await this.#clientManager.getClients();
         if (clientWrappers.length === 0) {
             this.#clientManager.refreshClients();
-            throw new Error("No client is available to connect to the target app configuration store.");
+            console.warn("Refresh skipped because no endpoint is accessible.");
         }
 
         let successful: boolean;
@@ -216,11 +215,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const result = await funcToExecute(clientWrapper.client);
                 this.#isFailoverRequest = false;
                 successful = true;
-                updateClientBackoffStatus(clientWrapper, successful);
+                clientWrapper.updateBackoffStatus(successful);
                 return result;
             } catch (error) {
                 if (isFailoverableError(error)) {
-                    updateClientBackoffStatus(clientWrapper, successful);
+                    clientWrapper.updateBackoffStatus(successful);
                     this.#isFailoverRequest = true;
                     continue;
                 }
@@ -230,7 +229,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("All app configuration clients failed to get settings.");
+        throw new Error("Failed to get configuration settings from endpoint.");
     }
 
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
@@ -673,7 +672,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientManager.endpoint}/kv/${setting.key}`;
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
         if (setting.label && setting.label.trim().length !== 0) {
             featureFlagReference += `?label=${setting.label}`;
         }

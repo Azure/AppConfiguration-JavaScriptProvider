@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettingsWithFailure, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
+import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettingsWithFailure, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
 import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
 
 const mockedKVs = [{
@@ -75,12 +75,12 @@ describe("failover", function () {
         mockAppConfigurationClientListConfigurationSettingsWithFailure(mockedKVs);
 
         const connectionString = createMockedConnectionString();
-        return expect(load(connectionString)).eventually.rejectedWith("All app configuration clients failed to get settings.");
+        return expect(load(connectionString)).eventually.rejectedWith("Failed to get configuration settings from endpoint.");
     });
 
     it("should validate endpoint", () => {
-        const fakeEndpoint = createMockedEndpoint("fake");
-        const validDomain = getValidDomain(fakeEndpoint);
+        const fakeHost = "fake.azconfig.io";
+        const validDomain = getValidDomain(fakeHost);
 
         expect(isValidEndpoint("azure.azconfig.io", validDomain)).to.be.true;
         expect(isValidEndpoint("azure.privatelink.azconfig.io", validDomain)).to.be.true;
@@ -90,8 +90,8 @@ describe("failover", function () {
         expect(isValidEndpoint("azure.appconfig.azure.com", validDomain)).to.be.false;
         expect(isValidEndpoint("azure.azconfig.bad.io", validDomain)).to.be.false;
 
-        const fakeEndpoint2 = "https://foobar.appconfig.azure.com";
-        const validDomain2 = getValidDomain(fakeEndpoint2);
+        const fakeHost2 = "foobar.appconfig.azure.com";
+        const validDomain2 = getValidDomain(fakeHost2);
 
         expect(isValidEndpoint("azure.appconfig.azure.com", validDomain2)).to.be.true;
         expect(isValidEndpoint("azure.z1.appconfig.azure.com", validDomain2)).to.be.true;
@@ -102,14 +102,14 @@ describe("failover", function () {
         expect(isValidEndpoint("azure.badappconfig.azure.com", validDomain2)).to.be.false;
         expect(isValidEndpoint("azure.appconfigbad.azure.com", validDomain2)).to.be.false;
 
-        const fakeEndpoint3 = "https://foobar.azconfig-test.io";
-        const validDomain3 = getValidDomain(fakeEndpoint3);
+        const fakeHost3 = "foobar.azconfig-test.io";
+        const validDomain3 = getValidDomain(fakeHost3);
 
         expect(isValidEndpoint("azure.azconfig-test.io", validDomain3)).to.be.false;
         expect(isValidEndpoint("azure.azconfig.io", validDomain3)).to.be.false;
 
-        const fakeEndpoint4 = "https://foobar.z1.appconfig-test.azure.com";
-        const validDomain4 = getValidDomain(fakeEndpoint4);
+        const fakeHost4 = "foobar.z1.appconfig-test.azure.com";
+        const validDomain4 = getValidDomain(fakeHost4);
 
         expect(isValidEndpoint("foobar.z2.appconfig-test.azure.com", validDomain4)).to.be.false;
         expect(isValidEndpoint("foobar.appconfig-test.azure.com", validDomain4)).to.be.false;

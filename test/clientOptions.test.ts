@@ -30,7 +30,6 @@ describe("custom client options", function () {
     this.timeout(15000);
 
     const fakeEndpoint = "https://azure.azconfig.io";
-    const replicaDiscoveryEnabled = false;
     beforeEach(() => {
         // Thus here mock it to reply 500, in which case the retry mechanism works.
         nock(fakeEndpoint).persist().get(() => true).reply(500);
@@ -44,7 +43,6 @@ describe("custom client options", function () {
         const countPolicy = new HttpRequestCountPolicy();
         const loadPromise = () => {
             return load(createMockedConnectionString(fakeEndpoint), {
-                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions: {
                     additionalPolicies: [{
                         policy: countPolicy,
@@ -67,7 +65,6 @@ describe("custom client options", function () {
         const countPolicy = new HttpRequestCountPolicy();
         const loadWithMaxRetries = (maxRetries: number) => {
             return load(createMockedConnectionString(fakeEndpoint), {
-                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions: {
                     additionalPolicies: [{
                         policy: countPolicy,
@@ -106,7 +103,6 @@ describe("custom client options", function () {
         const countPolicy = new HttpRequestCountPolicy();
         const loadPromise = () => {
             return load(createMockedConnectionString(fakeEndpoint), {
-                replicaDiscoveryEnabled: replicaDiscoveryEnabled,
                 clientOptions: {
                     additionalPolicies: [{
                         policy: countPolicy,

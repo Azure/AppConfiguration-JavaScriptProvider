@@ -9,7 +9,6 @@ import { load } from "./exportedApi.js";
 import { sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 
-const replicaDiscoveryEnabled = false;
 const mockedData = [
     // key, secretUri, value
     ["TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName", "SecretValue"],
@@ -41,13 +40,11 @@ describe("key vault reference", function () {
 
     it("require key vault options to resolve reference", async () => {
         return expect(load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled
         })).eventually.rejectedWith("Configure keyVaultOptions to resolve Key Vault Reference(s).");
     });
 
     it("should resolve key vault reference with credential", async () => {
         const settings = await load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             keyVaultOptions: {
                 credential: createMockedTokenCredential()
             }
@@ -59,7 +56,6 @@ describe("key vault reference", function () {
 
     it("should resolve key vault reference with secret resolver", async () => {
         const settings = await load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             keyVaultOptions: {
                 secretResolver: (kvrUrl) => {
                     return "SecretResolver::" + kvrUrl.toString();
@@ -80,7 +76,6 @@ describe("key vault reference", function () {
         const client2 = new SecretClient("https://fake-vault-name2.vault.azure.net", createMockedTokenCredential());
         sinon.stub(client2, "getSecret").returns(Promise.resolve({value: "SecretValueViaClient2" } as KeyVaultSecret));
         const settings = await load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             keyVaultOptions: {
                 secretClients: [
                     client1,
@@ -95,7 +90,6 @@ describe("key vault reference", function () {
 
     it("should throw error when secret clients not provided for all key vault references", async () => {
         const loadKeyVaultPromise = load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             keyVaultOptions: {
                 secretClients: [
                     new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
@@ -107,7 +101,6 @@ describe("key vault reference", function () {
 
     it("should fallback to use default credential when corresponding secret client not provided", async () => {
         const settings = await load(createMockedConnectionString(), {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             keyVaultOptions: {
                 secretClients: [
                     new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),

@@ -20,9 +20,9 @@ const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
 const SRV_QUERY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
 
 export class ConfigurationClientManager {
-    isFailoverable: boolean;
-    dns: any;
-    endpoint: string;
+    #isFailoverable: boolean;
+    #dns: any;
+    endpoint: URL;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
@@ -40,81 +40,79 @@ export class ConfigurationClientManager {
         appConfigOptions?: AzureAppConfigurationOptions
     ) {
         let staticClient: AppConfigurationClient;
+        const credentialPassed = instanceOfTokenCredential(credentialOrOptions);
 
-        if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
+        if (typeof connectionStringOrEndpoint === "string" && !credentialPassed) {
             const connectionString = connectionStringOrEndpoint;
             this.#appConfigOptions = credentialOrOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(this.#appConfigOptions);
-            staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
             const ConnectionStringRegex = /Endpoint=(.*);Id=(.*);Secret=(.*)/;
             const regexMatch = connectionString.match(ConnectionStringRegex);
             if (regexMatch) {
-                this.endpoint = regexMatch[1];
+                const endpointFromConnectionStr = regexMatch[1];
+                this.endpoint = getValidUrl(endpointFromConnectionStr);
                 this.#id = regexMatch[2];
                 this.#secret = regexMatch[3];
             } else {
                 throw new Error(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
-        } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
+            staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
+        } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
             if (typeof endpoint === "string") {
-                try {
-                    endpoint = new URL(endpoint);
-                } catch (error) {
-                    if (error.code === "ERR_INVALID_URL") {
-                        throw new Error("Invalid endpoint URL.", { cause: error });
-                    } else {
-                        throw error;
-                    }
-                }
+                endpoint = getValidUrl(endpoint);
             }
 
             const credential = credentialOrOptions as TokenCredential;
             this.#appConfigOptions = appConfigOptions as AzureAppConfigurationOptions;
             this.#clientOptions = getClientOptions(this.#appConfigOptions);
-            staticClient = new AppConfigurationClient(connectionStringOrEndpoint.toString(), credential, this.#clientOptions);
-            this.endpoint = endpoint.toString();
+            this.endpoint = endpoint;
             this.#credential = credential;
+            staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
             throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
-        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint, staticClient)];
-        this.#validDomain = getValidDomain(this.endpoint);
+        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
+        this.#validDomain = getValidDomain(this.endpoint.hostname.toLowerCase());
     }
 
     async init() {
         if (this.#appConfigOptions?.replicaDiscoveryEnabled === false || isBrowser() || isWebWorker()) {
-            this.isFailoverable = false;
+            this.#isFailoverable = false;
             return;
         }
 
         try {
-            this.dns = await import("dns/promises");
+            this.#dns = await import("dns/promises");
         }catch (error) {
-            this.isFailoverable = false;
+            this.#isFailoverable = false;
             console.warn("Failed to load the dns module:", error.message);
             return;
         }
 
-        this.isFailoverable = true;
+        this.#isFailoverable = true;
     }
 
     async getClients() : Promise<ConfigurationClientWrapper[]> {
-        if (!this.isFailoverable) {
+        if (!this.#isFailoverable) {
             return this.#staticClients;
         }
 
         const currentTime = Date.now();
-        if (this.#isFallbackClientDiscoveryDue(currentTime)) {
-            this.#lastFallbackClientRefreshAttempt = currentTime;
-            const host = new URL(this.endpoint).hostname;
-            await this.#discoverFallbackClients(host);
-        }
-
         // Filter static clients whose backoff time has ended
         let availableClients = this.#staticClients.filter(client => client.backoffEndTime <= currentTime);
+        if (currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL &&
+            (!this.#dynamicClients ||
+            // All dynamic clients are in backoff means no client is available
+            this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
+            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)) {
+            this.#lastFallbackClientRefreshAttempt = currentTime;
+            await this.#discoverFallbackClients(this.endpoint.hostname);
+            return availableClients.concat(this.#dynamicClients);
+        }
+
         // If there are dynamic clients, filter and concatenate them
         if (this.#dynamicClients && this.#dynamicClients.length > 0) {
             availableClients = availableClients.concat(
@@ -127,15 +125,14 @@ export class ConfigurationClientManager {
 
     async refreshClients() {
         const currentTime = Date.now();
-        if (this.isFailoverable &&
-            currentTime > new Date(this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL).getTime()) {
+        if (this.#isFailoverable &&
+            currentTime >= new Date(this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL).getTime()) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
-            const host = new URL(this.endpoint).hostname;
-            await this.#discoverFallbackClients(host);
+            await this.#discoverFallbackClients(this.endpoint.hostname);
         }
     }
 
-    async #discoverFallbackClients(host) {
+    async #discoverFallbackClients(host: string) {
         let result;
         try {
             result = await Promise.race([
@@ -143,7 +140,7 @@ export class ConfigurationClientManager {
                 this.#querySrvTargetHost(host)
             ]);
         } catch (error) {
-            throw new Error(`Fail to build fallback clients, ${error.message}`);
+            throw new Error(`Failed to build fallback clients, ${error.message}`);
         }
 
         const srvTargetHosts = result as string[];
@@ -157,23 +154,18 @@ export class ConfigurationClientManager {
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
                 const targetEndpoint = `https://${host}`;
-                if (targetEndpoint.toLowerCase() === this.endpoint.toLowerCase()) {
+                if (host.toLowerCase() === this.endpoint.hostname.toLowerCase()) {
                     continue;
                 }
-                const client = this.#credential ? new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) : new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
+                const client = this.#credential ?
+                                new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
+                                new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
                 newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
             }
         }
 
         this.#dynamicClients = newDynamicClients;
         this.#lastFallbackClientRefreshTime = Date.now();
-    }
-
-    #isFallbackClientDiscoveryDue(dateTime) {
-        return dateTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL
-            && (!this.#dynamicClients
-                || this.#dynamicClients.every(client => dateTime < client.backoffEndTime)
-                || dateTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL);
     }
 
     /**
@@ -184,7 +176,7 @@ export class ConfigurationClientManager {
 
         try {
             // Look up SRV records for the origin host
-            const originRecords = await this.dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
+            const originRecords = await this.#dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
             if (originRecords.length === 0) {
                 return results;
             }
@@ -198,7 +190,7 @@ export class ConfigurationClientManager {
             // eslint-disable-next-line no-constant-condition
             while (true) {
                 const currentAlt = `${ALT_KEY_NAME}${index}`;
-                const altRecords = await this.dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
+                const altRecords = await this.#dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
                 if (altRecords.length === 0) {
                     break; // No more alternate records, exit loop
                 }
@@ -238,19 +230,12 @@ function buildConnectionString(endpoint, secret, id: string): string {
 /**
  * Extracts a valid domain from the given endpoint URL based on trusted domain labels.
  */
-export function getValidDomain(endpoint: string): string {
-    try {
-        const url = new URL(endpoint);
-        const host = url.hostname.toLowerCase();
-
-        for (const label of TRUSTED_DOMAIN_LABELS) {
-            const index = host.lastIndexOf(label);
-            if (index !== -1) {
-                return host.substring(index);
-            }
+export function getValidDomain(host: string): string {
+    for (const label of TRUSTED_DOMAIN_LABELS) {
+        const index = host.lastIndexOf(label);
+        if (index !== -1) {
+            return host.substring(index);
         }
-    } catch (error) {
-        console.error("Error parsing URL:", error.message);
     }
 
     return "";
@@ -267,7 +252,7 @@ export function isValidEndpoint(host: string, validDomain: string): boolean {
     return host.toLowerCase().endsWith(validDomain.toLowerCase());
 }
 
-export function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
+function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
     // user-agent
     let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
     const userAgentOptions = options?.clientOptions?.userAgentOptions;
@@ -288,6 +273,18 @@ export function getClientOptions(options?: AzureAppConfigurationOptions): AppCon
             userAgentPrefix
         }
     });
+}
+
+function getValidUrl(endpoint: string): URL {
+    try {
+        return new URL(endpoint);
+    } catch (error) {
+        if (error.code === "ERR_INVALID_URL") {
+            throw new Error("Invalid endpoint URL.", { cause: error });
+        } else {
+            throw error;
+        }
+    }
 }
 
 export function instanceOfTokenCredential(obj: unknown) {
