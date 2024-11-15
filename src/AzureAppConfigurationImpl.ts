@@ -424,7 +424,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 onlyIfChanged: !this.#isCdnUsed // if CDN is used, do not send conditional request
             });
 
-            if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) || 
+            if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
