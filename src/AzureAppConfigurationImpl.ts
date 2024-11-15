@@ -203,10 +203,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         const clientWrappers = await this.#clientManager.getClients();
-        if (clientWrappers.length === 0) {
-            this.#clientManager.refreshClients();
-            console.warn("Refresh skipped because no endpoint is accessible.");
-        }
 
         let successful: boolean;
         for (const clientWrapper of clientWrappers) {
@@ -229,7 +225,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("Failed to get configuration settings from endpoint.");
+        throw new Error("All clients failed to get configuration settings.");
     }
 
     async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
@@ -436,7 +432,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // check if any refresh task failed
         for (const result of results) {
             if (result.status === "rejected") {
-                throw result.reason;
+                console.warn("Refresh failed:", result.reason);
             }
         }
 

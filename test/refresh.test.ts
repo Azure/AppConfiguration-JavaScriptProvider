@@ -42,8 +42,7 @@ describe("dynamic refresh", function () {
 
     it("should throw error when refresh is not enabled but refresh is called", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString, {
-        });
+        const settings = await load(connectionString);
         const refreshCall = settings.refresh();
         return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
     });
@@ -125,8 +124,7 @@ describe("dynamic refresh", function () {
 
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString, {
-        });
+        const settings = await load(connectionString);
         expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values or feature flags.");
     });
 
