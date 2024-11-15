@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, AppConfigurationClientOptions, ConfigurationSetting } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -100,12 +100,15 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
     });
 }
 
-function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptions?: AppConfigurationClientOptions) {
+function mockConfigurationManagerGetClients(isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
     // Stub the getClients method on the class prototype
     sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
         const clients: ConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
-        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint), clientOptions));
+        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
+        sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
+            throw new RestError("Internal Server Error", { statusCode: 500 });
+        });
         clients.push(fakeStaticClientWrapper);
 
         if (!isFailoverable) {
@@ -113,9 +116,12 @@ function mockConfigurationManagerGetClients(isFailoverable: boolean, clientOptio
         }
 
         const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
-        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint), clientOptions));
+        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
         clients.push(fakeDynamicClientWrapper);
-
+        sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
+            const kvs = _filterKVs(pages.flat(), listOptions);
+            return getMockedIterator(pages, kvs, listOptions);
+        });
         return clients;
     });
 }
@@ -132,17 +138,6 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList) {
         } else {
             throw new RestError("", { statusCode: 404 });
         }
-    });
-}
-
-function mockAppConfigurationClientListConfigurationSettingsWithFailure(...pages: ConfigurationSetting[][]) {
-    const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
-
-    // Configure the stub to throw an error on the first call and return mockedKVs on the second call
-    stub.onFirstCall().throws(new RestError("Internal Server Error", { statusCode: 500 }));
-    stub.callsFake((listOptions) => {
-        const kvs = _filterKVs(pages.flat(), listOptions);
-        return getMockedIterator(pages, kvs, listOptions);
     });
 }
 
@@ -235,7 +230,6 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
-    mockAppConfigurationClientListConfigurationSettingsWithFailure,
     mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,

@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettingsWithFailure, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
+import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
 import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
 
 const mockedKVs = [{
@@ -36,8 +36,7 @@ describe("failover", function () {
     it("should failover to replica and load key values from config store", async () => {
         const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
-        mockConfigurationManagerGetClients(isFailoverable);
-        mockAppConfigurationClientListConfigurationSettingsWithFailure(mockedKVs);
+        mockConfigurationManagerGetClients(isFailoverable, mockedKVs);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -51,8 +50,7 @@ describe("failover", function () {
     it("should failover to replica and load feature flags from config store", async () => {
         const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
-        mockConfigurationManagerGetClients(isFailoverable);
-        mockAppConfigurationClientListConfigurationSettingsWithFailure(mockedFeatureFlags);
+        mockConfigurationManagerGetClients(isFailoverable, mockedFeatureFlags);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -72,7 +70,6 @@ describe("failover", function () {
     it("should throw error when all clients failed", async () => {
         const isFailoverable = false;
         mockConfigurationManagerGetClients(isFailoverable);
-        mockAppConfigurationClientListConfigurationSettingsWithFailure();
 
         const connectionString = createMockedConnectionString();
         return expect(load(connectionString)).eventually.rejectedWith("All clients failed to get configuration settings.");
