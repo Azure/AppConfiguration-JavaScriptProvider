@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientListConfigurationSettingsWithFailure, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
+import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettingsWithFailure, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
 import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
 
 const mockedKVs = [{
@@ -37,9 +37,7 @@ describe("failover", function () {
         const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
         mockConfigurationManagerGetClients(isFailoverable);
-        mockAppConfigurationClientListConfigurationSettingsWithFailure();
-        restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettingsWithFailure(mockedKVs);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -54,9 +52,7 @@ describe("failover", function () {
         const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
         mockConfigurationManagerGetClients(isFailoverable);
-        mockAppConfigurationClientListConfigurationSettingsWithFailure();
-        restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings(mockedFeatureFlags);
+        mockAppConfigurationClientListConfigurationSettingsWithFailure(mockedFeatureFlags);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
