@@ -79,7 +79,7 @@ describe("failover", function () {
         mockAppConfigurationClientListConfigurationSettingsWithFailure();
 
         const connectionString = createMockedConnectionString();
-        return expect(load(connectionString)).eventually.rejectedWith("Failed to get configuration settings from endpoint.");
+        return expect(load(connectionString)).eventually.rejectedWith("All clients failed to get configuration settings.");
     });
 
     it("should validate endpoint", () => {
