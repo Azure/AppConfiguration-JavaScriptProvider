@@ -7,6 +7,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
+import { shuffleList } from "./common/utils.js";
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -143,13 +144,7 @@ export class ConfigurationClientManager {
             throw new Error(`Failed to build fallback clients, ${error.message}`);
         }
 
-        const srvTargetHosts = result as string[];
-        // Shuffle the list of SRV target hosts
-        for (let i = srvTargetHosts.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [srvTargetHosts[i], srvTargetHosts[j]] = [srvTargetHosts[j], srvTargetHosts[i]];
-        }
-
+        const srvTargetHosts = shuffleList(result) as string[];
         const newDynamicClients: ConfigurationClientWrapper[] = [];
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
