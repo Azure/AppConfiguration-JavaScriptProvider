@@ -200,8 +200,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             requestTracingEnabled: this.#requestTracingEnabled,
             initialLoadCompleted: this.#isInitialLoadCompleted,
             isCdnUsed: this.#isCdnUsed,
-            appConfigOptions: this.#options,
-            isFailoverRequest: this.#isFailoverRequest
+            isFailoverRequest: this.#isFailoverRequest,
+            appConfigOptions: this.#options
         };
     }
 

@@ -30,27 +30,19 @@ export function listConfigurationSettingsWithTrace(
         requestTracingEnabled: boolean;
         initialLoadCompleted: boolean;
         isCdnUsed: boolean;
-        appConfigOptions: AzureAppConfigurationOptions | undefined;
         isFailoverRequest: boolean;
+        appConfigOptions: AzureAppConfigurationOptions | undefined;
     },
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-<<<<<<< HEAD
-    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
-=======
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, isFailoverRequest } = requestTracingOptions;
->>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
+    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, isFailoverRequest, appConfigOptions } = requestTracingOptions;
 
     const actualListOptions = { ...listOptions };
     if (requestTracingEnabled) {
         actualListOptions.requestOptions = {
             customHeaders: {
-<<<<<<< HEAD
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
-=======
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isFailoverRequest)
->>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed, isFailoverRequest)
             }
         };
     }
@@ -70,21 +62,13 @@ export function getConfigurationSettingWithTrace(
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-<<<<<<< HEAD
-    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
-=======
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, isFailoverRequest } = requestTracingOptions;
->>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
+    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, isFailoverRequest, appConfigOptions } = requestTracingOptions;
     const actualGetOptions = { ...getOptions };
 
     if (requestTracingEnabled) {
         actualGetOptions.requestOptions = {
             customHeaders: {
-<<<<<<< HEAD
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
-=======
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isFailoverRequest)
->>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed, isFailoverRequest)
             }
         };
     }
@@ -92,11 +76,7 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
-<<<<<<< HEAD
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isCdnUsed: boolean): string {
-=======
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isFailoverRequest: boolean): string {
->>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
+export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isCdnUsed: boolean, isFailoverRequest: boolean): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -118,6 +98,9 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     if (isCdnUsed) {
         tags.push(CDN_USED_TAG);
     }
+    if (isFailoverRequest) {
+        tags.push(FAILOVER_REQUEST_TAG);
+    }
 
     const contextParts: string[] = [];
     for (const [k, v] of keyValues) {
@@ -127,10 +110,6 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     }
     for (const tag of tags) {
         contextParts.push(tag);
-    }
-
-    if (isFailoverRequest) {
-        contextParts.push(FAILOVER_REQUEST_TAG);
     }
 
     return contextParts.join(",");
