@@ -34,27 +34,24 @@ describe("failover", function () {
     });
 
     it("should failover to replica and load key values from config store", async () => {
-        const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
         mockConfigurationManagerGetClients(isFailoverable, mockedKVs);
 
         const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString, {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled
-        });
+        // replicaDiscoveryEnabled is default to true
+        const settings = await load(connectionString);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
     });
 
     it("should failover to replica and load feature flags from config store", async () => {
-        const replicaDiscoveryEnabled = true;
         const isFailoverable = true;
         mockConfigurationManagerGetClients(isFailoverable, mockedFeatureFlags);
 
         const connectionString = createMockedConnectionString();
+        // replicaDiscoveryEnabled is default to true
         const settings = await load(connectionString, {
-            replicaDiscoveryEnabled: replicaDiscoveryEnabled,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [{
