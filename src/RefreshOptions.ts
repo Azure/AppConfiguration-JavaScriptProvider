@@ -24,6 +24,11 @@ export interface RefreshOptions {
      * Any modifications to watched settings will refresh all settings loaded by the configuration provider when refresh() is called.
      */
     watchedSettings?: WatchedSetting[];
+
+    /**
+     * Specifies whether all configuration settings will be watched for changes on the server.
+     */
+    watchAll?: boolean;
 }
 
 export interface FeatureFlagRefreshOptions {

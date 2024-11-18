@@ -76,6 +76,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagRefreshTimer: RefreshTimer;
 
     // selectors
+    #keyValueSelectors: PagedSettingSelector[] = [];
     #featureFlagSelectors: PagedSettingSelector[] = [];
 
     constructor(
@@ -93,34 +94,37 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (options?.refreshOptions?.enabled) {
-            const { watchedSettings, refreshIntervalInMs } = options.refreshOptions;
-            // validate watched settings
-            if (watchedSettings === undefined || watchedSettings.length === 0) {
-                throw new Error("Refresh is enabled but no watched settings are specified.");
+            const { watchedSettings, refreshIntervalInMs, watchAll } = options.refreshOptions;
+            // validate refresh options
+            if (watchAll !== true) {
+                if (watchedSettings === undefined || watchedSettings.length === 0) {
+                    throw new Error("Refresh is enabled but no watched settings are specified.");
+                } else {
+                    for (const setting of watchedSettings) {
+                        if (setting.key.includes("*") || setting.key.includes(",")) {
+                            throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
+                        }
+                        if (setting.label?.includes("*") || setting.label?.includes(",")) {
+                            throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
+                        }
+                        this.#sentinels.push(setting);
+                    }
+                }
+            } else if (watchedSettings && watchedSettings.length > 0) {
+                throw new Error("Watched settings should not be specified when registerAll is enabled.");
             }
-
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
                     throw new Error(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
-
                 } else {
                     this.#refreshInterval = refreshIntervalInMs;
                 }
             }
-
-            for (const setting of watchedSettings) {
-                if (setting.key.includes("*") || setting.key.includes(",")) {
-                    throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
-                }
-                if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                    throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
-                }
-                this.#sentinels.push(setting);
-            }
-
             this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
         }
+
+        this.#keyValueSelectors = getValidKeyValueSelectors(options?.selectors);
 
         // feature flag options
         if (options?.featureFlagOptions?.enabled) {
@@ -184,6 +188,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return !!this.#options?.refreshOptions?.enabled;
     }
 
+    get #watchAll(): boolean {
+        return !!this.#options?.refreshOptions?.watchAll;
+    }
+
     get #featureFlagEnabled(): boolean {
         return !!this.#options?.featureFlagOptions?.enabled;
     }
@@ -228,29 +236,42 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         throw new Error("All clients failed to get configuration settings.");
     }
 
-    async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
-        // validate selectors
-        const selectors = getValidKeyValueSelectors(this.#options?.selectors);
-
+    async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
+        const selectors = loadFeatureFlag ? this.#featureFlagSelectors : this.#keyValueSelectors;
         const funcToExecute = async (client) => {
             const loadedSettings: ConfigurationSetting[] = [];
-            for (const selector of selectors) {
+            // deep copy selectors to avoid modification if current client fails
+            const selectorsToUpdate = JSON.parse(
+                JSON.stringify(selectors)
+            );
+
+            for (const selector of selectorsToUpdate) {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter
                 };
 
-                const settings = listConfigurationSettingsWithTrace(
+                const pageEtags: string[] = [];
+                const pageIterator = listConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
                     client,
                     listOptions
-                );
-
-                for await (const setting of settings) {
-                    if (!isFeatureFlag(setting)) { // exclude feature flags
-                        loadedSettings.push(setting);
+                ).byPage();
+                for await (const page of pageIterator) {
+                    pageEtags.push(page.etag ?? "");
+                    for (const setting of page.items) {
+                        if (loadFeatureFlag === isFeatureFlag(setting)) {
+                            loadedSettings.push(setting);
+                        }
                     }
                 }
+                selector.pageEtags = pageEtags;
+            }
+
+            if (loadFeatureFlag) {
+                this.#featureFlagSelectors = selectorsToUpdate;
+            } else {
+                this.#keyValueSelectors = selectorsToUpdate;
             }
             return loadedSettings;
         };
@@ -262,10 +283,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Update etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
     async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
-        if (!this.#refreshEnabled) {
-            return;
-        }
-
         for (const sentinel of this.#sentinels) {
             const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
             if (matchedSetting) {
@@ -285,8 +302,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
-        const loadedSettings = await this.#loadSelectedKeyValues();
-        await this.#updateWatchedKeyValuesEtag(loadedSettings);
+        const loadedSettings = await this.#loadConfigurationSettings();
+        if (this.#refreshEnabled && !this.#watchAll) {
+            await this.#updateWatchedKeyValuesEtag(loadedSettings);
+        }
 
         // process key-values, watched settings have higher priority
         for (const setting of loadedSettings) {
@@ -309,42 +328,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
-        const funcToExecute = async (client) => {
-            const featureFlagSettings: ConfigurationSetting[] = [];
-            // deep copy selectors to avoid modification if current client fails
-            const selectors = JSON.parse(
-                JSON.stringify(this.#featureFlagSelectors)
-            );
-
-            for (const selector of selectors) {
-                const listOptions: ListConfigurationSettingsOptions = {
-                    keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
-                    labelFilter: selector.labelFilter
-                };
-
-                const pageEtags: string[] = [];
-                const pageIterator = listConfigurationSettingsWithTrace(
-                    this.#requestTraceOptions,
-                    client,
-                    listOptions
-                ).byPage();
-                for await (const page of pageIterator) {
-                    pageEtags.push(page.etag ?? "");
-                    for (const setting of page.items) {
-                        if (isFeatureFlag(setting)) {
-                            featureFlagSettings.push(setting);
-                        }
-                    }
-                }
-                selector.pageEtags = pageEtags;
-            }
-
-            this.#featureFlagSelectors = selectors;
-            return featureFlagSettings;
-        };
-
-        const featureFlagSettings = await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
+        const loadFeatureFlag = true;
+        const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -458,6 +443,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
+        if (this.#watchAll) {
+            needRefresh = await this.#checkKeyValueCollectionChanged(this.#keyValueSelectors);
+        }
         for (const sentinel of this.#sentinels.values()) {
             const response = await this.#getConfigurationSetting(sentinel, {
                 onlyIfChanged: true
@@ -490,11 +478,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        // check if any feature flag is changed
+        const needRefresh = await this.#checkKeyValueCollectionChanged(this.#featureFlagSelectors);
+        if (needRefresh) {
+            await this.#loadFeatureFlags();
+        }
+
+        this.#featureFlagRefreshTimer.reset();
+        return Promise.resolve(needRefresh);
+    }
+
+    async #checkKeyValueCollectionChanged(selectors: PagedSettingSelector[]): Promise<boolean> {
         const funcToExecute = async (client) => {
-            for (const selector of this.#featureFlagSelectors) {
+            for (const selector of selectors) {
                 const listOptions: ListConfigurationSettingsOptions = {
-                    keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                    keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
                     pageEtags: selector.pageEtags
                 };
@@ -514,13 +511,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return false;
         };
 
-        const needRefresh: boolean = await this.#executeWithFailoverPolicy(funcToExecute);
-        if (needRefresh) {
-            await this.#loadFeatureFlags();
-        }
-
-        this.#featureFlagRefreshTimer.reset();
-        return Promise.resolve(needRefresh);
+        const isChanged = await this.#executeWithFailoverPolicy(funcToExecute);
+        return isChanged;
     }
 
     onRefresh(listener: () => any, thisArg?: any): Disposable {
@@ -813,7 +805,7 @@ function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
 }
 
 function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelector[] {
-    if (!selectors || selectors.length === 0) {
+    if (selectors === undefined || selectors.length === 0) {
         // Default selector: key: *, label: \0
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
     }
@@ -821,10 +813,13 @@ function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelect
 }
 
 function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSelector[] {
-    if (!selectors || selectors.length === 0) {
+    if (selectors === undefined || selectors.length === 0) {
         // selectors must be explicitly provided.
         throw new Error("Feature flag selectors must be provided.");
     } else {
+        selectors.forEach(selector => {
+            selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+        });
         return getValidSelectors(selectors);
     }
 }
