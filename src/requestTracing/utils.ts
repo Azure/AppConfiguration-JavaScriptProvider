@@ -20,7 +20,8 @@ import {
     REQUEST_TYPE_KEY,
     RequestType,
     SERVICE_FABRIC_ENV_VAR,
-    CORRELATION_CONTEXT_HEADER_NAME
+    CORRELATION_CONTEXT_HEADER_NAME,
+    FAILOVER_REQUEST_TAG
 } from "./constants";
 
 // Utils
@@ -30,17 +31,26 @@ export function listConfigurationSettingsWithTrace(
         initialLoadCompleted: boolean;
         isCdnUsed: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
+        isFailoverRequest: boolean;
     },
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
+<<<<<<< HEAD
     const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
+=======
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, isFailoverRequest } = requestTracingOptions;
+>>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
 
     const actualListOptions = { ...listOptions };
     if (requestTracingEnabled) {
         actualListOptions.requestOptions = {
             customHeaders: {
+<<<<<<< HEAD
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
+=======
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isFailoverRequest)
+>>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
             }
         };
     }
@@ -54,18 +64,27 @@ export function getConfigurationSettingWithTrace(
         initialLoadCompleted: boolean;
         isCdnUsed: boolean;
         appConfigOptions: AzureAppConfigurationOptions | undefined;
+        isFailoverRequest: boolean;
     },
     client: AppConfigurationClient,
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
+<<<<<<< HEAD
     const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, appConfigOptions } = requestTracingOptions;
+=======
+    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, isFailoverRequest } = requestTracingOptions;
+>>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
     const actualGetOptions = { ...getOptions };
 
     if (requestTracingEnabled) {
         actualGetOptions.requestOptions = {
             customHeaders: {
+<<<<<<< HEAD
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed)
+=======
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isFailoverRequest)
+>>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
             }
         };
     }
@@ -73,7 +92,11 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
+<<<<<<< HEAD
 export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isCdnUsed: boolean): string {
+=======
+export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isFailoverRequest: boolean): string {
+>>>>>>> 477f18de35107c6ec7ac6d6b9f4df0a32925082d
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -104,6 +127,10 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     }
     for (const tag of tags) {
         contextParts.push(tag);
+    }
+
+    if (isFailoverRequest) {
+        contextParts.push(FAILOVER_REQUEST_TAG);
     }
 
     return contextParts.join(",");
@@ -152,7 +179,7 @@ function isDevEnvironment(): boolean {
     return false;
 }
 
-function isBrowser() {
+export function isBrowser() {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window
     const isWindowDefinedAsExpected = typeof window === "object" && typeof Window === "function" && window instanceof Window;
     // https://developer.mozilla.org/en-US/docs/Web/API/Document
@@ -161,7 +188,7 @@ function isBrowser() {
     return isWindowDefinedAsExpected && isDocumentDefinedAsExpected;
 }
 
-function isWebWorker() {
+export function isWebWorker() {
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
     const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
@@ -171,3 +198,4 @@ function isWebWorker() {
 
     return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }
+

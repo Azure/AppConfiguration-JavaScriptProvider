@@ -35,6 +35,7 @@ import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAd
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
+import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -56,11 +57,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
-    #client: AppConfigurationClient;
-    #clientEndpoint: string | undefined;
+    #clientManager: ConfigurationClientManager;
     #options: AzureAppConfigurationOptions | undefined;
     #isCdnUsed: boolean;
     #isInitialLoadCompleted: boolean = false;
+    #isFailoverRequest: boolean = false;
 
     // Refresh
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
@@ -79,15 +80,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagSelectors: PagedSettingSelector[] = [];
 
     constructor(
-        client: AppConfigurationClient,
-        clientEndpoint: string | undefined,
+        clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
         isCdnUsed: boolean
     ) {
-        this.#client = client;
-        this.#clientEndpoint = clientEndpoint;
         this.#options = options;
         this.#isCdnUsed = isCdnUsed;
+        this.#clientManager = clientManager;
 
         // Enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -201,35 +200,66 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             requestTracingEnabled: this.#requestTracingEnabled,
             initialLoadCompleted: this.#isInitialLoadCompleted,
             isCdnUsed: this.#isCdnUsed,
-            appConfigOptions: this.#options
+            appConfigOptions: this.#options,
+            isFailoverRequest: this.#isFailoverRequest
         };
     }
 
-    async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
-        const loadedSettings: ConfigurationSetting[] = [];
+    async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
+        const clientWrappers = await this.#clientManager.getClients();
 
+        let successful: boolean;
+        for (const clientWrapper of clientWrappers) {
+            successful = false;
+            try {
+                const result = await funcToExecute(clientWrapper.client);
+                this.#isFailoverRequest = false;
+                successful = true;
+                clientWrapper.updateBackoffStatus(successful);
+                return result;
+            } catch (error) {
+                if (isFailoverableError(error)) {
+                    clientWrapper.updateBackoffStatus(successful);
+                    this.#isFailoverRequest = true;
+                    continue;
+                }
+
+                throw error;
+            }
+        }
+
+        this.#clientManager.refreshClients();
+        throw new Error("All clients failed to get configuration settings.");
+    }
+
+    async #loadSelectedKeyValues(): Promise<ConfigurationSetting[]> {
         // validate selectors
         const selectors = getValidKeyValueSelectors(this.#options?.selectors);
 
-        for (const selector of selectors) {
-            const listOptions: ListConfigurationSettingsOptions = {
-                keyFilter: selector.keyFilter,
-                labelFilter: selector.labelFilter
-            };
+        const funcToExecute = async (client) => {
+            const loadedSettings: ConfigurationSetting[] = [];
+            for (const selector of selectors) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: selector.keyFilter,
+                    labelFilter: selector.labelFilter
+                };
 
-            const settings = listConfigurationSettingsWithTrace(
-                this.#requestTraceOptions,
-                this.#client,
-                listOptions
-            );
+                const settings = listConfigurationSettingsWithTrace(
+                    this.#requestTraceOptions,
+                    client,
+                    listOptions
+                );
 
-            for await (const setting of settings) {
-                if (!isFeatureFlag(setting)) { // exclude feature flags
-                    loadedSettings.push(setting);
+                for await (const setting of settings) {
+                    if (!isFeatureFlag(setting)) { // exclude feature flags
+                        loadedSettings.push(setting);
+                    }
                 }
             }
-        }
-        return loadedSettings;
+            return loadedSettings;
+        };
+
+        return await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
     }
 
     /**
@@ -283,29 +313,42 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        const featureFlagSettings: ConfigurationSetting[] = [];
-        for (const selector of this.#featureFlagSelectors) {
-            const listOptions: ListConfigurationSettingsOptions = {
-                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
-                labelFilter: selector.labelFilter
-            };
+        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
+        const funcToExecute = async (client) => {
+            const featureFlagSettings: ConfigurationSetting[] = [];
+            // deep copy selectors to avoid modification if current client fails
+            const selectors = JSON.parse(
+                JSON.stringify(this.#featureFlagSelectors)
+            );
 
-            const pageEtags: string[] = [];
-            const pageIterator = listConfigurationSettingsWithTrace(
-                this.#requestTraceOptions,
-                this.#client,
-                listOptions
-            ).byPage();
-            for await (const page of pageIterator) {
-                pageEtags.push(page.etag ?? "");
-                for (const setting of page.items) {
-                    if (isFeatureFlag(setting)) {
-                        featureFlagSettings.push(setting);
+            for (const selector of selectors) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                    labelFilter: selector.labelFilter
+                };
+
+                const pageEtags: string[] = [];
+                const pageIterator = listConfigurationSettingsWithTrace(
+                    this.#requestTraceOptions,
+                    client,
+                    listOptions
+                ).byPage();
+                for await (const page of pageIterator) {
+                    pageEtags.push(page.etag ?? "");
+                    for (const setting of page.items) {
+                        if (isFeatureFlag(setting)) {
+                            featureFlagSettings.push(setting);
+                        }
                     }
                 }
+                selector.pageEtags = pageEtags;
             }
-            selector.pageEtags = pageEtags;
-        }
+
+            this.#featureFlagSelectors = selectors;
+            return featureFlagSettings;
+        };
+
+        const featureFlagSettings = await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -393,7 +436,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // check if any refresh task failed
         for (const result of results) {
             if (result.status === "rejected") {
-                throw result.reason;
+                console.warn("Refresh failed:", result.reason);
             }
         }
 
@@ -434,13 +477,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (needRefresh) {
-            try {
-                await this.#loadSelectedAndWatchedKeyValues();
-            } catch (error) {
-                // if refresh failed, backoff
-                this.#refreshTimer.backoff();
-                throw error;
-            }
+            await this.#loadSelectedAndWatchedKeyValues();
         }
 
         this.#refreshTimer.reset();
@@ -458,39 +495,32 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // check if any feature flag is changed
-        let needRefresh = false;
-        for (const selector of this.#featureFlagSelectors) {
-            const listOptions: ListConfigurationSettingsOptions = {
-                keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
-                labelFilter: selector.labelFilter,
-                pageEtags: selector.pageEtags
-            };
-            const pageIterator = listConfigurationSettingsWithTrace(
-                this.#requestTraceOptions,
-                this.#client,
-                listOptions
-            ).byPage();
+        const funcToExecute = async (client) => {
+            for (const selector of this.#featureFlagSelectors) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
+                    labelFilter: selector.labelFilter,
+                    pageEtags: selector.pageEtags
+                };
 
-            for await (const page of pageIterator) {
-                if (page._response.status === 200) { // created or changed
-                    needRefresh = true;
-                    break;
+                const pageIterator = listConfigurationSettingsWithTrace(
+                    this.#requestTraceOptions,
+                    client,
+                    listOptions
+                ).byPage();
+
+                for await (const page of pageIterator) {
+                    if (page._response.status === 200) { // created or changed
+                        return true;
+                    }
                 }
             }
+            return false;
+        };
 
-            if (needRefresh) {
-                break; // short-circuit if result from any of the selectors is changed
-            }
-        }
-
+        const needRefresh: boolean = await this.#executeWithFailoverPolicy(funcToExecute);
         if (needRefresh) {
-            try {
-                await this.#loadFeatureFlags();
-            } catch (error) {
-                // if refresh failed, backoff
-                this.#featureFlagRefreshTimer.backoff();
-                throw error;
-            }
+            await this.#loadFeatureFlags();
         }
 
         this.#featureFlagRefreshTimer.reset();
@@ -544,14 +574,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Get a configuration setting by key and label. If the setting is not found, return undefine instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
-        let response: GetConfigurationSettingResponse | undefined;
-        try {
-            response = await getConfigurationSettingWithTrace(
+        const funcToExecute = async (client) => {
+            return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
-                this.#client,
+                client,
                 configurationSettingId,
                 customOptions
             );
+        };
+
+        let response: GetConfigurationSettingResponse | undefined;
+        try {
+            response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
             if (isRestError(error) && error.statusCode === 404) {
                 response = undefined;
@@ -638,7 +672,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientEndpoint}kv/${setting.key}`;
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
         if (setting.label && setting.label.trim().length !== 0) {
             featureFlagReference += `?label=${setting.label}`;
         }
@@ -797,4 +831,10 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
     } else {
         return getValidSelectors(selectors);
     }
+}
+
+function isFailoverableError(error: any): boolean {
+    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
+    return isRestError(error) && (error.code === "ENOTFOUND" || error.code === "ENOENT" ||
+        (error.statusCode !== undefined && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500)));
 }

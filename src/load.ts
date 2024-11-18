@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
-import * as RequestTracing from "./requestTracing/constants.js";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
+import { ConfigurationClientManager, instanceOfTokenCredential } from "./ConfigurationClientManager.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
@@ -36,43 +35,18 @@ export async function load(
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
-    let client: AppConfigurationClient;
-    let clientEndpoint: string | undefined;
     let options: AzureAppConfigurationOptions | undefined;
+    const clientManager = new ConfigurationClientManager(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
+    await clientManager.init();
 
-    // input validation
-    if (typeof connectionStringOrEndpoint === "string" && !instanceOfTokenCredential(credentialOrOptions)) {
-        const connectionString = connectionStringOrEndpoint;
+    if (!instanceOfTokenCredential(credentialOrOptions)) {
         options = credentialOrOptions as AzureAppConfigurationOptions;
-        const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(connectionString, clientOptions);
-        clientEndpoint = getEndpoint(connectionStringOrEndpoint);
-    } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && instanceOfTokenCredential(credentialOrOptions)) {
-        // ensure string is a valid URL.
-        if (typeof connectionStringOrEndpoint === "string") {
-            try {
-                const endpointUrl = new URL(connectionStringOrEndpoint);
-                clientEndpoint = endpointUrl.toString();
-            } catch (error) {
-                if (error.code === "ERR_INVALID_URL") {
-                    throw new Error("Invalid endpoint URL.", { cause: error });
-                } else {
-                    throw error;
-                }
-            }
-        } else {
-            clientEndpoint = connectionStringOrEndpoint.toString();
-        }
-        const credential = credentialOrOptions as TokenCredential;
-        options = appConfigOptions;
-        const clientOptions = getClientOptions(options);
-        client = new AppConfigurationClient(clientEndpoint, credential, clientOptions);
     } else {
-        throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
+        options = appConfigOptions;
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(client, clientEndpoint, options, credentialOrOptions === emptyTokenCredential);
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, credentialOrOptions === emptyTokenCredential);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -105,46 +79,4 @@ export async function loadFromCdn(
     appConfigOptions.clientOptions = { ...appConfigOptions.clientOptions, apiVersion: "2024-09-01-preview"};
 
     return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
-}
-
-function instanceOfTokenCredential(obj: unknown) {
-    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
-}
-
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
-    // user-agent
-    let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
-    const userAgentOptions = options?.clientOptions?.userAgentOptions;
-    if (userAgentOptions?.userAgentPrefix) {
-        userAgentPrefix = `${userAgentOptions.userAgentPrefix} ${userAgentPrefix}`; // Prepend if UA prefix specified by user
-    }
-
-    // retry options
-    const defaultRetryOptions = {
-        maxRetries: MaxRetries,
-        maxRetryDelayInMs: MaxRetryDelayInMs,
-    };
-    const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
-
-    return Object.assign({}, options?.clientOptions, {
-        retryOptions,
-        userAgentOptions: {
-            userAgentPrefix
-        }
-    });
-}
-
-function getEndpoint(connectionString: string): string | undefined {
-    const parts = connectionString.split(";");
-    const endpointPart = parts.find(part => part.startsWith("Endpoint="));
-
-    if (endpointPart) {
-        let endpoint = endpointPart.split("=")[1];
-        if (!endpoint.endsWith("/")) {
-            endpoint += "/";
-        }
-        return endpoint;
-    }
-
-    return undefined;
 }

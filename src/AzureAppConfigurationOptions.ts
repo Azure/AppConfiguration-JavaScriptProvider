@@ -12,7 +12,7 @@ export const MaxRetryDelayInMs = 60000;
 
 export interface AzureAppConfigurationOptions {
     /**
-     * Specify what key-values to include in the configuration provider.
+     * Specifies what key-values to include in the configuration provider.
      *
      * @remarks
      * If no selectors are specified then all key-values with no label will be included.
@@ -47,4 +47,12 @@ export interface AzureAppConfigurationOptions {
      * Specifies options used to configure feature flags.
      */
     featureFlagOptions?: FeatureFlagOptions;
+
+    /**
+     * Specifies whether to enable replica discovery or not.
+     *
+     * @remarks
+     * If not specified, the default value is true.
+     */
+    replicaDiscoveryEnabled?: boolean;
 }
