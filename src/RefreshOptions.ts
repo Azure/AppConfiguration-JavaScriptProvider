@@ -24,7 +24,7 @@ export interface RefreshOptions {
      * Any modifications to watched settings will refresh all settings loaded by the configuration provider when refresh() is called.
      *
      * @remarks
-     * If no watched settings is specified, all configuration settings will be watched.
+     * If no watched setting is specified, all configuration settings will be watched.
      */
     watchedSettings?: WatchedSetting[];
 }
