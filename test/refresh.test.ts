@@ -47,25 +47,6 @@ describe("dynamic refresh", function () {
         return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
     });
 
-    it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
-        const connectionString = createMockedConnectionString();
-        const loadWithEmptyWatchedSettings = load(connectionString, {
-            refreshOptions: {
-                enabled: true,
-                watchedSettings: []
-            }
-        });
-        const loadWithUndefinedWatchedSettings = load(connectionString, {
-            refreshOptions: {
-                enabled: true
-            }
-        });
-        return Promise.all([
-            expect(loadWithEmptyWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified."),
-            expect(loadWithUndefinedWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified.")
-        ]);
-    });
-
     it("should not allow refresh interval less than 1 second", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithInvalidRefreshInterval = load(connectionString, {
@@ -321,6 +302,62 @@ describe("dynamic refresh", function () {
         expect(settings.get("app.settings.fontColor")).eq("red");
     });
 
+    it("should refresh key value based on page eTag, if no watched setting is specified", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("app.settings.fontSize")).eq("40");
+
+        // change setting
+        updateSetting("app.settings.fontColor", "blue");
+
+        // after refreshInterval, should really refresh
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(settings.get("app.settings.fontColor")).eq("blue");
+    });
+
+    it("should refresh key value based on page Etag, only on change", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000
+            }
+        });
+
+        let refreshSuccessfulCount = 0;
+        settings.onRefresh(() => {
+            refreshSuccessfulCount++;
+        });
+
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(refreshSuccessfulCount).eq(0); // no change in feature flags, because page etags are the same.
+
+        // change key value
+        restoreMocks();
+        const changedKVs = [
+            { value: "blue", key: "app.settings.fontColor" },
+            { value: "40", key: "app.settings.fontSize" }
+        ].map(createMockedKeyValue);
+        mockAppConfigurationClientListConfigurationSettings(changedKVs);
+        mockAppConfigurationClientGetConfigurationSetting(changedKVs);
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(refreshSuccessfulCount).eq(1); // change in key values, because page etags are different.
+        expect(settings.get("app.settings.fontColor")).eq("blue");
+    });
 });
 
 describe("dynamic refresh feature flags", function () {
@@ -377,7 +414,7 @@ describe("dynamic refresh feature flags", function () {
 
     });
 
-    it("should refresh feature flags only on change, based on page etags", async () => {
+    it("should refresh feature flags based on page etags, only on change", async () => {
         // mock multiple pages of feature flags
         const page1 = [
             createMockedFeatureFlag("Alpha_1", { enabled: true }),
