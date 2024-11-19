@@ -510,7 +510,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    pageEtags: selector.pageEtags
+                    ...(!this.#isCdnUsed && { pageEtags: selector.pageEtags }) // if CDN is used, do not send conditional request
                 };
 
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -519,10 +519,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
 
+                if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
+                    return true; // no etag, always refresh
+                }
+
+                let i = 0;
                 for await (const page of pageIterator) {
-                    if (page._response.status === 200) { // created or changed
+                    if (i > selector.pageEtags.length + 1 || // new page 
+                        (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
                         return true;
                     }
+                    i++;
+                }
+                if (i !== selector.pageEtags.length) { // page removed
+                    return true;
                 }
             }
             return false;
