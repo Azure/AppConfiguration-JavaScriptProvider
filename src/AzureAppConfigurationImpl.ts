@@ -63,6 +63,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isFailoverRequest: boolean = false;
 
     // Refresh
+    #watchAll: boolean = false;
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
     /**
@@ -75,8 +76,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #featureFlagRefreshTimer: RefreshTimer;
 
-    // selectors
+    /**
+     * selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
+     */
     #keyValueSelectors: PagedSettingSelector[] = [];
+    /**
+     * selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
+     */
     #featureFlagSelectors: PagedSettingSelector[] = [];
 
     constructor(
@@ -94,25 +100,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (options?.refreshOptions?.enabled) {
-            const { watchedSettings, refreshIntervalInMs, watchAll } = options.refreshOptions;
-            // validate refresh options
-            if (watchAll !== true) {
-                if (watchedSettings === undefined || watchedSettings.length === 0) {
-                    throw new Error("Refresh is enabled but no watched settings are specified.");
-                } else {
-                    for (const setting of watchedSettings) {
-                        if (setting.key.includes("*") || setting.key.includes(",")) {
-                            throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
-                        }
-                        if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                            throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
-                        }
-                        this.#sentinels.push(setting);
+            const { refreshIntervalInMs, watchedSettings } = options.refreshOptions;
+            if (watchedSettings === undefined || watchedSettings.length === 0) {
+                this.#watchAll = true; // if no watched settings is specified, then watch all
+            } else {
+                for (const setting of watchedSettings) {
+                    if (setting.key.includes("*") || setting.key.includes(",")) {
+                        throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
                     }
+                    if (setting.label?.includes("*") || setting.label?.includes(",")) {
+                        throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
+                    }
+                    this.#sentinels.push(setting);
                 }
-            } else if (watchedSettings && watchedSettings.length > 0) {
-                throw new Error("Watched settings should not be specified when registerAll is enabled.");
             }
+
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
@@ -150,6 +152,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
+    get #refreshEnabled(): boolean {
+        return !!this.#options?.refreshOptions?.enabled;
+    }
+
+    get #featureFlagEnabled(): boolean {
+        return !!this.#options?.featureFlagOptions?.enabled;
+    }
+
+    get #featureFlagRefreshEnabled(): boolean {
+        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
+    }
+
+    get #requestTraceOptions() {
+        return {
+            requestTracingEnabled: this.#requestTracingEnabled,
+            initialLoadCompleted: this.#isInitialLoadCompleted,
+            appConfigOptions: this.#options,
+            isFailoverRequest: this.#isFailoverRequest
+        };
+    }
+
     // #region ReadonlyMap APIs
     get<T>(key: string): T | undefined {
         return this.#configMap.get(key);
@@ -184,58 +207,125 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
     // #endregion
 
-    get #refreshEnabled(): boolean {
-        return !!this.#options?.refreshOptions?.enabled;
+    /**
+     * Loads the configuration store for the first time.
+     */
+    async load() {
+        await this.#loadSelectedAndWatchedKeyValues();
+        if (this.#featureFlagEnabled) {
+            await this.#loadFeatureFlags();
+        }
+        // Mark all settings have loaded at startup.
+        this.#isInitialLoadCompleted = true;
     }
 
-    get #watchAll(): boolean {
-        return !!this.#options?.refreshOptions?.watchAll;
-    }
+    /**
+     * Constructs hierarchical data object from map.
+     */
+    constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
+        const separator = options?.separator ?? ".";
+        const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
+        if (!validSeparators.includes(separator)) {
+            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+        }
 
-    get #featureFlagEnabled(): boolean {
-        return !!this.#options?.featureFlagOptions?.enabled;
-    }
-
-    get #featureFlagRefreshEnabled(): boolean {
-        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
-    }
-
-    get #requestTraceOptions() {
-        return {
-            requestTracingEnabled: this.#requestTracingEnabled,
-            initialLoadCompleted: this.#isInitialLoadCompleted,
-            appConfigOptions: this.#options,
-            isFailoverRequest: this.#isFailoverRequest
-        };
-    }
-
-    async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
-        const clientWrappers = await this.#clientManager.getClients();
-
-        let successful: boolean;
-        for (const clientWrapper of clientWrappers) {
-            successful = false;
-            try {
-                const result = await funcToExecute(clientWrapper.client);
-                this.#isFailoverRequest = false;
-                successful = true;
-                clientWrapper.updateBackoffStatus(successful);
-                return result;
-            } catch (error) {
-                if (isFailoverableError(error)) {
-                    clientWrapper.updateBackoffStatus(successful);
-                    this.#isFailoverRequest = true;
-                    continue;
+        // construct hierarchical data object from map
+        const data: Record<string, any> = {};
+        for (const [key, value] of this.#configMap) {
+            const segments = key.split(separator);
+            let current = data;
+            // construct hierarchical data object along the path
+            for (let i = 0; i < segments.length - 1; i++) {
+                const segment = segments[i];
+                // undefined or empty string
+                if (!segment) {
+                    throw new Error(`invalid key: ${key}`);
                 }
+                // create path if not exist
+                if (current[segment] === undefined) {
+                    current[segment] = {};
+                }
+                // The path has been occupied by a non-object value, causing ambiguity.
+                if (typeof current[segment] !== "object") {
+                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
+                }
+                current = current[segment];
+            }
 
-                throw error;
+            const lastSegment = segments[segments.length - 1];
+            if (current[lastSegment] !== undefined) {
+                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+            }
+            // set value to the last segment
+            current[lastSegment] = value;
+        }
+        return data;
+    }
+
+    /**
+     * Refreshes the configuration.
+     */
+    async refresh(): Promise<void> {
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
+        }
+
+        const refreshTasks: Promise<boolean>[] = [];
+        if (this.#refreshEnabled) {
+            refreshTasks.push(this.#refreshKeyValues());
+        }
+        if (this.#featureFlagRefreshEnabled) {
+            refreshTasks.push(this.#refreshFeatureFlags());
+        }
+
+        // wait until all tasks are either resolved or rejected
+        const results = await Promise.allSettled(refreshTasks);
+
+        // check if any refresh task failed
+        for (const result of results) {
+            if (result.status === "rejected") {
+                console.warn("Refresh failed:", result.reason);
             }
         }
 
-        this.#clientManager.refreshClients();
-        throw new Error("All clients failed to get configuration settings.");
+        // check if any refresh task succeeded
+        const anyRefreshed = results.some(result => result.status === "fulfilled" && result.value === true);
+        if (anyRefreshed) {
+            // successfully refreshed, run callbacks in async
+            for (const listener of this.#onRefreshListeners) {
+                listener();
+            }
+        }
     }
 
+    /**
+     * Registers a callback function to be called when the configuration is refreshed.
+     */
+    onRefresh(listener: () => any, thisArg?: any): Disposable {
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
+        }
+
+        const boundedListener = listener.bind(thisArg);
+        this.#onRefreshListeners.push(boundedListener);
+
+        const remove = () => {
+            const index = this.#onRefreshListeners.indexOf(boundedListener);
+            if (index >= 0) {
+                this.#onRefreshListeners.splice(index, 1);
+            }
+        };
+        return new Disposable(remove);
+    }
+
+    /**
+     * Loads configuration settings from App Configuration, either key-value settings or feature flag settings.
+     * Additionally, updates the `pageEtags` property of the corresponding @see PagedSettingSelector after loading.
+     *
+     * @param loadFeatureFlag - Determines which type of configurationsettings to load:
+     *                          If true, loads feature flag using the feature flag selectors;
+     *                          If false, loads key-value using the key-value selectors. Defaults to false.
+     */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
         const selectors = loadFeatureFlag ? this.#featureFlagSelectors : this.#keyValueSelectors;
         const funcToExecute = async (client) => {
@@ -280,7 +370,29 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Update etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
+     * Loads selected key-values and watched settings (sentinels) for refresh from App Configuration to the local configuration.
+     */
+    async #loadSelectedAndWatchedKeyValues() {
+        const keyValues: [key: string, value: unknown][] = [];
+        const loadedSettings = await this.#loadConfigurationSettings();
+        if (this.#refreshEnabled && !this.#watchAll) {
+            await this.#updateWatchedKeyValuesEtag(loadedSettings);
+        }
+
+        // process key-values, watched settings have higher priority
+        for (const setting of loadedSettings) {
+            const [key, value] = await this.#processKeyValues(setting);
+            keyValues.push([key, value]);
+        }
+
+        this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
+        for (const [k, v] of keyValues) {
+            this.#configMap.set(k, v); // reset the configuration
+        }
+    }
+
+    /**
+     * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
     async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
         for (const sentinel of this.#sentinels) {
@@ -300,25 +412,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
-    async #loadSelectedAndWatchedKeyValues() {
-        const keyValues: [key: string, value: unknown][] = [];
-        const loadedSettings = await this.#loadConfigurationSettings();
-        if (this.#refreshEnabled && !this.#watchAll) {
-            await this.#updateWatchedKeyValuesEtag(loadedSettings);
-        }
-
-        // process key-values, watched settings have higher priority
-        for (const setting of loadedSettings) {
-            const [key, value] = await this.#processKeyValues(setting);
-            keyValues.push([key, value]);
-        }
-
-        this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
-        for (const [k, v] of keyValues) {
-            this.#configMap.set(k, v);
-        }
-    }
-
+    /**
+     * Clears all existing key-values in the local configuration except feature flags.
+     */
     async #clearLoadedKeyValues() {
         for (const key of this.#configMap.keys()) {
             if (key !== FEATURE_MANAGEMENT_KEY_NAME) {
@@ -341,98 +437,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Load the configuration store for the first time.
-     */
-    async load() {
-        await this.#loadSelectedAndWatchedKeyValues();
-        if (this.#featureFlagEnabled) {
-            await this.#loadFeatureFlags();
-        }
-        // Mark all settings have loaded at startup.
-        this.#isInitialLoadCompleted = true;
-    }
-
-    /**
-     * Construct hierarchical data object from map.
-     */
-    constructConfigurationObject(options?: ConfigurationObjectConstructionOptions): Record<string, any> {
-        const separator = options?.separator ?? ".";
-        const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
-        if (!validSeparators.includes(separator)) {
-            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
-        }
-
-        // construct hierarchical data object from map
-        const data: Record<string, any> = {};
-        for (const [key, value] of this.#configMap) {
-            const segments = key.split(separator);
-            let current = data;
-            // construct hierarchical data object along the path
-            for (let i = 0; i < segments.length - 1; i++) {
-                const segment = segments[i];
-                // undefined or empty string
-                if (!segment) {
-                    throw new Error(`invalid key: ${key}`);
-                }
-                // create path if not exist
-                if (current[segment] === undefined) {
-                    current[segment] = {};
-                }
-                // The path has been occupied by a non-object value, causing ambiguity.
-                if (typeof current[segment] !== "object") {
-                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
-                }
-                current = current[segment];
-            }
-
-            const lastSegment = segments[segments.length - 1];
-            if (current[lastSegment] !== undefined) {
-                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
-            }
-            // set value to the last segment
-            current[lastSegment] = value;
-        }
-        return data;
-    }
-
-    /**
-     * Refresh the configuration store.
-     */
-    async refresh(): Promise<void> {
-        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
-        }
-
-        const refreshTasks: Promise<boolean>[] = [];
-        if (this.#refreshEnabled) {
-            refreshTasks.push(this.#refreshKeyValues());
-        }
-        if (this.#featureFlagRefreshEnabled) {
-            refreshTasks.push(this.#refreshFeatureFlags());
-        }
-
-        // wait until all tasks are either resolved or rejected
-        const results = await Promise.allSettled(refreshTasks);
-
-        // check if any refresh task failed
-        for (const result of results) {
-            if (result.status === "rejected") {
-                console.warn("Refresh failed:", result.reason);
-            }
-        }
-
-        // check if any refresh task succeeded
-        const anyRefreshed = results.some(result => result.status === "fulfilled" && result.value === true);
-        if (anyRefreshed) {
-            // successfully refreshed, run callbacks in async
-            for (const listener of this.#onRefreshListeners) {
-                listener();
-            }
-        }
-    }
-
-    /**
-     * Refresh key-values.
+     * Refreshes key-values.
      * @returns true if key-values are refreshed, false otherwise.
      */
     async #refreshKeyValues(): Promise<boolean> {
@@ -469,7 +474,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Refresh feature flags.
+     * Refreshes feature flags.
      * @returns true if feature flags are refreshed, false otherwise.
      */
     async #refreshFeatureFlags(): Promise<boolean> {
@@ -487,6 +492,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return Promise.resolve(needRefresh);
     }
 
+    /**
+     * Checks whether the key-value collection has changed.
+     * @param selectors - The @see PagedSettingSelector of the kev-value collection.
+     * @returns true if key-value collection has changed, false otherwise.
+     */
     async #checkKeyValueCollectionChanged(selectors: PagedSettingSelector[]): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
@@ -515,21 +525,57 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return isChanged;
     }
 
-    onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
+    /**
+     * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
+     */
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+        const funcToExecute = async (client) => {
+            return getConfigurationSettingWithTrace(
+                this.#requestTraceOptions,
+                client,
+                configurationSettingId,
+                customOptions
+            );
+        };
+
+        let response: GetConfigurationSettingResponse | undefined;
+        try {
+            response = await this.#executeWithFailoverPolicy(funcToExecute);
+        } catch (error) {
+            if (isRestError(error) && error.statusCode === 404) {
+                response = undefined;
+            } else {
+                throw error;
+            }
+        }
+        return response;
+    }
+
+    async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
+        const clientWrappers = await this.#clientManager.getClients();
+
+        let successful: boolean;
+        for (const clientWrapper of clientWrappers) {
+            successful = false;
+            try {
+                const result = await funcToExecute(clientWrapper.client);
+                this.#isFailoverRequest = false;
+                successful = true;
+                clientWrapper.updateBackoffStatus(successful);
+                return result;
+            } catch (error) {
+                if (isFailoverableError(error)) {
+                    clientWrapper.updateBackoffStatus(successful);
+                    this.#isFailoverRequest = true;
+                    continue;
+                }
+
+                throw error;
+            }
         }
 
-        const boundedListener = listener.bind(thisArg);
-        this.#onRefreshListeners.push(boundedListener);
-
-        const remove = () => {
-            const index = this.#onRefreshListeners.indexOf(boundedListener);
-            if (index >= 0) {
-                this.#onRefreshListeners.splice(index, 1);
-            }
-        };
-        return new Disposable(remove);
+        this.#clientManager.refreshClients();
+        throw new Error("All clients failed to get configuration settings.");
     }
 
     async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -556,32 +602,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return key;
-    }
-
-    /**
-     * Get a configuration setting by key and label. If the setting is not found, return undefine instead of throwing an error.
-     */
-    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
-        const funcToExecute = async (client) => {
-            return getConfigurationSettingWithTrace(
-                this.#requestTraceOptions,
-                client,
-                configurationSettingId,
-                customOptions
-            );
-        };
-
-        let response: GetConfigurationSettingResponse | undefined;
-        try {
-            response = await this.#executeWithFailoverPolicy(funcToExecute);
-        } catch (error) {
-            if (isRestError(error) && error.statusCode === 404) {
-                response = undefined;
-            } else {
-                throw error;
-            }
-        }
-        return response;
     }
 
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {

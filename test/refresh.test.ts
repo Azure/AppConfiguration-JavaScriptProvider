@@ -47,25 +47,6 @@ describe("dynamic refresh", function () {
         return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
     });
 
-    it("should only allow non-empty list of watched settings when refresh is enabled", async () => {
-        const connectionString = createMockedConnectionString();
-        const loadWithEmptyWatchedSettings = load(connectionString, {
-            refreshOptions: {
-                enabled: true,
-                watchedSettings: []
-            }
-        });
-        const loadWithUndefinedWatchedSettings = load(connectionString, {
-            refreshOptions: {
-                enabled: true
-            }
-        });
-        return Promise.all([
-            expect(loadWithEmptyWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified."),
-            expect(loadWithUndefinedWatchedSettings).eventually.rejectedWith("Refresh is enabled but no watched settings are specified.")
-        ]);
-    });
-
     it("should not allow refresh interval less than 1 second", async () => {
         const connectionString = createMockedConnectionString();
         const loadWithInvalidRefreshInterval = load(connectionString, {
