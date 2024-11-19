@@ -427,6 +427,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
+    /**
+     * Loads feature flags from App Configuration to the local configuration.
+     */
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
         const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
