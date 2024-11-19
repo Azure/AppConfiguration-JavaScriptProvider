@@ -331,7 +331,7 @@ describe("dynamic refresh", function () {
                 refreshIntervalInMs: 2000
             }
         });
-        
+
         let refreshSuccessfulCount = 0;
         settings.onRefresh(() => {
             refreshSuccessfulCount++;
@@ -339,14 +339,14 @@ describe("dynamic refresh", function () {
 
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
-        
+
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
         expect(refreshSuccessfulCount).eq(0); // no change in feature flags, because page etags are the same.
 
         // change key value
         restoreMocks();
-        let changedKVs = [
+        const changedKVs = [
             { value: "blue", key: "app.settings.fontColor" },
             { value: "40", key: "app.settings.fontSize" }
         ].map(createMockedKeyValue);

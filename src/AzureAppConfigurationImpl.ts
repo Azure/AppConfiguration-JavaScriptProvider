@@ -449,7 +449,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         if (this.#watchAll) {
-            needRefresh = await this.#checkKeyValueCollectionChanged(this.#keyValueSelectors);
+            needRefresh = await this.#checkConfigurationSettingsChange(this.#keyValueSelectors);
         }
         for (const sentinel of this.#sentinels.values()) {
             const response = await this.#getConfigurationSetting(sentinel, {
@@ -483,7 +483,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkKeyValueCollectionChanged(this.#featureFlagSelectors);
+        const needRefresh = await this.#checkConfigurationSettingsChange(this.#featureFlagSelectors);
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
@@ -497,7 +497,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @param selectors - The @see PagedSettingSelector of the kev-value collection.
      * @returns true if key-value collection has changed, false otherwise.
      */
-    async #checkKeyValueCollectionChanged(selectors: PagedSettingSelector[]): Promise<boolean> {
+    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
                 const listOptions: ListConfigurationSettingsOptions = {
