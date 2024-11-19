@@ -75,8 +75,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #featureFlagRefreshTimer: RefreshTimer;
 
-    // selectors
+    // Selectors
     #featureFlagSelectors: PagedSettingSelector[] = [];
+
+    // Load balancing
+    #lastSuccessfulEndpoint: string = "";
 
     constructor(
         clientManager: ConfigurationClientManager,
@@ -202,7 +205,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
-        const clientWrappers = await this.#clientManager.getClients();
+        let clientWrappers = await this.#clientManager.getClients();
+        if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
+            let nextClientIndex = 0;
+            // Iterate through clients to find the index of the client with the last successful endpoint
+            for (const clientWrapper of clientWrappers) {
+                nextClientIndex++;
+                if (clientWrapper.endpoint === this.#lastSuccessfulEndpoint) {
+                    break;
+                }
+            }
+            // If we found the last successful client, rotate the list so that the next client is at the beginning
+            if (nextClientIndex < clientWrappers.length) {
+                clientWrappers = [...clientWrappers.slice(nextClientIndex), ...clientWrappers.slice(0, nextClientIndex)];
+            }
+        }
 
         let successful: boolean;
         for (const clientWrapper of clientWrappers) {
@@ -210,6 +227,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             try {
                 const result = await funcToExecute(clientWrapper.client);
                 this.#isFailoverRequest = false;
+                this.#lastSuccessfulEndpoint = clientWrapper.endpoint;
                 successful = true;
                 clientWrapper.updateBackoffStatus(successful);
                 return result;

@@ -100,9 +100,12 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
     });
 }
 
-function mockConfigurationManagerGetClients(isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
+function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
     // Stub the getClients method on the class prototype
     sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+        if (fakeClientWrappers?.length > 0) {
+            return fakeClientWrappers;
+        }
         const clients: ConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
         const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
