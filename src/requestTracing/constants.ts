@@ -44,6 +44,9 @@ export enum RequestType {
     WATCH = "Watch"
 }
 
+export const FEATURES_KEY = "Features";
+
 // Tag names
 export const FAILOVER_REQUEST_TAG = "Failover";
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
+export const LOAD_BALANCE_CONFIGURED_TAG = "LB";

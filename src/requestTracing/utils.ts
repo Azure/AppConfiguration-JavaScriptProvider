@@ -20,7 +20,9 @@ import {
     RequestType,
     SERVICE_FABRIC_ENV_VAR,
     CORRELATION_CONTEXT_HEADER_NAME,
-    FAILOVER_REQUEST_TAG
+    FAILOVER_REQUEST_TAG,
+    FEATURES_KEY,
+    LOAD_BALANCE_CONFIGURED_TAG
 } from "./constants";
 
 // Utils
@@ -84,6 +86,9 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
+    if (options?.loadBalancingEnabled) {
+        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
+    }
 
     const tags: string[] = [];
     if (options?.keyVaultOptions) {
