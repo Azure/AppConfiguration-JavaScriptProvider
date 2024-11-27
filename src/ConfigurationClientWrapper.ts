@@ -12,7 +12,7 @@ export class ConfigurationClientWrapper {
     endpoint: string;
     client: AppConfigurationClient;
     backoffEndTime: number = 0; // Timestamp
-    failedAttempts: number = 0;
+    #failedAttempts: number = 0;
 
     constructor(endpoint: string, client: AppConfigurationClient) {
         this.endpoint = endpoint;
@@ -21,17 +21,11 @@ export class ConfigurationClientWrapper {
 
     updateBackoffStatus(successfull: boolean) {
         if (successfull) {
-            if (this.failedAttempts > 0) {
-                this.failedAttempts = 0;
-            }
-            this.failedAttempts -= 1;
+            this.#failedAttempts = 0;
             this.backoffEndTime = Date.now();
         } else {
-            if (this.failedAttempts < 0) {
-                this.failedAttempts = 0;
-            }
-            this.failedAttempts += 1;
-            this.backoffEndTime = Date.now() + calculateBackoffDuration(this.failedAttempts);
+            this.#failedAttempts += 1;
+            this.backoffEndTime = Date.now() + calculateBackoffDuration(this.#failedAttempts);
         }
     }
 }
