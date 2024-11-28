@@ -353,7 +353,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
-        this.#refreshLock.execute(this.#refreshTasks);
+        await this.#refreshLock.execute(this.#refreshTasks.bind(this));
     }
 
     async #refreshTasks(): Promise<void> {
