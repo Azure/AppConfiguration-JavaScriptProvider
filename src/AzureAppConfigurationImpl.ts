@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { Lock } from "./common/lock.js"
+import { Lock } from "./common/lock.js";
 import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
