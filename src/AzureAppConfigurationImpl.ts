@@ -9,7 +9,6 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { ExclusiveExecutor } from "./common/mutex.js";
 import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
@@ -41,7 +40,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isInitialLoadCompleted: boolean = false;
 
     // Refresh
-    #refreshExecutor: ExclusiveExecutor = new ExclusiveExecutor();
+    #refreshInProgress: boolean = false;
 
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
@@ -353,7 +352,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
-        await this.#refreshExecutor.execute(this.#refreshTasks.bind(this));
+        if (this.#refreshInProgress) {
+            return;
+        }
+        this.#refreshInProgress = true;
+        try {
+            await this.#refreshTasks();
+        } finally {
+            this.#refreshInProgress = false;
+        }
     }
 
     async #refreshTasks(): Promise<void> {
