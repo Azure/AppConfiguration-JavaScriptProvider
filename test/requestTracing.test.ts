@@ -5,8 +5,10 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper.js";
+import { createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper.js";
 import { load } from "./exportedApi.js";
+
+const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
 describe("request tracing", function () {
     this.timeout(15000);
@@ -132,6 +134,44 @@ describe("request tracing", function () {
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("RequestType=Watch")).eq(true);
+
+        restoreMocks();
+    });
+
+    it("should have filter type in correlation-context header if feature flags use feature filters", async () => {
+        let correlationContext: string = "";
+        const listKvCallback = (listOptions) => {
+            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+        };
+
+        mockAppConfigurationClientListConfigurationSettings([[
+            createMockedFeatureFlag("Alpha_1", { conditions: { client_filters: [ { name: "Microsoft.TimeWindow" } ] } }),
+            createMockedFeatureFlag("Alpha_2", { conditions: { client_filters: [ { name: "Microsoft.Targeting" } ] } }),
+            createMockedFeatureFlag("Alpha_3", { conditions: { client_filters: [ { name: "CustomFilter" } ] } })
+        ]], listKvCallback);
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ {keyFilter: "*"} ],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 1000
+                }
+            }
+        });
+
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext?.includes("Filter=CSTM+TIME+TRGT")).eq(true);
 
         restoreMocks();
     });
