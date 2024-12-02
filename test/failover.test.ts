@@ -35,7 +35,7 @@ describe("failover", function () {
 
     it("should failover to replica and load key values from config store", async () => {
         const isFailoverable = true;
-        mockConfigurationManagerGetClients(isFailoverable, mockedKVs);
+        mockConfigurationManagerGetClients([], isFailoverable, mockedKVs);
 
         const connectionString = createMockedConnectionString();
         // replicaDiscoveryEnabled is default to true
@@ -47,7 +47,7 @@ describe("failover", function () {
 
     it("should failover to replica and load feature flags from config store", async () => {
         const isFailoverable = true;
-        mockConfigurationManagerGetClients(isFailoverable, mockedFeatureFlags);
+        mockConfigurationManagerGetClients([], isFailoverable, mockedFeatureFlags);
 
         const connectionString = createMockedConnectionString();
         // replicaDiscoveryEnabled is default to true
@@ -66,7 +66,7 @@ describe("failover", function () {
 
     it("should throw error when all clients failed", async () => {
         const isFailoverable = false;
-        mockConfigurationManagerGetClients(isFailoverable);
+        mockConfigurationManagerGetClients([], isFailoverable);
 
         const connectionString = createMockedConnectionString();
         return expect(load(connectionString)).eventually.rejectedWith("All clients failed to get configuration settings.");

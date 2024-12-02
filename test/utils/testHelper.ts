@@ -100,9 +100,21 @@ function mockAppConfigurationClientListConfigurationSettings(...pages: Configura
     });
 }
 
-function mockConfigurationManagerGetClients(isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
+function mockAppConfigurationClientLoadBalanceMode(clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
+    const emptyPages: ConfigurationSetting[][] = [];
+    sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
+        countObject.count += 1;
+        const kvs = _filterKVs(emptyPages.flat(), listOptions);
+        return getMockedIterator(emptyPages, kvs, listOptions);
+    });
+}
+
+function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
     // Stub the getClients method on the class prototype
     sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+        if (fakeClientWrappers?.length > 0) {
+            return fakeClientWrappers;
+        }
         const clients: ConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
         const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
@@ -230,6 +242,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockAppConfigurationClientLoadBalanceMode,
     mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,
