@@ -23,6 +23,15 @@ function addSetting(key: string, value: any) {
     mockedKVs.push(createMockedKeyValue({ key, value }));
 }
 
+let listKvRequestCount = 0;
+const listKvCallback = () => {
+    listKvRequestCount++;
+};
+let getKvRequestCount = 0;
+const getKvCallback = () => {
+    getKvRequestCount++;
+};
+
 describe("dynamic refresh", function () {
     this.timeout(10000);
 
@@ -32,12 +41,14 @@ describe("dynamic refresh", function () {
             { value: "40", key: "app.settings.fontSize" },
             { value: "30", key: "app.settings.fontSize", label: "prod" }
         ].map(createMockedKeyValue);
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
     });
 
     afterEach(() => {
         restoreMocks();
+        listKvRequestCount = 0;
+        getKvRequestCount = 0;
     });
 
     it("should throw error when refresh is not enabled but refresh is called", async () => {
@@ -139,6 +150,8 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(0);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
@@ -149,10 +162,14 @@ describe("dynamic refresh", function () {
         // within refreshInterval, should not really refresh
         await settings.refresh();
         expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(listKvRequestCount).eq(1); // no more request should be sent during the refresh interval
+        expect(getKvRequestCount).eq(0); // no more request should be sent during the refresh interval
 
         // after refreshInterval, should really refresh
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(1);
         expect(settings.get("app.settings.fontColor")).eq("blue");
     });
 
@@ -167,6 +184,8 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(0);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
@@ -174,11 +193,13 @@ describe("dynamic refresh", function () {
         // delete setting 'app.settings.fontColor'
         const newMockedKVs = mockedKVs.filter(elem => elem.key !== "app.settings.fontColor");
         restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings(newMockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(newMockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([newMockedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(newMockedKVs, getKvCallback);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(2); // one conditional request to detect change and one request as part of loading all kvs (because app.settings.fontColor doesn't exist in the response of listKv request)
         expect(settings.get("app.settings.fontColor")).eq(undefined);
     });
 
@@ -193,6 +214,8 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(0);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
@@ -200,6 +223,8 @@ describe("dynamic refresh", function () {
         updateSetting("app.settings.fontSize", "50"); // unwatched setting
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(1);
         expect(settings.get("app.settings.fontSize")).eq("40");
     });
 
@@ -215,6 +240,8 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(0);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
@@ -224,6 +251,8 @@ describe("dynamic refresh", function () {
         updateSetting("app.settings.fontSize", "50");
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(2); // two getKv request for two watched settings
         expect(settings.get("app.settings.fontSize")).eq("50");
         expect(settings.get("app.settings.bgColor")).eq("white");
     });
@@ -309,6 +338,8 @@ describe("dynamic refresh", function () {
                 ]
             }
         });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(1); // app.settings.bgColor doesn't exist in the response of listKv request, so an additional getKv request is made to get it.
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
@@ -317,10 +348,45 @@ describe("dynamic refresh", function () {
         updateSetting("app.settings.fontColor", "blue");
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(2);
         // should not refresh
         expect(settings.get("app.settings.fontColor")).eq("red");
     });
 
+    it("should not refresh any more when there is refresh in progress", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "app.settings.fontColor" }
+                ]
+            }
+        });
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(0);
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+
+        // change setting
+        updateSetting("app.settings.fontColor", "blue");
+
+        // after refreshInterval, should really refresh
+        await sleepInMs(2 * 1000 + 1);
+        for (let i = 0; i < 5; i++) {
+            settings.refresh(); // refresh "concurrently"
+        }
+        expect(listKvRequestCount).to.be.at.most(2);
+        expect(getKvRequestCount).to.be.at.most(1);
+
+        await sleepInMs(1000);
+
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(1);
+        expect(settings.get("app.settings.fontColor")).eq("blue");
+    });
 });
 
 describe("dynamic refresh feature flags", function () {
@@ -331,14 +397,16 @@ describe("dynamic refresh feature flags", function () {
 
     afterEach(() => {
         restoreMocks();
+        listKvRequestCount = 0;
+        getKvRequestCount = 0;
     });
 
     it("should refresh feature flags when enabled", async () => {
         mockedKVs = [
             createMockedFeatureFlag("Beta", { enabled: true })
         ];
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
-        mockAppConfigurationClientGetConfigurationSetting(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -353,6 +421,8 @@ describe("dynamic refresh feature flags", function () {
                 }
             }
         });
+        expect(listKvRequestCount).eq(2); // one listKv request for kvs and one listKv request for feature flags
+        expect(getKvRequestCount).eq(0);
         expect(settings).not.undefined;
         expect(settings.get("feature_management")).not.undefined;
         expect(settings.get<any>("feature_management").feature_flags).not.undefined;
@@ -371,6 +441,8 @@ describe("dynamic refresh feature flags", function () {
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(4); // 2 + 2 more requests: one conditional request to detect change and one request to reload all feature flags
+        expect(getKvRequestCount).eq(0);
 
         expect(settings.get<any>("feature_management").feature_flags[0].id).eq("Beta");
         expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(false);
@@ -387,8 +459,8 @@ describe("dynamic refresh feature flags", function () {
             createMockedFeatureFlag("Beta_1", { enabled: true }),
             createMockedFeatureFlag("Beta_2", { enabled: true }),
         ];
-        mockAppConfigurationClientListConfigurationSettings(page1, page2);
-        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2]);
+        mockAppConfigurationClientListConfigurationSettings([page1, page2], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -403,6 +475,8 @@ describe("dynamic refresh feature flags", function () {
                 }
             }
         });
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(0);
 
         let refreshSuccessfulCount = 0;
         settings.onRefresh(() => {
@@ -411,16 +485,20 @@ describe("dynamic refresh feature flags", function () {
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(3); // one conditional request to detect change
+        expect(getKvRequestCount).eq(0);
         expect(refreshSuccessfulCount).eq(0); // no change in feature flags, because page etags are the same.
 
         // change feature flag Beta_1 to false
         page2[0] = createMockedFeatureFlag("Beta_1", { enabled: false });
         restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings(page1, page2);
-        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2]);
+        mockAppConfigurationClientListConfigurationSettings([page1, page2], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
+        expect(listKvRequestCount).eq(5); // 3 + 2 more requests: one conditional request to detect change and one request to reload all feature flags
+        expect(getKvRequestCount).eq(0);
         expect(refreshSuccessfulCount).eq(1); // change in feature flags, because page etags are different.
     });
 });
