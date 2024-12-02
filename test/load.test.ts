@@ -80,7 +80,7 @@ describe("load", function () {
     this.timeout(10000);
 
     before(() => {
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
     });
 
     after(() => {
