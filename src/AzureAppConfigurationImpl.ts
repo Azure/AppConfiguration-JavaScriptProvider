@@ -290,6 +290,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
+    /**
+     * Registers a callback function to be called when the configuration is refreshed.
+     */
+    onRefresh(listener: () => any, thisArg?: any): Disposable {
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
+            throw new Error("Refresh is not enabled for key-values or feature flags.");
+        }
+
+        const boundedListener = listener.bind(thisArg);
+        this.#onRefreshListeners.push(boundedListener);
+
+        const remove = () => {
+            const index = this.#onRefreshListeners.indexOf(boundedListener);
+            if (index >= 0) {
+                this.#onRefreshListeners.splice(index, 1);
+            }
+        };
+        return new Disposable(remove);
+    }
+
     async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
@@ -317,26 +337,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 listener();
             }
         }
-    }
-
-    /**
-     * Registers a callback function to be called when the configuration is refreshed.
-     */
-    onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
-        }
-
-        const boundedListener = listener.bind(thisArg);
-        this.#onRefreshListeners.push(boundedListener);
-
-        const remove = () => {
-            const index = this.#onRefreshListeners.indexOf(boundedListener);
-            if (index >= 0) {
-                this.#onRefreshListeners.splice(index, 1);
-            }
-        };
-        return new Disposable(remove);
     }
 
     /**
