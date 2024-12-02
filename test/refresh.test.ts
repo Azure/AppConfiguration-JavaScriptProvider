@@ -375,13 +375,13 @@ describe("dynamic refresh", function () {
 
         // after refreshInterval, should really refresh
         await sleepInMs(2 * 1000 + 1);
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 5; i++) { // in practice, refresh should not be used in this way
             settings.refresh(); // refresh "concurrently"
         }
         expect(listKvRequestCount).to.be.at.most(2);
         expect(getKvRequestCount).to.be.at.most(1);
 
-        await sleepInMs(1000);
+        await sleepInMs(1000); // wait for all 5 refresh attempts to finish
 
         expect(listKvRequestCount).eq(2);
         expect(getKvRequestCount).eq(1);
