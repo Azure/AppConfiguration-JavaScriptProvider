@@ -42,6 +42,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagTracing: FeatureFlagTracingOptions = new FeatureFlagTracingOptions();
 
     // Refresh
+    #refreshInProgress: boolean = false;
+
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
     /**
@@ -142,19 +144,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#configMap.size;
     }
 
-    entries(): IterableIterator<[string, any]> {
+    entries(): MapIterator<[string, any]> {
         return this.#configMap.entries();
     }
 
-    keys(): IterableIterator<string> {
+    keys(): MapIterator<string> {
         return this.#configMap.keys();
     }
 
-    values(): IterableIterator<any> {
+    values(): MapIterator<any> {
         return this.#configMap.values();
     }
 
-    [Symbol.iterator](): IterableIterator<[string, any]> {
+    [Symbol.iterator](): MapIterator<[string, any]> {
         return this.#configMap[Symbol.iterator]();
     }
     // #endregion
@@ -356,6 +358,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
+        if (this.#refreshInProgress) {
+            return;
+        }
+        this.#refreshInProgress = true;
+        try {
+            await this.#refreshTasks();
+        } finally {
+            this.#refreshInProgress = false;
+        }
+    }
+
+    async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
             refreshTasks.push(this.#refreshKeyValues());
