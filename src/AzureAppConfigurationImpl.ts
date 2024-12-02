@@ -39,7 +39,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
-    #featureFlagTracing: FeatureFlagTracingOptions = new FeatureFlagTracingOptions();
+    #featureFlagTracing: FeatureFlagTracingOptions | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -68,6 +68,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // Enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
+        if (this.#requestTracingEnabled) {
+            this.#featureFlagTracing = new FeatureFlagTracingOptions();
+        }
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
@@ -284,7 +287,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             selector.pageEtags = pageEtags;
         }
 
-        this.#featureFlagTracing.resetFeatureFlagTracing();
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            this.#featureFlagTracing.resetFeatureFlagTracing();
+        }
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -559,13 +564,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("The value of configuration setting cannot be undefined.");
         }
         const featureFlag = JSON.parse(rawFlag);
-
-        if (featureFlag[CONDITIONS_KEY_NAME] && featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
-            for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
-                this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            if (featureFlag[CONDITIONS_KEY_NAME] && featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+                for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+                    this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
+                }
             }
         }
-
         return featureFlag;
     }
 }
