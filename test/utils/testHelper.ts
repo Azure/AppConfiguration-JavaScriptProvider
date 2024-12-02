@@ -88,13 +88,16 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
  * - mockAppConfigurationClientListConfigurationSettings([item1, item2, item3])  // single page
- * - mockAppConfigurationClientListConfigurationSettings([item1, item2], [item3], [item4])  // multiple pages
  *
  * @param pages List of pages, each page is a list of ConfigurationSetting
  */
-function mockAppConfigurationClientListConfigurationSettings(...pages: ConfigurationSetting[][]) {
+function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions) => any) {
 
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
     });
@@ -138,8 +141,12 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
     });
 }
 
-function mockAppConfigurationClientGetConfigurationSetting(kvList) {
+function mockAppConfigurationClientGetConfigurationSetting(kvList, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
+        if (customCallback) {
+            customCallback(options);
+        }
+
         const found = kvList.find(elem => elem.key === settingId.key && elem.label === settingId.label);
         if (found) {
             if (options?.onlyIfChanged && settingId.etag === found.etag) {
