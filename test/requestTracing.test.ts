@@ -139,10 +139,10 @@ describe("request tracing", function () {
     });
 
     it("should have request type in correlation-context header when refresh is enabled", async () => {
-        mockAppConfigurationClientListConfigurationSettings([{
+        mockAppConfigurationClientListConfigurationSettings([[{
             key: "app.settings.fontColor",
             value: "red"
-        }].map(createMockedKeyValue));
+        }].map(createMockedKeyValue)]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,

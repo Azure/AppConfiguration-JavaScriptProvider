@@ -64,27 +64,32 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isFailoverRequest: boolean = false;
 
     // Refresh
-    #watchAll: boolean = false;
-    #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
+    #refreshInProgress: boolean = false;
+
     #onRefreshListeners: Array<() => any> = [];
     /**
      * Aka watched settings.
      */
     #sentinels: ConfigurationSettingId[] = [];
-    #refreshTimer: RefreshTimer;
+    #watchAll: boolean = false;
+    #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
+    #kvRefreshTimer: RefreshTimer;
 
     // Feature flags
-    #featureFlagRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
-    #featureFlagRefreshTimer: RefreshTimer;
+    #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
+    #ffRefreshTimer: RefreshTimer;
 
     /**
-     * selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
+     * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
-    #keyValueSelectors: PagedSettingSelector[] = [];
+    #kvSelectors: PagedSettingSelector[] = [];
     /**
-     * selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
+     * Selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
      */
-    #featureFlagSelectors: PagedSettingSelector[] = [];
+    #ffSelectors: PagedSettingSelector[] = [];
+
+    // Load balancing
+    #lastSuccessfulEndpoint: string = "";
 
     constructor(
         clientManager: ConfigurationClientManager,
@@ -123,18 +128,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
                     throw new Error(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
-                    this.#refreshInterval = refreshIntervalInMs;
+                    this.#kvRefreshInterval = refreshIntervalInMs;
                 }
             }
-            this.#refreshTimer = new RefreshTimer(this.#refreshInterval);
+            this.#kvRefreshTimer = new RefreshTimer(this.#kvRefreshInterval);
         }
 
-        this.#keyValueSelectors = getValidKeyValueSelectors(options?.selectors);
+        this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
 
         // feature flag options
         if (options?.featureFlagOptions?.enabled) {
             // validate feature flag selectors
-            this.#featureFlagSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
+            this.#ffSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
             if (options.featureFlagOptions.refresh?.enabled) {
                 const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
@@ -143,11 +148,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
                         throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                     } else {
-                        this.#featureFlagRefreshInterval = refreshIntervalInMs;
+                        this.#ffRefreshInterval = refreshIntervalInMs;
                     }
                 }
 
-                this.#featureFlagRefreshTimer = new RefreshTimer(this.#featureFlagRefreshInterval);
+                this.#ffRefreshTimer = new RefreshTimer(this.#ffRefreshInterval);
             }
         }
 
@@ -274,6 +279,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
+        if (this.#refreshInProgress) {
+            return;
+        }
+        this.#refreshInProgress = true;
+        try {
+            await this.#refreshTasks();
+        } finally {
+            this.#refreshInProgress = false;
+        }
+    }
+
+    async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
             refreshTasks.push(this.#refreshKeyValues());
@@ -331,7 +348,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      *                          If false, loads key-value using the key-value selectors. Defaults to false.
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
-        const selectors = loadFeatureFlag ? this.#featureFlagSelectors : this.#keyValueSelectors;
+        const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
         const funcToExecute = async (client) => {
             const loadedSettings: ConfigurationSetting[] = [];
             // deep copy selectors to avoid modification if current client fails
@@ -363,9 +380,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
 
             if (loadFeatureFlag) {
-                this.#featureFlagSelectors = selectorsToUpdate;
+                this.#ffSelectors = selectorsToUpdate;
             } else {
-                this.#keyValueSelectors = selectorsToUpdate;
+                this.#kvSelectors = selectorsToUpdate;
             }
             return loadedSettings;
         };
@@ -449,14 +466,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshKeyValues(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#refreshTimer.canRefresh()) {
+        if (!this.#kvRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         if (this.#watchAll) {
-            needRefresh = await this.#checkConfigurationSettingsChange(this.#keyValueSelectors);
+            needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
         }
         for (const sentinel of this.#sentinels.values()) {
             const response = await this.#getConfigurationSetting(sentinel, {
@@ -476,7 +493,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#loadSelectedAndWatchedKeyValues();
         }
 
-        this.#refreshTimer.reset();
+        this.#kvRefreshTimer.reset();
         return Promise.resolve(needRefresh);
     }
 
@@ -486,16 +503,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#featureFlagRefreshTimer.canRefresh()) {
+        if (!this.#ffRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#featureFlagSelectors);
+        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
 
-        this.#featureFlagRefreshTimer.reset();
+        this.#ffRefreshTimer.reset();
         return Promise.resolve(needRefresh);
     }
 
@@ -569,7 +586,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
-        const clientWrappers = await this.#clientManager.getClients();
+        let clientWrappers = await this.#clientManager.getClients();
+        if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
+            let nextClientIndex = 0;
+            // Iterate through clients to find the index of the client with the last successful endpoint
+            for (const clientWrapper of clientWrappers) {
+                nextClientIndex++;
+                if (clientWrapper.endpoint === this.#lastSuccessfulEndpoint) {
+                    break;
+                }
+            }
+            // If we found the last successful client, rotate the list so that the next client is at the beginning
+            if (nextClientIndex < clientWrappers.length) {
+                clientWrappers = [...clientWrappers.slice(nextClientIndex), ...clientWrappers.slice(0, nextClientIndex)];
+            }
+        }
 
         let successful: boolean;
         for (const clientWrapper of clientWrappers) {
@@ -577,6 +608,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             try {
                 const result = await funcToExecute(clientWrapper.client);
                 this.#isFailoverRequest = false;
+                this.#lastSuccessfulEndpoint = clientWrapper.endpoint;
                 successful = true;
                 clientWrapper.updateBackoffStatus(successful);
                 return result;
