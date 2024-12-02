@@ -40,6 +40,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isInitialLoadCompleted: boolean = false;
 
     // Refresh
+    #refreshInProgress: boolean = false;
+
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
     /**
@@ -350,6 +352,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
+        if (this.#refreshInProgress) {
+            return;
+        }
+        this.#refreshInProgress = true;
+        try {
+            await this.#refreshTasks();
+        } finally {
+            this.#refreshInProgress = false;
+        }
+    }
+
+    async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
             refreshTasks.push(this.#refreshKeyValues());
