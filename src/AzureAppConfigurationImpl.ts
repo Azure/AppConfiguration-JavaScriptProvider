@@ -36,12 +36,16 @@ import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { ETAG_LOOKUP_HEADER } from "./EtagUrlPipelinePolicy.js";
 
 type PagedSettingSelector = SettingSelector & {
-    /**
-     * Key: page eTag, Value: feature flag configurations
-     */
     pageEtags?: string[];
+
+    /**
+     * The etag which has changed after the last refresh. This is used to break the CDN cache.
+     * It can either be a page etag or etag of a watched setting.
+     */
+    latestEtag?: string;
 };
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -59,7 +63,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     readonly #requestTracingEnabled: boolean;
     #clientManager: ConfigurationClientManager;
     #options: AzureAppConfigurationOptions | undefined;
-    #isCdnUsed: boolean;
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
 
@@ -90,6 +93,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
+
+    // CDN
+    #isCdnUsed: boolean;
+    /**
+     * The etag of a watched setting which has changed after the last refresh. This is used to break the CDN cache.
+     * This property will not be used when using key value collection based refresh. It could only be used during updateWatchedKeyValuesEtag and refreshKeyValues.
+     */
+    #latestEtag?: string;
 
     constructor(
         clientManager: ConfigurationClientManager,
@@ -218,11 +229,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     /**
      * Loads the configuration store for the first time.
+     * @internal
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
+        if (this.#watchAll) {
+            this.#kvSelectors.forEach(selector => selector.latestEtag = selector.pageEtags ? selector.pageEtags[0] : undefined);
+        } else if (this.#refreshEnabled) {
+            this.#latestEtag = this.#sentinels.find(s => s.etag !== undefined)?.etag;
+        }
+
         if (this.#featureFlagEnabled) {
             await this.#loadFeatureFlags();
+            if (this.#featureFlagRefreshEnabled) {
+                this.#ffSelectors.forEach(selector => selector.latestEtag = selector.pageEtags ? selector.pageEtags[0] : undefined);
+            }
         }
         // Mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
@@ -357,10 +378,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
 
             for (const selector of selectorsToUpdate) {
-                const listOptions: ListConfigurationSettingsOptions = {
+                let listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
-                    labelFilter: selector.labelFilter
+                    labelFilter: selector.labelFilter,
                 };
+
+                if (this.#isCdnUsed) {
+                    // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    if (this.#watchAll && selector.latestEtag) {
+                        listOptions = {
+                            ...listOptions,
+                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selector.latestEtag }}
+                        };
+                    } else if (this.#latestEtag) {
+                        listOptions = {
+                            ...listOptions,
+                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#latestEtag }}
+                        };
+                    }
+                }
 
                 const pageEtags: string[] = [];
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -422,8 +458,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 sentinel.etag = matchedSetting.etag;
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
-                const { key, label } = sentinel;
-                const response = await this.#getConfigurationSetting({ key, label });
+                // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                const getOptions = this.#isCdnUsed && this.#latestEtag ? { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#latestEtag }}} : {};
+                const response = await this.#getConfigurationSetting(sentinel, {...getOptions, onlyIfChanged: false}); // always send non-conditional request
                 if (response) {
                     sentinel.etag = response.etag;
                 } else {
@@ -476,14 +513,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
         }
         for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: !this.#isCdnUsed // if CDN is used, do not send conditional request
-            });
+            // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+            const getOptions = this.#isCdnUsed && this.#latestEtag ? { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#latestEtag }}} : {};
+            const response = await this.#getConfigurationSetting(sentinel, {...getOptions, onlyIfChanged: !this.#isCdnUsed}); // if CDN is used, do not send conditional request
 
             if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
+                this.#latestEtag = response?.etag; // record the last changed etag
                 needRefresh = true;
                 break;
             }
@@ -527,7 +565,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    ...(!this.#isCdnUsed && { pageEtags: selector.pageEtags }) // if CDN is used, do not send conditional request
+                    ...(!this.#isCdnUsed && { pageEtags: selector.pageEtags }), // if CDN is used, do not send conditional request
+                    // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    ...(this.#isCdnUsed && selector.latestEtag && { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selector.latestEtag }}})
                 };
 
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -542,8 +582,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 let i = 0;
                 for await (const page of pageIterator) {
-                    if (i > selector.pageEtags.length + 1 || // new page 
+                    if (i > selector.pageEtags.length + 1 || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
+                        selector.latestEtag = page.etag; // record the last changed etag
                         return true;
                     }
                     i++;

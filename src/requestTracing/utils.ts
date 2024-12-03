@@ -43,8 +43,15 @@ export function listConfigurationSettingsWithTrace(
     const actualListOptions = { ...listOptions };
     if (requestTracingEnabled) {
         actualListOptions.requestOptions = {
+            ...actualListOptions.requestOptions,
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed, isFailoverRequest)
+                ...(actualListOptions.requestOptions?.customHeaders || {}),
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(
+                    appConfigOptions,
+                    initialLoadCompleted,
+                    isCdnUsed,
+                    isFailoverRequest
+                )
             }
         };
     }
@@ -69,8 +76,15 @@ export function getConfigurationSettingWithTrace(
 
     if (requestTracingEnabled) {
         actualGetOptions.requestOptions = {
+            ...actualGetOptions.requestOptions,
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, initialLoadCompleted, isCdnUsed, isFailoverRequest)
+                ...(actualGetOptions.requestOptions?.customHeaders || {}),
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(
+                    appConfigOptions,
+                    initialLoadCompleted,
+                    isCdnUsed,
+                    isFailoverRequest
+                )
             }
         };
     }

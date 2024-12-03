@@ -6,6 +6,7 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager, instanceOfTokenCredential } from "./ConfigurationClientManager.js";
+import { EtagUrlPipelinePolicy } from "./EtagUrlPipelinePolicy.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
 
@@ -75,8 +76,17 @@ export async function loadFromCdn(
     if (appConfigOptions === undefined) {
         appConfigOptions = { clientOptions: {}};
     }
-    // Specify the api version that supports sas token authentication
-    appConfigOptions.clientOptions = { ...appConfigOptions.clientOptions, apiVersion: "2024-09-01-preview"};
+
+    appConfigOptions.clientOptions = {
+        ...appConfigOptions.clientOptions,
+        // Specify the api version that supports sas token authentication
+        apiVersion: "2024-09-01-preview",
+        // Add etag url policy to append etag to the request url for breaking CDN cache
+        additionalPolicies: [
+            ...(appConfigOptions.clientOptions?.additionalPolicies || []),
+            { policy: new EtagUrlPipelinePolicy(), position: "perCall" }
+        ]
+    };
 
     return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
 }
