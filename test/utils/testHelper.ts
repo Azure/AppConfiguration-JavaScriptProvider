@@ -103,12 +103,11 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
     });
 }
 
-function mockAppConfigurationClientLoadBalanceMode(clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
-    const emptyPages: ConfigurationSetting[][] = [];
+function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
     sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
         countObject.count += 1;
-        const kvs = _filterKVs(emptyPages.flat(), listOptions);
-        return getMockedIterator(emptyPages, kvs, listOptions);
+        const kvs = _filterKVs(pages.flat(), listOptions);
+        return getMockedIterator(pages, kvs, listOptions);
     });
 }
 

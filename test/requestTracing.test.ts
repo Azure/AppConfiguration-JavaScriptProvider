@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
-import { load } from "./exportedApi.js";
+import { load, loadFromCdn } from "./exportedApi.js";
 
 class HttpRequestHeadersPolicy {
     headers: any;
@@ -73,6 +73,30 @@ describe("request tracing", function () {
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("UsesKeyVault")).eq(true);
+    });
+
+    it("should have cdn tag in correlation-context header when loadFromCdn is used", async () => {
+        try {
+            await loadFromCdn(fakeEndpoint, {
+                clientOptions
+            });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("CDN")).eq(true);
+    });
+
+    it("should not have cdn tag in correlation-context header when load is used", async () => {
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions
+            });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("CDN")).eq(false);
     });
 
     it("should detect env in correlation-context header", async () => {
