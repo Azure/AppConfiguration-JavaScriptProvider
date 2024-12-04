@@ -594,12 +594,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
                     selectorCollection.etagToBreakCdnCache = undefined;
-                    return true; // no etag, always refresh
+                    return true; // no etag is retrieved from previous request, always refresh
                 }
 
                 let i = 0;
                 for await (const page of pageIterator) {
-                    if (i > selector.pageEtags.length + 1 || // new page
+                    if (i >= selector.pageEtags.length || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
                         if (this.#isCdnUsed) {
                             selectorCollection.etagToBreakCdnCache = page.etag;
