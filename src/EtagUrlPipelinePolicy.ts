@@ -20,7 +20,7 @@ export class EtagUrlPipelinePolicy implements PipelinePolicy {
             request.headers.delete(ETAG_LOOKUP_HEADER);
 
             const url = new URL(request.url);
-            url.searchParams.append("etag", etag);
+            url.searchParams.append("_", etag); // _ is a dummy query parameter to break the CDN cache
             request.url = url.toString();
         }
 
