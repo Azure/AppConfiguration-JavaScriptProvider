@@ -97,12 +97,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#options = options;
         this.#clientManager = clientManager;
 
-        // Enable request tracing if not opt-out
+        // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
+
+        // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
+        this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
 
         if (options?.refreshOptions?.enabled) {
             const { refreshIntervalInMs, watchedSettings } = options.refreshOptions;
@@ -131,11 +134,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#kvRefreshTimer = new RefreshTimer(this.#kvRefreshInterval);
         }
 
-        this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
-
         // feature flag options
         if (options?.featureFlagOptions?.enabled) {
-            // validate feature flag selectors
+            // validate feature flag selectors, only load feature flags when enabled
             this.#ffSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
             if (options.featureFlagOptions.refresh?.enabled) {
