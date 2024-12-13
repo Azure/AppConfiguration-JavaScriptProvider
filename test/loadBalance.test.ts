@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { restoreMocks, createMockedConnectionString, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, restoreMocks, createMockedConnectionString, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
 import { AppConfigurationClient } from "@azure/app-configuration";
 import { ConfigurationClientWrapper } from "../src/ConfigurationClientWrapper.js";
 
@@ -18,7 +18,7 @@ const clientRequestCounter_1 = {count: 0};
 const clientRequestCounter_2 = {count: 0};
 
 describe("load balance", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
     });

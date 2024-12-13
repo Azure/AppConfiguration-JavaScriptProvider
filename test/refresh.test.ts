@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -33,7 +33,7 @@ const getKvCallback = () => {
 };
 
 describe("dynamic refresh", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
         mockedKVs = [
