@@ -30,8 +30,9 @@ export class ConfigurationClientManager {
     #clientOptions: AppConfigurationClientOptions | undefined;
     #appConfigOptions: AzureAppConfigurationOptions | undefined;
     #validDomain: string;
-    #staticClients: ConfigurationClientWrapper[];
+    #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
     #dynamicClients: ConfigurationClientWrapper[];
+    #replicaCount: number = 0;
     #lastFallbackClientRefreshTime: number = 0;
     #lastFallbackClientRefreshAttempt: number = 0;
 
@@ -96,7 +97,11 @@ export class ConfigurationClientManager {
         this.#isFailoverable = true;
     }
 
-    async getClients() : Promise<ConfigurationClientWrapper[]> {
+    getReplicaCount(): number {
+        return this.#replicaCount;
+    }
+
+    async getClients(): Promise<ConfigurationClientWrapper[]> {
         if (!this.#isFailoverable) {
             return this.#staticClients;
         }
@@ -161,6 +166,7 @@ export class ConfigurationClientManager {
 
         this.#dynamicClients = newDynamicClients;
         this.#lastFallbackClientRefreshTime = Date.now();
+        this.#replicaCount = this.#dynamicClients.length;
     }
 
     /**

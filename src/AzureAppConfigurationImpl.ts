@@ -33,7 +33,7 @@ import {
 } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
-import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { ETAG_LOOKUP_HEADER } from "./EtagUrlPipelinePolicy.js";
@@ -110,7 +110,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#isCdnUsed = isCdnUsed;
         this.#clientManager = clientManager;
 
-        // Enable request tracing if not opt-out
+        // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
 
         if (options?.trimKeyPrefixes) {
@@ -144,6 +144,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#kvRefreshTimer = new RefreshTimer(this.#kvRefreshInterval);
         }
 
+        // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
         this.#kvSelectorCollection.selectors = getValidKeyValueSelectors(options?.selectors);
 
         // feature flag options
@@ -182,13 +183,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
-    get #requestTraceOptions() {
+    get #requestTraceOptions(): RequestTracingOptions {
         return {
-            requestTracingEnabled: this.#requestTracingEnabled,
+            enabled: this.#requestTracingEnabled,
+            appConfigOptions: this.#options,
             initialLoadCompleted: this.#isInitialLoadCompleted,
-            isCdnUsed: this.#isCdnUsed,
+            replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest,
-            appConfigOptions: this.#options
+            isCdnUsed: this.#isCdnUsed
         };
     }
 

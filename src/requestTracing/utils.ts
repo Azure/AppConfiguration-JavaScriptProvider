@@ -21,37 +21,33 @@ import {
     RequestType,
     SERVICE_FABRIC_ENV_VAR,
     CORRELATION_CONTEXT_HEADER_NAME,
+    REPLICA_COUNT_KEY,
     FAILOVER_REQUEST_TAG,
     FEATURES_KEY,
     LOAD_BALANCE_CONFIGURED_TAG
 } from "./constants";
 
+export interface RequestTracingOptions {
+    enabled: boolean;
+    appConfigOptions: AzureAppConfigurationOptions | undefined;
+    initialLoadCompleted: boolean;
+    replicaCount: number;
+    isFailoverRequest: boolean;
+    isCdnUsed: boolean;
+}
+
 // Utils
 export function listConfigurationSettingsWithTrace(
-    requestTracingOptions: {
-        requestTracingEnabled: boolean;
-        initialLoadCompleted: boolean;
-        isCdnUsed: boolean;
-        isFailoverRequest: boolean;
-        appConfigOptions: AzureAppConfigurationOptions | undefined;
-    },
+    requestTracingOptions: RequestTracingOptions,
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, isFailoverRequest, appConfigOptions } = requestTracingOptions;
-
     const actualListOptions = { ...listOptions };
-    if (requestTracingEnabled) {
+    if (requestTracingOptions.enabled) {
         actualListOptions.requestOptions = {
             ...actualListOptions.requestOptions,
             customHeaders: {
-                ...(actualListOptions.requestOptions?.customHeaders || {}),
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(
-                    appConfigOptions,
-                    initialLoadCompleted,
-                    isCdnUsed,
-                    isFailoverRequest
-                )
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
     }
@@ -60,31 +56,18 @@ export function listConfigurationSettingsWithTrace(
 }
 
 export function getConfigurationSettingWithTrace(
-    requestTracingOptions: {
-        requestTracingEnabled: boolean;
-        initialLoadCompleted: boolean;
-        isCdnUsed: boolean;
-        appConfigOptions: AzureAppConfigurationOptions | undefined;
-        isFailoverRequest: boolean;
-    },
+    requestTracingOptions: RequestTracingOptions,
     client: AppConfigurationClient,
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, isCdnUsed, isFailoverRequest, appConfigOptions } = requestTracingOptions;
     const actualGetOptions = { ...getOptions };
 
-    if (requestTracingEnabled) {
+    if (requestTracingOptions.enabled) {
         actualGetOptions.requestOptions = {
             ...actualGetOptions.requestOptions,
             customHeaders: {
-                ...(actualGetOptions.requestOptions?.customHeaders || {}),
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(
-                    appConfigOptions,
-                    initialLoadCompleted,
-                    isCdnUsed,
-                    isFailoverRequest
-                )
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
     }
@@ -92,33 +75,44 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, isInitialLoadCompleted: boolean, isCdnUsed: boolean, isFailoverRequest: boolean): string {
+export function createCorrelationContextHeader(requestTracingOptions: RequestTracingOptions): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
-    Env: identify by env `NODE_ENV` which is a popular but not standard.usually the value can be "development", "production".
+    Env: identify by env `NODE_ENV` which is a popular but not standard. Usually, the value can be "development", "production".
+    ReplicaCount: identify how many replicas are found
+    Features: LB
     UsersKeyVault
+    Failover
+    CDN
     */
     const keyValues = new Map<string, string | undefined>();
-    keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
+    const tags: string[] = [];
+
+    keyValues.set(REQUEST_TYPE_KEY, requestTracingOptions.initialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
-    if (options?.loadBalancingEnabled) {
-        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
-    }
 
-    const tags: string[] = [];
-    if (options?.keyVaultOptions) {
-        const { credential, secretClients, secretResolver } = options.keyVaultOptions;
+    const appConfigOptions = requestTracingOptions.appConfigOptions;
+    if (appConfigOptions?.keyVaultOptions) {
+        const { credential, secretClients, secretResolver } = appConfigOptions.keyVaultOptions;
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
             tags.push(KEY_VAULT_CONFIGURED_TAG);
         }
     }
-    if (isCdnUsed) {
+    if (requestTracingOptions.isFailoverRequest) {
+        tags.push(FAILOVER_REQUEST_TAG);
+    }
+    if (requestTracingOptions.isCdnUsed) {
         tags.push(CDN_USED_TAG);
     }
-    if (isFailoverRequest) {
-        tags.push(FAILOVER_REQUEST_TAG);
+    if (requestTracingOptions.replicaCount > 0) {
+        keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
+    }
+
+    // Compact tags: Features=LB+...
+    if (appConfigOptions?.loadBalancingEnabled) {
+        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
     }
 
     const contextParts: string[] = [];

@@ -5,7 +5,8 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
+import { ConfigurationClientManager } from "../src/ConfigurationClientManager.js";
 import { load, loadFromCdn } from "./exportedApi.js";
 
 class HttpRequestHeadersPolicy {
@@ -23,7 +24,7 @@ class HttpRequestHeadersPolicy {
 }
 
 describe("request tracing", function () {
-    this.timeout(15000);
+    this.timeout(MAX_TIME_OUT);
 
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
@@ -73,6 +74,19 @@ describe("request tracing", function () {
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("UsesKeyVault")).eq(true);
+    });
+
+    it("should have replica count in correlation-context header", async () => {
+        const replicaCount = 2;
+        sinon.stub(ConfigurationClientManager.prototype, "getReplicaCount").returns(replicaCount);
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes(`ReplicaCount=${replicaCount}`)).eq(true);
+        sinon.restore();
     });
 
     it("should have cdn tag in correlation-context header when loadFromCdn is used", async () => {

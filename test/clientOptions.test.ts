@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { createMockedConnectionString } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, createMockedConnectionString } from "./utils/testHelper.js";
 import * as nock from "nock";
 
 class HttpRequestCountPolicy {
@@ -27,7 +27,7 @@ class HttpRequestCountPolicy {
 }
 
 describe("custom client options", function () {
-    this.timeout(15000);
+    this.timeout(MAX_TIME_OUT);
 
     const fakeEndpoint = "https://azure.azconfig.io";
     beforeEach(() => {
