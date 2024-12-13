@@ -10,8 +10,8 @@ import { RestError } from "@azure/core-rest-pipeline";
 import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
 import * as crypto from "crypto";
-import { ConfigurationClientManager } from "../../src/ConfigurationClientManager";
-import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper";
+import { ConfigurationClientManager } from "../../src/ConfigurationClientManager.js";
+import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper.js";
 
 const MAX_TIME_OUT = 20000;
 
