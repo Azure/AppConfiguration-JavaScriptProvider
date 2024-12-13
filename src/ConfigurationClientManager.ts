@@ -32,6 +32,7 @@ export class ConfigurationClientManager {
     #validDomain: string;
     #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
     #dynamicClients: ConfigurationClientWrapper[];
+    #replicaCount: number = 0;
     #lastFallbackClientRefreshTime: number = 0;
     #lastFallbackClientRefreshAttempt: number = 0;
 
@@ -97,7 +98,7 @@ export class ConfigurationClientManager {
     }
 
     getReplicaCount(): number {
-        return this.#dynamicClients.length;
+        return this.#replicaCount;
     }
 
     async getClients(): Promise<ConfigurationClientWrapper[]> {
@@ -165,6 +166,7 @@ export class ConfigurationClientManager {
 
         this.#dynamicClients = newDynamicClients;
         this.#lastFallbackClientRefreshTime = Date.now();
+        this.#replicaCount = this.#dynamicClients.length;
     }
 
     /**
