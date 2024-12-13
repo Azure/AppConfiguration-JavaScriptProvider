@@ -177,9 +177,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             initialLoadCompleted: this.#isInitialLoadCompleted,
             replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest
-        }
+        };
     }
-
 
     // #region ReadonlyMap APIs
     get<T>(key: string): T | undefined {
