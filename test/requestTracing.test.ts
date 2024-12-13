@@ -5,7 +5,7 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
 import { load } from "./exportedApi.js";
 
 class HttpRequestHeadersPolicy {
@@ -23,7 +23,7 @@ class HttpRequestHeadersPolicy {
 }
 
 describe("request tracing", function () {
-    this.timeout(15000);
+    this.timeout(MAX_TIME_OUT);
 
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();

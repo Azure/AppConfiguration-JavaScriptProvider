@@ -13,6 +13,8 @@ import * as crypto from "crypto";
 import { ConfigurationClientManager } from "../../src/ConfigurationClientManager";
 import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper";
 
+const MAX_TIME_OUT = 20000;
+
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
@@ -262,5 +264,7 @@ export {
     createMockedKeyValue,
     createMockedFeatureFlag,
 
-    sleepInMs
+    sleepInMs,
+
+    MAX_TIME_OUT
 };
