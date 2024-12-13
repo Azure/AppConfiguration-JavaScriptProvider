@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
+import { MAX_TIME_OUT, createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
 import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
 
 const mockedKVs = [{
@@ -27,7 +27,7 @@ const mockedFeatureFlags = [{
 ]);
 
 describe("failover", function () {
-    this.timeout(15000);
+    this.timeout(MAX_TIME_OUT);
 
     afterEach(() => {
         restoreMocks();

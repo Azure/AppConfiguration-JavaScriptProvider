@@ -33,7 +33,7 @@ import {
 } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
-import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
@@ -169,14 +169,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
-    get #requestTraceOptions() {
+    get #requestTraceOptions(): RequestTracingOptions {
         return {
-            requestTracingEnabled: this.#requestTracingEnabled,
-            initialLoadCompleted: this.#isInitialLoadCompleted,
+            enabled: this.#requestTracingEnabled,
             appConfigOptions: this.#options,
+            initialLoadCompleted: this.#isInitialLoadCompleted,
+            replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest
-        };
+        }
     }
+
 
     // #region ReadonlyMap APIs
     get<T>(key: string): T | undefined {
