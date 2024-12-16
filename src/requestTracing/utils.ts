@@ -12,6 +12,8 @@ import {
     ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED,
     ENV_KEY,
     FEATURE_FILTER_TYPE_KEY,
+    FF_MAX_VARIANTS_KEY,
+    FF_FEATURES_KEY,
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
@@ -85,7 +87,14 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
     keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
-    keyValues.set(FEATURE_FILTER_TYPE_KEY, featureFlagTracing?.usesAnyFeatureFilter() ? featureFlagTracing.createFeatureFiltersString() : undefined);
+
+    if (featureFlagTracing) {
+        keyValues.set(FEATURE_FILTER_TYPE_KEY, featureFlagTracing.usesAnyFeatureFilter() ? featureFlagTracing.createFeatureFiltersString() : undefined);
+        keyValues.set(FF_FEATURES_KEY, featureFlagTracing.usesAnyTracingFeature() ? featureFlagTracing.createFeaturesString() : undefined);
+        if (featureFlagTracing.maxVariants > 0) {
+            keyValues.set(FF_MAX_VARIANTS_KEY, featureFlagTracing.maxVariants.toString());
+        }
+    }
 
     const tags: string[] = [];
     if (options?.keyVaultOptions) {

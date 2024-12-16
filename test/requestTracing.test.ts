@@ -176,6 +176,117 @@ describe("request tracing", function () {
         restoreMocks();
     });
 
+    it("should have max variants in correlation-context header if feature flags use variants", async () => {
+        let correlationContext: string = "";
+        const listKvCallback = (listOptions) => {
+            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+        };
+
+        mockAppConfigurationClientListConfigurationSettings([[
+            createMockedFeatureFlag("Alpha_1", { variants: [ {name: "a"}, {name: "b"}] }),
+            createMockedFeatureFlag("Alpha_2", { variants: [ {name: "a"}, {name: "b"}, {name: "c"}] }),
+            createMockedFeatureFlag("Alpha_3", { variants: [] })
+        ]], listKvCallback);
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ {keyFilter: "*"} ],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 1000
+                }
+            }
+        });
+
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext?.includes("MaxVariants=3")).eq(true);
+
+        restoreMocks();
+    });
+
+    it("should have telemety tag in correlation-context header if feature flags enable telemetry", async () => {
+        let correlationContext: string = "";
+        const listKvCallback = (listOptions) => {
+            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+        };
+
+        mockAppConfigurationClientListConfigurationSettings([[
+            createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} })
+        ]], listKvCallback);
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ {keyFilter: "*"} ],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 1000
+                }
+            }
+        });
+
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext?.includes("FFFeatures=Telemetry")).eq(true);
+
+        restoreMocks();
+    });
+
+    it("should have seed tag in correlation-context header if feature flags use allocation seed", async () => {
+        let correlationContext: string = "";
+        const listKvCallback = (listOptions) => {
+            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+        };
+
+        mockAppConfigurationClientListConfigurationSettings([[
+            createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} }),
+            createMockedFeatureFlag("Alpha_2", { allocation: {seed: "123"} })
+        ]], listKvCallback);
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ {keyFilter: "*"} ],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 1000
+                }
+            }
+        });
+
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext?.includes("FFFeatures=Seed+Telemetry")).eq(true);
+
+        restoreMocks();
+    });
+
     describe("request tracing in Web Worker environment", () => {
         let originalNavigator;
         let originalWorkerNavigator;

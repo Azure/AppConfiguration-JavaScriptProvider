@@ -9,7 +9,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME, NAME_KEY_NAME } from "./featureManagement/constants.js";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME, TELEMETRY_KEY_NAME, VARIANTS_KEY_NAME, ALLOCATION_KEY_NAME, SEED_KEY_NAME, NAME_KEY_NAME, ENABLED_KEY_NAME } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
@@ -565,10 +565,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         const featureFlag = JSON.parse(rawFlag);
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
-            if (featureFlag[CONDITIONS_KEY_NAME] && featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+            if (featureFlag[CONDITIONS_KEY_NAME] &&
+                featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
+                Array.isArray(featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME])) {
                 for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
                     this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
                 }
+            }
+            if (featureFlag[VARIANTS_KEY_NAME] && Array.isArray(featureFlag[VARIANTS_KEY_NAME])) {
+                this.#featureFlagTracing.notifyMaxVariants(featureFlag[VARIANTS_KEY_NAME].length);
+            }
+            if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME]) {
+                this.#featureFlagTracing.usesTelemetry = true;
+            }
+            if (featureFlag[ALLOCATION_KEY_NAME] && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME]) {
+                this.#featureFlagTracing.usesSeed = true;
             }
         }
         return featureFlag;
