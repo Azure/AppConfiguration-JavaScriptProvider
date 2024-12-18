@@ -29,11 +29,14 @@ import {
     SEED_KEY_NAME,
     VARIANT_KEY_NAME,
     VARIANTS_KEY_NAME,
-    CONFIGURATION_VALUE_KEY_NAME
+    CONFIGURATION_VALUE_KEY_NAME,
+    CONDITIONS_KEY_NAME,
+    CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
@@ -61,6 +64,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
+    #featureFlagTracing: FeatureFlagTracingOptions | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -99,6 +103,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
+        if (this.#requestTracingEnabled) {
+            this.#featureFlagTracing = new FeatureFlagTracingOptions();
+        }
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
@@ -176,7 +183,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             appConfigOptions: this.#options,
             initialLoadCompleted: this.#isInitialLoadCompleted,
             replicaCount: this.#clientManager.getReplicaCount(),
-            isFailoverRequest: this.#isFailoverRequest
+            isFailoverRequest: this.#isFailoverRequest,
+            featureFlagTracing: this.#featureFlagTracing
         };
     }
 
@@ -661,6 +669,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
+        }
+
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            if (featureFlag[CONDITIONS_KEY_NAME] &&
+                featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
+                Array.isArray(featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME])) {
+                for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+                    this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
+                }
+            }
+            if (featureFlag[VARIANTS_KEY_NAME] && Array.isArray(featureFlag[VARIANTS_KEY_NAME])) {
+                this.#featureFlagTracing.notifyMaxVariants(featureFlag[VARIANTS_KEY_NAME].length);
+            }
+            if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME]) {
+                this.#featureFlagTracing.usesTelemetry = true;
+            }
+            if (featureFlag[ALLOCATION_KEY_NAME] && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME]) {
+                this.#featureFlagTracing.usesSeed = true;
+            }
         }
 
         return featureFlag;
