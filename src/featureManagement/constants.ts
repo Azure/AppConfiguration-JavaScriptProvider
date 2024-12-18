@@ -20,3 +20,8 @@ export const VARIANT_KEY_NAME = "variant";
 export const VARIANTS_KEY_NAME = "variants";
 export const CONFIGURATION_VALUE_KEY_NAME = "configuration_value";
 export const ALLOCATION_ID_KEY_NAME = "AllocationId";
+export const CONDITIONS_KEY_NAME = "conditions";
+export const CLIENT_FILTERS_KEY_NAME = "client_filters";
+
+export const TIME_WINDOW_FILTER_NAMES = ["TimeWindow", "Microsoft.TimeWindow", "TimeWindowFilter", "Microsoft.TimeWindowFilter"];
+export const TARGETING_FILTER_NAMES = ["Targeting", "Microsoft.Targeting", "TargetingFilter", "Microsoft.TargetingFilter"];

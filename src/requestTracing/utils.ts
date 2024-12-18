@@ -3,6 +3,7 @@
 
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
+import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
@@ -10,6 +11,9 @@ import {
     DEV_ENV_VAL,
     ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED,
     ENV_KEY,
+    FEATURE_FILTER_TYPE_KEY,
+    FF_MAX_VARIANTS_KEY,
+    FF_FEATURES_KEY,
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
@@ -32,6 +36,7 @@ export interface RequestTracingOptions {
     initialLoadCompleted: boolean;
     replicaCount: number;
     isFailoverRequest: boolean;
+    featureFlagTracing: FeatureFlagTracingOptions | undefined;
 }
 
 // Utils
@@ -78,6 +83,9 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
     Env: identify by env `NODE_ENV` which is a popular but not standard. Usually, the value can be "development", "production".
     ReplicaCount: identify how many replicas are found
     Features: LB
+    Filter: CSTM+TIME+TRGT
+    MaxVariants: identify the max number of variants feature flag uses
+    FFFeatures: Seed+Telemetry
     UsersKeyVault
     Failover
     */
@@ -93,6 +101,15 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
         const { credential, secretClients, secretResolver } = appConfigOptions.keyVaultOptions;
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
             tags.push(KEY_VAULT_CONFIGURED_TAG);
+        }
+    }
+
+    const featureFlagTracing = requestTracingOptions.featureFlagTracing;
+    if (featureFlagTracing) {
+        keyValues.set(FEATURE_FILTER_TYPE_KEY, featureFlagTracing.usesAnyFeatureFilter() ? featureFlagTracing.createFeatureFiltersString() : undefined);
+        keyValues.set(FF_FEATURES_KEY, featureFlagTracing.usesAnyTracingFeature() ? featureFlagTracing.createFeaturesString() : undefined);
+        if (featureFlagTracing.maxVariants > 0) {
+            keyValues.set(FF_MAX_VARIANTS_KEY, featureFlagTracing.maxVariants.toString());
         }
     }
 
