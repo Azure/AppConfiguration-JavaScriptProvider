@@ -246,6 +246,20 @@ const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => 
     isReadOnly: false
 }, props));
 
+class HttpRequestHeadersPolicy {
+    headers: any;
+    name: string;
+
+    constructor() {
+        this.headers = {};
+        this.name = "HttpRequestHeadersPolicy";
+    }
+    sendRequest(req, next) {
+        this.headers = req.headers;
+        return next(req).then(resp => resp);
+    }
+}
+
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
@@ -264,6 +278,6 @@ export {
     createMockedFeatureFlag,
 
     sleepInMs,
-
-    MAX_TIME_OUT
+    MAX_TIME_OUT,
+    HttpRequestHeadersPolicy
 };
