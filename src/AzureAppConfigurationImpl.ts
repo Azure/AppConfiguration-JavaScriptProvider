@@ -1,7 +1,19 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
+import {
+    AppConfigurationClient,
+    ConfigurationSetting,
+    ConfigurationSettingId,
+    GetConfigurationSettingOptions,
+    GetConfigurationSettingResponse,
+    ListConfigurationSettingsOptions,
+    featureFlagPrefix,
+    isFeatureFlag,
+    GetSnapshotOptions,
+    GetSnapshotResponse,
+    KnownSnapshotComposition
+} from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
@@ -35,7 +47,14 @@ import {
 } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
-import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import {
+    RequestTracingOptions,
+    getConfigurationSettingWithTrace,
+    listConfigurationSettingsWithTrace,
+    getSnapshotWithTrace,
+    listConfigurationSettingsForSnapshotWithTrace,
+    requestTracingEnabled
+} from "./requestTracing/utils.js";
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
@@ -363,26 +382,49 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
 
             for (const selector of selectorsToUpdate) {
-                const listOptions: ListConfigurationSettingsOptions = {
-                    keyFilter: selector.keyFilter,
-                    labelFilter: selector.labelFilter
-                };
+                if (selector.snapshotName === undefined) {
+                    const listOptions: ListConfigurationSettingsOptions = {
+                        keyFilter: selector.keyFilter,
+                        labelFilter: selector.labelFilter
+                    };
+                    const pageEtags: string[] = [];
+                    const pageIterator = listConfigurationSettingsWithTrace(
+                        this.#requestTraceOptions,
+                        client,
+                        listOptions
+                    ).byPage();
 
-                const pageEtags: string[] = [];
-                const pageIterator = listConfigurationSettingsWithTrace(
-                    this.#requestTraceOptions,
-                    client,
-                    listOptions
-                ).byPage();
-                for await (const page of pageIterator) {
-                    pageEtags.push(page.etag ?? "");
-                    for (const setting of page.items) {
-                        if (loadFeatureFlag === isFeatureFlag(setting)) {
-                            loadedSettings.push(setting);
+                    for await (const page of pageIterator) {
+                        pageEtags.push(page.etag ?? "");
+                        for (const setting of page.items) {
+                            if (loadFeatureFlag === isFeatureFlag(setting)) {
+                                loadedSettings.push(setting);
+                            }
+                        }
+                    }
+                    selector.pageEtags = pageEtags;
+                } else { // snapshot selector
+                    const snapshot = await this.#getSnapshot(selector.snapshotName);
+                    if (snapshot === undefined) {
+                        throw new Error(`Could not find snapshot with name ${selector.snapshotName}.`);
+                    }
+                    if (snapshot.compositionType != KnownSnapshotComposition.Key) {
+                        throw new Error(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
+                    }
+                    const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
+                        this.#requestTraceOptions,
+                        client,
+                        selector.snapshotName
+                    ).byPage();
+
+                    for await (const page of pageIterator) {
+                        for (const setting of page.items) {
+                            if (loadFeatureFlag === isFeatureFlag(setting)) {
+                                loadedSettings.push(setting);
+                            }
                         }
                     }
                 }
-                selector.pageEtags = pageEtags;
             }
 
             if (loadFeatureFlag) {
@@ -530,6 +572,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
+                if (selector.snapshotName) { // skip snapshot selector
+                    continue;
+                }
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
@@ -569,6 +614,29 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         };
 
         let response: GetConfigurationSettingResponse | undefined;
+        try {
+            response = await this.#executeWithFailoverPolicy(funcToExecute);
+        } catch (error) {
+            if (isRestError(error) && error.statusCode === 404) {
+                response = undefined;
+            } else {
+                throw error;
+            }
+        }
+        return response;
+    }
+
+    async #getSnapshot(snapshotName: string, customOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
+        const funcToExecute = async (client) => {
+            return getSnapshotWithTrace(
+                this.#requestTraceOptions,
+                client,
+                snapshotName,
+                customOptions
+            );
+        };
+
+        let response: GetSnapshotResponse | undefined;
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
@@ -862,11 +930,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 }
 
-function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
-    // below code deduplicates selectors by keyFilter and labelFilter, the latter selector wins
+function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector[] {
+    // below code deduplicates selectors, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
-        const existingSelectorIndex = uniqueSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter);
+        const existingSelectorIndex = uniqueSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter && s.snapshotName === selector.snapshotName);
         if (existingSelectorIndex >= 0) {
             uniqueSelectors.splice(existingSelectorIndex, 1);
         }
@@ -875,14 +943,20 @@ function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
 
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
-        if (!selector.keyFilter) {
-            throw new Error("Key filter cannot be null or empty.");
-        }
-        if (!selector.labelFilter) {
-            selector.labelFilter = LabelFilter.Null;
-        }
-        if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-            throw new Error("The characters '*' and ',' are not supported in label filters.");
+        if (selector.snapshotName) {
+            if (selector.keyFilter || selector.labelFilter) {
+                throw new Error("Key or label filter should not be used for a snapshot.");
+            }
+        } else {
+            if (!selector.keyFilter) {
+                throw new Error("Key filter cannot be null or empty.");
+            }
+            if (!selector.labelFilter) {
+                selector.labelFilter = LabelFilter.Null;
+            }
+            if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
+                throw new Error("The characters '*' and ',' are not supported in label filters.");
+            }
         }
         return selector;
     });
@@ -893,7 +967,7 @@ function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelect
         // Default selector: key: *, label: \0
         return [{ keyFilter: KeyFilter.Any, labelFilter: LabelFilter.Null }];
     }
-    return getValidSelectors(selectors);
+    return getValidSettingSelectors(selectors);
 }
 
 function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSelector[] {
@@ -904,7 +978,7 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         selectors.forEach(selector => {
             selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
         });
-        return getValidSelectors(selectors);
+        return getValidSettingSelectors(selectors);
     }
 }
 
