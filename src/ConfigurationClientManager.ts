@@ -140,13 +140,16 @@ export class ConfigurationClientManager {
 
     async #discoverFallbackClients(host: string) {
         let result;
+        let timeout;
         try {
             result = await Promise.race([
-                new Promise((_, reject) => setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
+                new Promise((_, reject) => timeout = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
                 this.#querySrvTargetHost(host)
             ]);
         } catch (error) {
             throw new Error(`Failed to build fallback clients, ${error.message}`);
+        } finally {
+            clearTimeout(timeout);
         }
 
         const srvTargetHosts = shuffleList(result) as string[];
