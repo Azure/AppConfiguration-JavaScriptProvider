@@ -406,7 +406,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             for (const selector of selectorsToUpdate) {
                 let listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
-                    labelFilter: selector.labelFilter,
+                    labelFilter: selector.labelFilter
                 };
 
                 // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
