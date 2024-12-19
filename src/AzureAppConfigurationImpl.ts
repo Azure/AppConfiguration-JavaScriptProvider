@@ -49,7 +49,7 @@ type SettingSelectorCollection = {
     selectors: PagedSettingSelector[];
 
     /**
-     * This is used to append to the request url for breaking the CDN cache. 
+     * This is used to append to the request url for breaking the CDN cache.
      * It uses the etag which has changed after the last refresh. It can either be a page etag or etag of a watched setting.
      */
     cdnCacheBreakString?: string;
