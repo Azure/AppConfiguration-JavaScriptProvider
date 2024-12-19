@@ -39,13 +39,21 @@ import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurat
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { ETAG_LOOKUP_HEADER } from "./EtagUrlPipelinePolicy.js";
 
 type PagedSettingSelector = SettingSelector & {
-    /**
-     * Key: page eTag, Value: feature flag configurations
-     */
     pageEtags?: string[];
 };
+
+type SettingSelectorCollection = {
+    selectors: PagedSettingSelector[];
+
+    /**
+     * This is used to append to the request url for breaking the CDN cache.
+     * It uses the etag which has changed after the last refresh. It can either be a page etag or etag of a watched setting.
+     */
+    cdnCacheBreakString?: string;
+}
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -85,20 +93,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
-    #kvSelectors: PagedSettingSelector[] = [];
+    #kvSelectorCollection: SettingSelectorCollection = { selectors: [] };
     /**
      * Selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
      */
-    #ffSelectors: PagedSettingSelector[] = [];
+    #ffSelectorCollection: SettingSelectorCollection = { selectors: [] };
 
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // CDN
+    #isCdnUsed: boolean;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isCdnUsed: boolean
     ) {
         this.#options = options;
+        this.#isCdnUsed = isCdnUsed;
         this.#clientManager = clientManager;
 
         // enable request tracing if not opt-out
@@ -110,9 +123,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
-
-        // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
-        this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
 
         if (options?.refreshOptions?.enabled) {
             const { refreshIntervalInMs, watchedSettings } = options.refreshOptions;
@@ -141,10 +151,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#kvRefreshTimer = new RefreshTimer(this.#kvRefreshInterval);
         }
 
+        // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
+        this.#kvSelectorCollection.selectors = getValidKeyValueSelectors(options?.selectors);
+
         // feature flag options
         if (options?.featureFlagOptions?.enabled) {
-            // validate feature flag selectors, only load feature flags when enabled
-            this.#ffSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
+            // validate feature flag selectors
+            this.#ffSelectorCollection.selectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
             if (options.featureFlagOptions.refresh?.enabled) {
                 const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
@@ -184,6 +197,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             initialLoadCompleted: this.#isInitialLoadCompleted,
             replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest,
+            isCdnUsed: this.#isCdnUsed,
             featureFlagTracing: this.#featureFlagTracing
         };
     }
@@ -224,13 +238,40 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     /**
      * Loads the configuration store for the first time.
+     * @internal
      */
     async load() {
         await this.#loadSelectedAndWatchedKeyValues();
+
         if (this.#featureFlagEnabled) {
             await this.#loadFeatureFlags();
         }
-        // Mark all settings have loaded at startup.
+
+        if (this.#isCdnUsed) {
+            if (this.#watchAll) { // collection monitoring based refresh
+                // use the first page etag of the first kv selector
+                const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
+                if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
+                    this.#kvSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                } else {
+                    this.#kvSelectorCollection.cdnCacheBreakString = undefined;
+                }
+            } else if (this.#refreshEnabled) { // watched settings based refresh
+                // use the etag of the first watched setting (sentinel)
+                this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
+            }
+
+            if (this.#featureFlagRefreshEnabled) {
+                const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
+                if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
+                    this.#ffSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                } else {
+                    this.#ffSelectorCollection.cdnCacheBreakString = undefined;
+                }
+            }
+        }
+
+        // mark all settings have loaded at startup.
         this.#isInitialLoadCompleted = true;
     }
 
@@ -354,19 +395,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      *                          If false, loads key-value using the key-value selectors. Defaults to false.
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
-        const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
+        const selectorCollection = loadFeatureFlag ? this.#ffSelectorCollection : this.#kvSelectorCollection;
         const funcToExecute = async (client) => {
             const loadedSettings: ConfigurationSetting[] = [];
             // deep copy selectors to avoid modification if current client fails
-            const selectorsToUpdate = JSON.parse(
-                JSON.stringify(selectors)
+            const selectorsToUpdate: PagedSettingSelector[] = JSON.parse(
+                JSON.stringify(selectorCollection.selectors)
             );
 
             for (const selector of selectorsToUpdate) {
-                const listOptions: ListConfigurationSettingsOptions = {
+                let listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter
                 };
+
+                // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                if (this.#isCdnUsed) {
+                    listOptions = {
+                        ...listOptions,
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" }}
+                    };
+                }
 
                 const pageEtags: string[] = [];
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -375,21 +424,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
                 for await (const page of pageIterator) {
-                    pageEtags.push(page.etag ?? "");
+                    pageEtags.push(page.etag ?? ""); // pageEtags is string[]
                     for (const setting of page.items) {
                         if (loadFeatureFlag === isFeatureFlag(setting)) {
                             loadedSettings.push(setting);
                         }
                     }
                 }
+
+                if (pageEtags.length === 0) {
+                    console.warn(`No page is found in the response of listing key-value selector: key=${selector.keyFilter} and label=${selector.labelFilter}.`);
+                }
                 selector.pageEtags = pageEtags;
             }
 
-            if (loadFeatureFlag) {
-                this.#ffSelectors = selectorsToUpdate;
-            } else {
-                this.#kvSelectors = selectorsToUpdate;
-            }
+            selectorCollection.selectors = selectorsToUpdate;
             return loadedSettings;
         };
 
@@ -427,14 +476,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (matchedSetting) {
                 sentinel.etag = matchedSetting.etag;
             } else {
-                // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
-                const { key, label } = sentinel;
-                const response = await this.#getConfigurationSetting({ key, label });
-                if (response) {
-                    sentinel.etag = response.etag;
-                } else {
-                    sentinel.etag = undefined;
-                }
+                // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
+                // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                const getOptions = this.#isCdnUsed ?
+                    { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
+                    {};
+                const response = await this.#getConfigurationSetting(sentinel, {...getOptions, onlyIfChanged: false}); // always send non-conditional request
+                sentinel.etag = response?.etag;
             }
         }
     }
@@ -479,17 +527,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
         if (this.#watchAll) {
-            needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
+            needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectorCollection);
         }
         for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
-            });
+            // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+            const getOptions = this.#isCdnUsed ?
+                { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
+                {};
+            const response = await this.#getConfigurationSetting(sentinel, { ...getOptions, onlyIfChanged: !this.#isCdnUsed }); // if CDN is used, do not send conditional request
 
-            if (response?.statusCode === 200 // created or changed
-                || (response === undefined && sentinel.etag !== undefined) // deleted
+            if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
+                (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
+                this.#kvSelectorCollection.cdnCacheBreakString = sentinel.etag;
                 needRefresh = true;
                 break;
             }
@@ -513,7 +564,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectorCollection);
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
@@ -524,17 +575,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     /**
      * Checks whether the key-value collection has changed.
-     * @param selectors - The @see PagedSettingSelector of the kev-value collection.
+     * @param selectorCollection - The @see SettingSelectorCollection of the kev-value collection.
      * @returns true if key-value collection has changed, false otherwise.
      */
-    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
+    async #checkConfigurationSettingsChange(selectorCollection: SettingSelectorCollection): Promise<boolean> {
         const funcToExecute = async (client) => {
-            for (const selector of selectors) {
-                const listOptions: ListConfigurationSettingsOptions = {
+            for (const selector of selectorCollection.selectors) {
+                let listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
-                    labelFilter: selector.labelFilter,
-                    pageEtags: selector.pageEtags
+                    labelFilter: selector.labelFilter
                 };
+
+                if (this.#isCdnUsed) {
+                    // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    listOptions = {
+                        ...listOptions,
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" } }};
+                } else {
+                    // send conditional request if cdn is not used
+                    listOptions = { ...listOptions, pageEtags: selector.pageEtags };
+                }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
@@ -542,10 +602,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
 
+                if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
+                    selectorCollection.cdnCacheBreakString = undefined;
+                    return true; // no etag is retrieved from previous request, always refresh
+                }
+
+                let i = 0;
                 for await (const page of pageIterator) {
-                    if (page._response.status === 200) { // created or changed
+                    if (i >= selector.pageEtags.length || // new page
+                        (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
+                        if (this.#isCdnUsed) {
+                            selectorCollection.cdnCacheBreakString = page.etag;
+                        }
                         return true;
                     }
+                    i++;
+                }
+                if (i !== selector.pageEtags.length) { // page removed
+                    if (this.#isCdnUsed) {
+                        selectorCollection.cdnCacheBreakString = selector.pageEtags[i];
+                    }
+                    return true;
                 }
             }
             return false;
