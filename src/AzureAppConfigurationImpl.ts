@@ -49,10 +49,10 @@ type SettingSelectorCollection = {
     selectors: PagedSettingSelector[];
 
     /**
-     * The etag which has changed after the last refresh. This is used to append to the request url for breaking the CDN cache.
-     * It can either be a page etag or etag of a watched setting.
+     * This is used to append to the request url for breaking the CDN cache. 
+     * It uses the etag which has changed after the last refresh. It can either be a page etag or etag of a watched setting.
      */
-    etagToBreakCdnCache?: string;
+    cdnCacheBreakString?: string;
 }
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -252,21 +252,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // use the first page etag of the first kv selector
                 const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
                 if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                    this.#kvSelectorCollection.etagToBreakCdnCache = defaultSelector.pageEtags![0];
+                    this.#kvSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
                 } else {
-                    this.#kvSelectorCollection.etagToBreakCdnCache = undefined;
+                    this.#kvSelectorCollection.cdnCacheBreakString = undefined;
                 }
             } else if (this.#refreshEnabled) { // watched settings based refresh
                 // use the etag of the first watched setting (sentinel)
-                this.#kvSelectorCollection.etagToBreakCdnCache = this.#sentinels.find(s => s.etag !== undefined)?.etag;
+                this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
             }
 
             if (this.#featureFlagRefreshEnabled) {
                 const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
                 if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                    this.#ffSelectorCollection.etagToBreakCdnCache = defaultSelector.pageEtags![0];
+                    this.#ffSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
                 } else {
-                    this.#ffSelectorCollection.etagToBreakCdnCache = undefined;
+                    this.#ffSelectorCollection.cdnCacheBreakString = undefined;
                 }
             }
         }
@@ -413,7 +413,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (this.#isCdnUsed) {
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.etagToBreakCdnCache ?? "" }}
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" }}
                     };
                 }
 
@@ -479,7 +479,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
                 // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 const getOptions = this.#isCdnUsed ?
-                    { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.etagToBreakCdnCache ?? "" } } } :
+                    { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
                     {};
                 const response = await this.#getConfigurationSetting(sentinel, {...getOptions, onlyIfChanged: false}); // always send non-conditional request
                 sentinel.etag = response?.etag;
@@ -532,7 +532,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         for (const sentinel of this.#sentinels.values()) {
             // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
             const getOptions = this.#isCdnUsed ?
-                { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.etagToBreakCdnCache ?? "" } } } :
+                { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
                 {};
             const response = await this.#getConfigurationSetting(sentinel, { ...getOptions, onlyIfChanged: !this.#isCdnUsed }); // if CDN is used, do not send conditional request
 
@@ -540,7 +540,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
-                this.#kvSelectorCollection.etagToBreakCdnCache = sentinel.etag;
+                this.#kvSelectorCollection.cdnCacheBreakString = sentinel.etag;
                 needRefresh = true;
                 break;
             }
@@ -590,7 +590,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.etagToBreakCdnCache ?? "" } }};
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" } }};
                 } else {
                     // send conditional request if cdn is not used
                     listOptions = { ...listOptions, pageEtags: selector.pageEtags };
@@ -603,7 +603,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 ).byPage();
 
                 if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
-                    selectorCollection.etagToBreakCdnCache = undefined;
+                    selectorCollection.cdnCacheBreakString = undefined;
                     return true; // no etag is retrieved from previous request, always refresh
                 }
 
@@ -612,7 +612,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (i >= selector.pageEtags.length || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
                         if (this.#isCdnUsed) {
-                            selectorCollection.etagToBreakCdnCache = page.etag;
+                            selectorCollection.cdnCacheBreakString = page.etag;
                         }
                         return true;
                     }
@@ -620,7 +620,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 if (i !== selector.pageEtags.length) { // page removed
                     if (this.#isCdnUsed) {
-                        selectorCollection.etagToBreakCdnCache = selector.pageEtags[i];
+                        selectorCollection.cdnCacheBreakString = selector.pageEtags[i];
                     }
                     return true;
                 }
