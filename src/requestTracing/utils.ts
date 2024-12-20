@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
+import { OperationOptions } from "@azure/core-client";
+import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions, GetSnapshotOptions, ListConfigurationSettingsForSnapshotOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
 import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
 import {
@@ -45,15 +46,7 @@ export function listConfigurationSettingsWithTrace(
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-    const actualListOptions = { ...listOptions };
-    if (requestTracingOptions.enabled) {
-        actualListOptions.requestOptions = {
-            customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
-            }
-        };
-    }
-
+    const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
     return client.listConfigurationSettings(actualListOptions);
 }
 
@@ -63,20 +56,43 @@ export function getConfigurationSettingWithTrace(
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-    const actualGetOptions = { ...getOptions };
+    const actualGetOptions = applyRequestTracing(requestTracingOptions, getOptions);
+    return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
+}
 
+export function getSnapshotWithTrace(
+    requestTracingOptions: RequestTracingOptions,
+    client: AppConfigurationClient,
+    snapshotName: string,
+    getOptions?: GetSnapshotOptions
+) {
+    const actualGetOptions = applyRequestTracing(requestTracingOptions, getOptions);
+    return client.getSnapshot(snapshotName, actualGetOptions);
+}
+
+export function listConfigurationSettingsForSnapshotWithTrace(
+    requestTracingOptions: RequestTracingOptions,
+    client: AppConfigurationClient,
+    snapshotName: string,
+    listOptions?: ListConfigurationSettingsForSnapshotOptions
+) {
+    const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
+    return client.listConfigurationSettingsForSnapshot(snapshotName, actualListOptions);
+}
+
+function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: RequestTracingOptions, operationOptions?: T) {
+    const actualOptions = { ...operationOptions };
     if (requestTracingOptions.enabled) {
-        actualGetOptions.requestOptions = {
+        actualOptions.requestOptions = {
             customHeaders: {
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
     }
-
-    return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
+    return actualOptions;
 }
 
-export function createCorrelationContextHeader(requestTracingOptions: RequestTracingOptions): string {
+function createCorrelationContextHeader(requestTracingOptions: RequestTracingOptions): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
@@ -200,4 +216,3 @@ export function isWebWorker() {
 
     return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }
-
