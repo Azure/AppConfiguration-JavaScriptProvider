@@ -7,7 +7,6 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
-import { mock } from "node:test";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
