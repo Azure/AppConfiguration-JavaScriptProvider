@@ -433,5 +433,18 @@ describe("load", function () {
         expect(settings).not.undefined;
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("TestValue");
+        restoreMocks();
+    });
+
+    it("should throw error when snapshot composition type is not key", async () => {
+        const snapshotName = "Test";
+        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key_label"});
+        const connectionString = createMockedConnectionString();
+        expect(load(connectionString, {
+            selectors: [{
+                snapshotName: snapshotName
+            }]
+        })).eventually.rejectedWith(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
+        restoreMocks();
     });
 });
