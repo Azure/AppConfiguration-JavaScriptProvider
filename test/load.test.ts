@@ -6,7 +6,8 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { mock } from "node:test";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -417,5 +418,20 @@ describe("load", function () {
             // @ts-ignore
             settings.constructConfigurationObject({ separator: "%" });
         }).to.throw("Invalid separator '%'. Supported values: '.', ',', ';', '-', '_', '__', '/', ':'.");
+    });
+
+    it("should load from snapshot", async () => {
+        const snapshotName = "Test";
+        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
+        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)]);
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                snapshotName: snapshotName
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("TestValue");
     });
 });
