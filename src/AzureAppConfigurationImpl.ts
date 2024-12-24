@@ -975,10 +975,11 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         // selectors must be explicitly provided.
         throw new Error("Feature flag selectors must be provided.");
     } else {
-        selectors.forEach(selector => {
+        const validSelectors = getValidSettingSelectors(selectors);
+        validSelectors.forEach(selector => {
             selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
         });
-        return getValidSettingSelectors(selectors);
+        return validSelectors;
     }
 }
 
