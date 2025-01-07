@@ -37,12 +37,33 @@ export const CONTAINER_APP_ENV_VAR = "CONTAINER_APP_NAME";
 export const KUBERNETES_ENV_VAR = "KUBERNETES_PORT";
 export const SERVICE_FABRIC_ENV_VAR = "Fabric_NodeName"; // See: https://docs.microsoft.com/en-us/azure/service-fabric/service-fabric-environment-variables-reference
 
-// Request Type
+// Request type
 export const REQUEST_TYPE_KEY = "RequestType";
 export enum RequestType {
     STARTUP = "Startup",
     WATCH = "Watch"
 }
 
+// Replica count
+export const REPLICA_COUNT_KEY = "ReplicaCount";
+
 // Tag names
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
+export const FAILOVER_REQUEST_TAG = "Failover";
+
+// Compact feature tags
+export const FEATURES_KEY = "Features";
+export const LOAD_BALANCE_CONFIGURED_TAG = "LB";
+
+// Feature flag usage tracing
+export const FEATURE_FILTER_TYPE_KEY = "Filter";
+export const CUSTOM_FILTER_KEY = "CSTM";
+export const TIME_WINDOW_FILTER_KEY = "TIME";
+export const TARGETING_FILTER_KEY = "TRGT";
+
+export const FF_TELEMETRY_USED_TAG = "Telemetry";
+export const FF_MAX_VARIANTS_KEY = "MaxVariants";
+export const FF_SEED_USED_TAG = "Seed";
+export const FF_FEATURES_KEY = "FFFeatures";
+
+export const DELIMITER = "+";

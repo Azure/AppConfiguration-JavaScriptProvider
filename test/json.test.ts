@@ -6,12 +6,14 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedKeyVaultReference, createMockedJsonKeyValue } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedKeyVaultReference, createMockedJsonKeyValue } from "./utils/testHelper.js";
 
 const jsonKeyValue = createMockedJsonKeyValue("json.settings.logging", '{"Test":{"Level":"Debug"},"Prod":{"Level":"Warning"}}');
 const keyVaultKeyValue = createMockedKeyVaultReference("TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName");
 
 describe("json", function () {
+    this.timeout(MAX_TIME_OUT);
+
     beforeEach(() => {
     });
 
@@ -20,7 +22,7 @@ describe("json", function () {
     });
 
     it("should load and parse if content type is application/json", async () => {
-        mockAppConfigurationClientListConfigurationSettings([jsonKeyValue]);
+        mockAppConfigurationClientListConfigurationSettings([[jsonKeyValue]]);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
@@ -34,7 +36,7 @@ describe("json", function () {
     });
 
     it("should not parse key-vault reference", async () => {
-        mockAppConfigurationClientListConfigurationSettings([jsonKeyValue, keyVaultKeyValue]);
+        mockAppConfigurationClientListConfigurationSettings([[jsonKeyValue, keyVaultKeyValue]]);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -50,7 +52,7 @@ describe("json", function () {
     });
 
     it("should parse different kinds of legal values", async () => {
-        mockAppConfigurationClientListConfigurationSettings([
+        mockAppConfigurationClientListConfigurationSettings([[
             /**
              * A JSON value MUST be an object, array, number, or string, false, null, true
              * See https://www.ietf.org/rfc/rfc4627.txt
@@ -69,7 +71,7 @@ describe("json", function () {
             createMockedJsonKeyValue("json.settings.emptyString", ""), // should fail JSON.parse and use string value as fallback
             createMockedJsonKeyValue("json.settings.illegalString", "[unclosed"), // should fail JSON.parse
 
-        ]);
+        ]]);
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;

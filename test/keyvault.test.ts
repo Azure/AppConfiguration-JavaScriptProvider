@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 
 const mockedData = [
@@ -19,7 +19,7 @@ const mockedData = [
 function mockAppConfigurationClient() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const kvs = mockedData.map(([key, vaultUri, _value]) => createMockedKeyVaultReference(key, vaultUri));
-    mockAppConfigurationClientListConfigurationSettings(kvs);
+    mockAppConfigurationClientListConfigurationSettings([kvs]);
 }
 
 function mockNewlyCreatedKeyVaultSecretClients() {
@@ -27,7 +27,7 @@ function mockNewlyCreatedKeyVaultSecretClients() {
     mockSecretClientGetSecret(mockedData.map(([_key, secretUri, value]) => [secretUri, value]));
 }
 describe("key vault reference", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
         mockAppConfigurationClient();

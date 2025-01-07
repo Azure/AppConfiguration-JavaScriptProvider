@@ -4,7 +4,7 @@
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 import { load } from "./exportedApi.js";
-import { createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -199,10 +199,10 @@ const mockedKVs = [{
 ]);
 
 describe("feature flags", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     before(() => {
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
     });
 
     after(() => {

@@ -10,6 +10,10 @@ import { RestError } from "@azure/core-rest-pipeline";
 import { promisify } from "util";
 const sleepInMs = promisify(setTimeout);
 import * as crypto from "crypto";
+import { ConfigurationClientManager } from "../../src/ConfigurationClientManager.js";
+import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper.js";
+
+const MAX_TIME_OUT = 20000;
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -38,64 +42,113 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     });
 }
 
+function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSetting[], listOptions: any) {
+    const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+        [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+            kvs = _filterKVs(pages.flat(), listOptions);
+            return this;
+        },
+        next() {
+            const value = kvs.shift();
+            return Promise.resolve({ done: !value, value });
+        },
+        byPage(): AsyncIterableIterator<any> {
+            let remainingPages;
+            const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
+            return {
+                [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                    remainingPages = [...pages];
+                    return this;
+                },
+                next() {
+                    const pageItems = remainingPages.shift();
+                    const pageEtag = pageEtags?.shift();
+                    if (pageItems === undefined) {
+                        return Promise.resolve({ done: true, value: undefined });
+                    } else {
+                        const items = _filterKVs(pageItems ?? [], listOptions);
+                        const etag = _sha256(JSON.stringify(items));
+                        const statusCode = pageEtag === etag ? 304 : 200;
+                        return Promise.resolve({
+                            done: false,
+                            value: {
+                                items,
+                                etag,
+                                _response: { status: statusCode }
+                            }
+                        });
+                    }
+                }
+            };
+        }
+    };
+
+    return mockIterator as any;
+}
+
 /**
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
  * - mockAppConfigurationClientListConfigurationSettings([item1, item2, item3])  // single page
- * - mockAppConfigurationClientListConfigurationSettings([item1, item2], [item3], [item4])  // multiple pages
  *
  * @param pages List of pages, each page is a list of ConfigurationSetting
  */
-function mockAppConfigurationClientListConfigurationSettings(...pages: ConfigurationSetting[][]) {
+function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions) => any) {
 
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
-        let kvs = _filterKVs(pages.flat(), listOptions);
-        const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
-            [Symbol.asyncIterator](): AsyncIterableIterator<any> {
-                kvs = _filterKVs(pages.flat(), listOptions);
-                return this;
-            },
-            next() {
-                const value = kvs.shift();
-                return Promise.resolve({ done: !value, value });
-            },
-            byPage(): AsyncIterableIterator<any> {
-                let remainingPages;
-                const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
-                return {
-                    [Symbol.asyncIterator](): AsyncIterableIterator<any> {
-                        remainingPages = [...pages];
-                        return this;
-                    },
-                    next() {
-                        const pageItems = remainingPages.shift();
-                        const pageEtag = pageEtags?.shift();
-                        if (pageItems === undefined) {
-                            return Promise.resolve({ done: true, value: undefined });
-                        } else {
-                            const items = _filterKVs(pageItems ?? [], listOptions);
-                            const etag = _sha256(JSON.stringify(items));
-                            const statusCode = pageEtag === etag ? 304 : 200;
-                            return Promise.resolve({
-                                done: false,
-                                value: {
-                                    items,
-                                    etag,
-                                    _response: { status: statusCode }
-                                }
-                            });
-                        }
-                    }
-                };
-            }
-        };
+        if (customCallback) {
+            customCallback(listOptions);
+        }
 
-        return mockIterator as any;
+        const kvs = _filterKVs(pages.flat(), listOptions);
+        return getMockedIterator(pages, kvs, listOptions);
     });
 }
 
-function mockAppConfigurationClientGetConfigurationSetting(kvList) {
+function mockAppConfigurationClientLoadBalanceMode(clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
+    const emptyPages: ConfigurationSetting[][] = [];
+    sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
+        countObject.count += 1;
+        const kvs = _filterKVs(emptyPages.flat(), listOptions);
+        return getMockedIterator(emptyPages, kvs, listOptions);
+    });
+}
+
+function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
+    // Stub the getClients method on the class prototype
+    sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+        if (fakeClientWrappers?.length > 0) {
+            return fakeClientWrappers;
+        }
+        const clients: ConfigurationClientWrapper[] = [];
+        const fakeEndpoint = createMockedEndpoint("fake");
+        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
+        sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
+            throw new RestError("Internal Server Error", { statusCode: 500 });
+        });
+        clients.push(fakeStaticClientWrapper);
+
+        if (!isFailoverable) {
+            return clients;
+        }
+
+        const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
+        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
+        clients.push(fakeDynamicClientWrapper);
+        sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
+            const kvs = _filterKVs(pages.flat(), listOptions);
+            return getMockedIterator(pages, kvs, listOptions);
+        });
+        return clients;
+    });
+}
+
+function mockAppConfigurationClientGetConfigurationSetting(kvList, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
+        if (customCallback) {
+            customCallback(options);
+        }
+
         const found = kvList.find(elem => elem.key === settingId.key && elem.label === settingId.label);
         if (found) {
             if (options?.onlyIfChanged && settingId.etag === found.etag) {
@@ -194,10 +247,26 @@ const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => 
     isReadOnly: false
 }, props));
 
+class HttpRequestHeadersPolicy {
+    headers: any;
+    name: string;
+
+    constructor() {
+        this.headers = {};
+        this.name = "HttpRequestHeadersPolicy";
+    }
+    sendRequest(req, next) {
+        this.headers = req.headers;
+        return next(req).then(resp => resp);
+    }
+}
+
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockAppConfigurationClientLoadBalanceMode,
+    mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
     restoreMocks,
 
@@ -209,5 +278,7 @@ export {
     createMockedKeyValue,
     createMockedFeatureFlag,
 
-    sleepInMs
+    sleepInMs,
+    MAX_TIME_OUT,
+    HttpRequestHeadersPolicy
 };

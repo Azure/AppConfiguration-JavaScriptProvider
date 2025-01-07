@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -77,10 +77,10 @@ const mockedKVs = [{
 ].map(createMockedKeyValue);
 
 describe("load", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     before(() => {
-        mockAppConfigurationClientListConfigurationSettings(mockedKVs);
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
     });
 
     after(() => {
