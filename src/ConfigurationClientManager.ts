@@ -88,7 +88,7 @@ export class ConfigurationClientManager {
 
         try {
             this.#dns = await import("dns/promises");
-        }catch (error) {
+        } catch (error) {
             this.#isFailoverable = false;
             console.warn("Failed to load the dns module:", error.message);
             return;
