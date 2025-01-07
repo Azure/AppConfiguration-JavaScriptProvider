@@ -49,6 +49,7 @@ export const REPLICA_COUNT_KEY = "ReplicaCount";
 
 // Tag names
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
+export const CDN_USED_TAG = "CDN";
 export const FAILOVER_REQUEST_TAG = "Failover";
 
 // Compact feature tags
