@@ -20,7 +20,7 @@ describe("json", function () {
     });
 
     it("should load and parse if content type is application/json", async () => {
-        mockAppConfigurationClientListConfigurationSettings([jsonKeyValue]);
+        mockAppConfigurationClientListConfigurationSettings([[jsonKeyValue]]);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
@@ -34,7 +34,7 @@ describe("json", function () {
     });
 
     it("should not parse key-vault reference", async () => {
-        mockAppConfigurationClientListConfigurationSettings([jsonKeyValue, keyVaultKeyValue]);
+        mockAppConfigurationClientListConfigurationSettings([[jsonKeyValue, keyVaultKeyValue]]);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -50,7 +50,7 @@ describe("json", function () {
     });
 
     it("should parse different kinds of legal values", async () => {
-        mockAppConfigurationClientListConfigurationSettings([
+        mockAppConfigurationClientListConfigurationSettings([[
             /**
              * A JSON value MUST be an object, array, number, or string, false, null, true
              * See https://www.ietf.org/rfc/rfc4627.txt
@@ -69,7 +69,7 @@ describe("json", function () {
             createMockedJsonKeyValue("json.settings.emptyString", ""), // should fail JSON.parse and use string value as fallback
             createMockedJsonKeyValue("json.settings.illegalString", "[unclosed"), // should fail JSON.parse
 
-        ]);
+        ]]);
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;
