@@ -85,6 +85,9 @@ export class ConfigurationClientManager {
             this.#isFailoverable = false;
             return;
         }
+        if (this.#dns) {
+            return;
+        }
 
         try {
             this.#dns = await import("dns/promises");
