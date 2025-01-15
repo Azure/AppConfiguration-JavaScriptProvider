@@ -55,7 +55,7 @@ export const FAILOVER_REQUEST_TAG = "Failover";
 export const FEATURES_KEY = "Features";
 export const LOAD_BALANCE_CONFIGURED_TAG = "LB";
 
-// Feature management package version
+// Feature management package
 export const FM_PACKAGE_NAME = "@microsoft/feature-management";
 export const FM_VERSION_KEY = "FMJsVer";
 
