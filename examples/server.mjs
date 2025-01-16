@@ -13,7 +13,7 @@ const appConfig = await load(connectionString, {
 });
 
 appConfig.onRefresh(() => {
-    console.log("Config refreshed.");
+    console.log("Configuration has been refreshed.");
 });
 
 import express from "express";
