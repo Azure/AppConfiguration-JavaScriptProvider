@@ -19,7 +19,7 @@ const mockedData = [
 function mockAppConfigurationClient() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const kvs = mockedData.map(([key, vaultUri, _value]) => createMockedKeyVaultReference(key, vaultUri));
-    mockAppConfigurationClientListConfigurationSettings(kvs);
+    mockAppConfigurationClientListConfigurationSettings([kvs]);
 }
 
 function mockNewlyCreatedKeyVaultSecretClients() {

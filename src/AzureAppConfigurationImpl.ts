@@ -9,10 +9,11 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME } from "./featureManagement/constants.js";
+import { FEATURE_FLAGS_KEY_NAME, FEATURE_MANAGEMENT_KEY_NAME, CONDITIONS_KEY_NAME, CLIENT_FILTERS_KEY_NAME, TELEMETRY_KEY_NAME, VARIANTS_KEY_NAME, ALLOCATION_KEY_NAME, SEED_KEY_NAME, NAME_KEY_NAME, ENABLED_KEY_NAME } from "./featureManagement/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
+import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 
 type PagedSettingSelector = SettingSelector & {
@@ -38,8 +39,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #client: AppConfigurationClient;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
+    #featureFlagTracing: FeatureFlagTracingOptions | undefined;
 
     // Refresh
+    #refreshInProgress: boolean = false;
+
     #refreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #onRefreshListeners: Array<() => any> = [];
     /**
@@ -63,7 +67,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         this.#options = options;
 
         // Enable request tracing if not opt-out
-        this.#requestTracingEnabled = options?.requestTracingOptions?.enabled ?? requestTracingEnabled();
+        this.#requestTracingEnabled = requestTracingEnabled();
+        if (this.#requestTracingEnabled) {
+            this.#featureFlagTracing = new FeatureFlagTracingOptions();
+        }
 
         if (options?.trimKeyPrefixes) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
@@ -173,7 +180,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return {
             requestTracingEnabled: this.#requestTracingEnabled,
             initialLoadCompleted: this.#isInitialLoadCompleted,
-            appConfigOptions: this.#options
+            appConfigOptions: this.#options,
+            featureFlagTracingOptions: this.#featureFlagTracing
         };
     }
 
@@ -255,8 +263,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #loadFeatureFlags() {
-        // Temporary map to store feature flags, key is the key of the setting, value is the raw value of the setting
-        const featureFlagsMap = new Map<string, any>();
+        const featureFlagSettings: ConfigurationSetting[] = [];
         for (const selector of this.#featureFlagSelectors) {
             const listOptions: ListConfigurationSettingsOptions = {
                 keyFilter: `${featureFlagPrefix}${selector.keyFilter}`,
@@ -273,15 +280,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 pageEtags.push(page.etag ?? "");
                 for (const setting of page.items) {
                     if (isFeatureFlag(setting)) {
-                        featureFlagsMap.set(setting.key, setting.value);
+                        featureFlagSettings.push(setting);
                     }
                 }
             }
             selector.pageEtags = pageEtags;
         }
 
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            this.#featureFlagTracing.resetFeatureFlagTracing();
+        }
+
         // parse feature flags
-        const featureFlags = Array.from(featureFlagsMap.values()).map(rawFlag => JSON.parse(rawFlag));
+        const featureFlags = await Promise.all(
+            featureFlagSettings.map(setting => this.#parseFeatureFlag(setting))
+        );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
         this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: featureFlags });
@@ -350,6 +363,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
 
+        if (this.#refreshInProgress) {
+            return;
+        }
+        this.#refreshInProgress = true;
+        try {
+            await this.#refreshTasks();
+        } finally {
+            this.#refreshInProgress = false;
+        }
+    }
+
+    async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
         if (this.#refreshEnabled) {
             refreshTasks.push(this.#refreshKeyValues());
@@ -531,6 +556,33 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
+        const rawFlag = setting.value;
+        if (rawFlag === undefined) {
+            throw new Error("The value of configuration setting cannot be undefined.");
+        }
+        const featureFlag = JSON.parse(rawFlag);
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            if (featureFlag[CONDITIONS_KEY_NAME] &&
+                featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
+                Array.isArray(featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME])) {
+                for (const filter of featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME]) {
+                    this.#featureFlagTracing.updateFeatureFilterTracing(filter[NAME_KEY_NAME]);
+                }
+            }
+            if (featureFlag[VARIANTS_KEY_NAME] && Array.isArray(featureFlag[VARIANTS_KEY_NAME])) {
+                this.#featureFlagTracing.notifyMaxVariants(featureFlag[VARIANTS_KEY_NAME].length);
+            }
+            if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME]) {
+                this.#featureFlagTracing.usesTelemetry = true;
+            }
+            if (featureFlag[ALLOCATION_KEY_NAME] && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME]) {
+                this.#featureFlagTracing.usesSeed = true;
+            }
+        }
+        return featureFlag;
     }
 }
 
