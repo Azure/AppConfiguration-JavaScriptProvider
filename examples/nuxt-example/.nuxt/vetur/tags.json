@@ -1,0 +1,11 @@
+{
+  "NavBar": {
+    "description": "Auto imported from components/NavBar.vue"
+  },
+  "NuxtLogo": {
+    "description": "Auto imported from components/NuxtLogo.vue"
+  },
+  "Tutorial": {
+    "description": "Auto imported from components/Tutorial.vue"
+  }
+}

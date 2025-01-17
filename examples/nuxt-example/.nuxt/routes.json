@@ -1,0 +1,16 @@
+[
+  {
+    "name": "about",
+    "path": "/about",
+    "component": "C:\\\\Users\\\\linglingye\\\\JavaScript\\\\nuxt-app-example\\\\pages\\\\about.vue",
+    "chunkName": "pages/about",
+    "_name": "_19757575"
+  },
+  {
+    "name": "index",
+    "path": "/",
+    "component": "C:\\\\Users\\\\linglingye\\\\JavaScript\\\\nuxt-app-example\\\\pages\\\\index.vue",
+    "chunkName": "pages/index",
+    "_name": "_392d503a"
+  }
+]
