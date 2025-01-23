@@ -5,8 +5,10 @@ import * as dotenv from "dotenv";
 dotenv.config()
 
 import { load } from "@azure/app-configuration-provider";
-const connectionString = process.env.APPCONFIG_CONNECTION_STRING;
-const appConfig = await load(connectionString, {
+import { DefaultAzureCredential } from "@azure/identity";
+const endpoint = process.env.APPCONFIG_ENDPOINT;
+const credential = new DefaultAzureCredential();
+const appConfig = await load(endpoint, credential, {
     refreshOptions: {
         enabled: true,
         refreshIntervalInMs: 5_000
