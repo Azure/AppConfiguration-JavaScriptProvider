@@ -898,8 +898,8 @@ function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelect
 
 function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSelector[] {
     if (selectors === undefined || selectors.length === 0) {
-        // selectors must be explicitly provided.
-        throw new Error("Feature flag selectors must be provided.");
+        // Default selector: key: *, label: \0
+        return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
     } else {
         selectors.forEach(selector => {
             selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
