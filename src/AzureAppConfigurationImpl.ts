@@ -33,6 +33,7 @@ import {
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
+import { FM_PACKAGE_NAME } from "./requestTracing/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
@@ -65,6 +66,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
+    #fmVersion: string | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -184,7 +186,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             initialLoadCompleted: this.#isInitialLoadCompleted,
             replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest,
-            featureFlagTracing: this.#featureFlagTracing
+            featureFlagTracing: this.#featureFlagTracing,
+            fmVersion: this.#fmVersion
         };
     }
 
@@ -226,6 +229,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
+        await this.#inspectFmPackage();
         await this.#loadSelectedAndWatchedKeyValues();
         if (this.#featureFlagEnabled) {
             await this.#loadFeatureFlags();
@@ -314,6 +318,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         };
         return new Disposable(remove);
+    }
+
+    /**
+     * Inspects the feature management package version.
+     */
+    async #inspectFmPackage() {
+        if (this.#requestTracingEnabled && !this.#fmVersion) {
+            try {
+                // get feature management package version
+                const fmPackage = await import(FM_PACKAGE_NAME);
+                this.#fmVersion = fmPackage?.VERSION;
+            } catch (error) {
+                // ignore the error
+            }
+        }
     }
 
     async #refreshTasks(): Promise<void> {
