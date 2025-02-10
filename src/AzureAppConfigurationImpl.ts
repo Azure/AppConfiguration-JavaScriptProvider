@@ -66,8 +66,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
-
-    #isPackageInspected: boolean = false;
     #fmVersion: string | undefined;
 
     // Refresh
@@ -231,7 +229,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
-        await this.#ensurePackageInspected();
+        await this.#inspectFmPackage();
         await this.#loadSelectedAndWatchedKeyValues();
         if (this.#featureFlagEnabled) {
             await this.#loadFeatureFlags();
@@ -287,7 +285,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Refreshes the configuration.
      */
     async refresh(): Promise<void> {
-        await this.#ensurePackageInspected();
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
             throw new Error("Refresh is not enabled for key-values or feature flags.");
         }
@@ -323,9 +320,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return new Disposable(remove);
     }
 
-    async #ensurePackageInspected() {
-        if (!this.#isPackageInspected) {
-            this.#isPackageInspected = true;
+    /**
+     * Inspects the feature management package version.
+     */
+    async #inspectFmPackage() {
+        if (this.#requestTracingEnabled && !this.#fmVersion) {
             try {
                 // get feature management package version
                 const fmPackage = await import(FM_PACKAGE_NAME);
