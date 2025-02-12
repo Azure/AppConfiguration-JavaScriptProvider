@@ -3,6 +3,7 @@
 
 import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
+import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
@@ -49,9 +50,9 @@ const mockedKVs = [{
 }, {
     key: ".appconfig.featureflag/variant",
     value: sampleVariantValue,
-    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8",
+    contentType: featureFlagContentType,
 }].map(createMockedKeyValue).concat([
-    createMockedFeatureFlag("Beta", { enabled: true }),
+    createMockedFeatureFlag("FlagWithTestLabel", { enabled: true }, {label: "Test"}),
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
     createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag"}),
@@ -213,15 +214,22 @@ describe("feature flags", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             featureFlagOptions: {
-                enabled: true,
-                selectors: [{
-                    keyFilter: "*"
-                }]
+                enabled: true
             }
         });
         expect(settings).not.undefined;
         expect(settings.get("feature_management")).not.undefined;
         expect(settings.get<any>("feature_management").feature_flags).not.undefined;
+        // it should only load feature flags with no label by default
+        expect((settings.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "FlagWithTestLabel")).to.be.undefined;
+
+        const settings2 = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { keyFilter: "*", labelFilter: "Test" } ]
+            }
+        });
+        expect((settings2.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "FlagWithTestLabel")).not.undefined;
     });
 
     it("should not load feature flags if disabled", async () => {
@@ -240,15 +248,6 @@ describe("feature flags", function () {
         const settings = await load(connectionString);
         expect(settings).not.undefined;
         expect(settings.get("feature_management")).undefined;
-    });
-
-    it("should throw error if selectors not specified", async () => {
-        const connectionString = createMockedConnectionString();
-        return expect(load(connectionString, {
-            featureFlagOptions: {
-                enabled: true
-            }
-        })).eventually.rejectedWith("Feature flag selectors must be provided.");
     });
 
     it("should load feature flags with custom selector", async () => {

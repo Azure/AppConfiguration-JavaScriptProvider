@@ -10,16 +10,15 @@ import { SettingSelector } from "../types.js";
 export interface FeatureFlagOptions {
     /**
      * Specifies whether feature flags will be loaded from Azure App Configuration.
-
      */
     enabled: boolean;
 
     /**
-     * Specifies the selectors used to filter feature flags.
+     * Specifies what feature flags to include in the configuration provider.
      *
      * @remarks
      * keyFilter of selector will be prefixed with "appconfig.featureflag/" when request is sent.
-     * If no selectors are specified then no feature flags will be retrieved.
+     * If no selectors are specified then all feature flags with no label will be included.
      */
     selectors?: SettingSelector[];
 

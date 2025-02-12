@@ -28,7 +28,8 @@ import {
     REPLICA_COUNT_KEY,
     FAILOVER_REQUEST_TAG,
     FEATURES_KEY,
-    LOAD_BALANCE_CONFIGURED_TAG
+    LOAD_BALANCE_CONFIGURED_TAG,
+    FM_VERSION_KEY
 } from "./constants";
 
 export interface RequestTracingOptions {
@@ -38,6 +39,7 @@ export interface RequestTracingOptions {
     replicaCount: number;
     isFailoverRequest: boolean;
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
+    fmVersion: string | undefined;
 }
 
 // Utils
@@ -134,6 +136,9 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     }
     if (requestTracingOptions.replicaCount > 0) {
         keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
+    }
+    if (requestTracingOptions.fmVersion) {
+        keyValues.set(FM_VERSION_KEY, requestTracingOptions.fmVersion);
     }
 
     // Compact tags: Features=LB+...
