@@ -17,7 +17,7 @@ export type SettingSelector = {
      * For all other cases the characters: asterisk `*`, comma `,`, and backslash `\` are reserved. Reserved characters must be escaped using a backslash (\).
      * e.g. the key filter `a\\b\,\*c*` returns all key-values whose key starts with `a\b,*c`.
      */
-    keyFilter: string,
+    keyFilter?: string,
 
     /**
      * The label filter to apply when querying Azure App Configuration for key-values.
