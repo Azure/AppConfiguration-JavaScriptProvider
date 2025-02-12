@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -240,7 +240,7 @@ const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => 
             "client_filters": []
         }
     }, flagProps)),
-    contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8",
+    contentType: featureFlagContentType,
     lastModified: new Date(),
     tags: {},
     etag: uuid.v4(),
