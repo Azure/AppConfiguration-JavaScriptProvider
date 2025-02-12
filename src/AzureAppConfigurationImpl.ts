@@ -919,12 +919,11 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
     if (selectors === undefined || selectors.length === 0) {
         // Default selector: key: *, label: \0
         return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
-    } else {
-        selectors.forEach(selector => {
-            selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
-        });
-        return getValidSelectors(selectors);
     }
+    selectors.forEach(selector => {
+        selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+    });
+    return getValidSelectors(selectors);
 }
 
 function isFailoverableError(error: any): boolean {
