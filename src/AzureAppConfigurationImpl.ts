@@ -50,6 +50,7 @@ type PagedSettingSelector = SettingSelector & {
 };
 
 const DEFAULT_STARTUP_TIMEOUT = 100 * 1000; // 100 seconds in milliseconds
+const MAX_STARTUP_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -336,7 +337,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#inspectFmPackage();
             const retryEnabled = this.#options?.startupOptions?.retryEnabled ?? false;
             const startTimestamp = Date.now();
-            while (true) {
+            while (startTimestamp + MAX_STARTUP_TIMEOUT > Date.now()) {
                 try {
                     await this.#loadSelectedAndWatchedKeyValues();
                     if (this.#featureFlagEnabled) {
@@ -360,6 +361,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         throw error;
                     }
                 }
+            }
+            if (!this.#isInitialLoadCompleted) {
+                throw new Error("Load operation exceeded the maximum startup timeout limitation.");
             }
         }
     }
