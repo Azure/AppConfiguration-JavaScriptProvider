@@ -48,6 +48,9 @@ describe("custom client options", function () {
                         policy: countPolicy,
                         position: "perRetry"
                     }]
+                },
+                startupOptions: {
+                    retryEnabled: false
                 }
             });
         };
@@ -73,6 +76,9 @@ describe("custom client options", function () {
                     retryOptions: {
                         maxRetries
                     }
+                },
+                startupOptions: {
+                    retryEnabled: false
                 }
             });
         };
@@ -108,6 +114,9 @@ describe("custom client options", function () {
                         policy: countPolicy,
                         position: "perRetry"
                     }]
+                },
+                startupOptions: {
+                    retryEnabled: false
                 }
             });
         };

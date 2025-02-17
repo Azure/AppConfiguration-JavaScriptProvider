@@ -6,7 +6,7 @@ export interface StartupOptions {
      * Specifies whether to enable retry on startup or not.
      *
      * @remarks
-     * If not specified, the default value is false.
+     * If not specified, the default value is true.
      */
     retryEnabled?: boolean;
 

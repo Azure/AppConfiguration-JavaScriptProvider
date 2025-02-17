@@ -335,7 +335,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #initialize() {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
-            const retryEnabled = this.#options?.startupOptions?.retryEnabled ?? false;
+            const retryEnabled = this.#options?.startupOptions?.retryEnabled ?? true; // enable startup retry by default
             const startTimestamp = Date.now();
             while (startTimestamp + MAX_STARTUP_TIMEOUT > Date.now()) {
                 try {
