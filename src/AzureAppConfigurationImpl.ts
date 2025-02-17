@@ -50,7 +50,6 @@ type PagedSettingSelector = SettingSelector & {
 };
 
 const DEFAULT_STARTUP_TIMEOUT = 100 * 1000; // 100 seconds in milliseconds
-const MAX_STARTUP_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -335,8 +334,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #initialize() {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
+            const retryEnabled = this.#options?.startupOptions?.retryEnabled ?? false;
             const startTimestamp = Date.now();
-            while (startTimestamp + MAX_STARTUP_TIMEOUT > Date.now()) {
+            while (true) {
                 try {
                     await this.#loadSelectedAndWatchedKeyValues();
                     if (this.#featureFlagEnabled) {
@@ -346,19 +346,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
-                    const timeElapsed = Date.now() - startTimestamp;
-                    let postAttempts = 0;
-                    let backoffDuration = getFixedBackoffDuration(timeElapsed);
-                    if (backoffDuration === undefined) {
-                        postAttempts += 1;
-                        backoffDuration = calculateDynamicBackoffDuration(postAttempts);
+                    if (retryEnabled) {
+                        const timeElapsed = Date.now() - startTimestamp;
+                        let postAttempts = 0;
+                        let backoffDuration = getFixedBackoffDuration(timeElapsed);
+                        if (backoffDuration === undefined) {
+                            postAttempts += 1;
+                            backoffDuration = calculateDynamicBackoffDuration(postAttempts);
+                        }
+                        await new Promise(resolve => setTimeout(resolve, backoffDuration));
+                        console.warn("Failed to load configuration settings at startup. Retrying...");
+                    } else {
+                        throw error;
                     }
-                    await new Promise(resolve => setTimeout(resolve, backoffDuration));
-                    console.warn("Failed to load configuration settings at startup. Retrying...");
                 }
-            }
-            if (!this.#isInitialLoadCompleted) {
-                throw new Error("Load operation exceeded the maximum startup timeout.");
             }
         }
     }
