@@ -40,6 +40,7 @@ import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurat
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { getFixedBackoffDuration, calculateDynamicBackoffDuration } from "./failover.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -47,6 +48,9 @@ type PagedSettingSelector = SettingSelector & {
      */
     pageEtags?: string[];
 };
+
+const DEFAULT_STARTUP_TIMEOUT = 100 * 1000; // 100 seconds in milliseconds
+const MAX_STARTUP_TIMEOUT = 30 * 60 * 1000; // 15 minutes in milliseconds
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -229,13 +233,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
-        await this.#inspectFmPackage();
-        await this.#loadSelectedAndWatchedKeyValues();
-        if (this.#featureFlagEnabled) {
-            await this.#loadFeatureFlags();
+        const startupTimeout = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT;
+        let timer;
+        try {
+            await Promise.race([
+                new Promise((_, reject) => timer = setTimeout(() => reject(new Error("Load operation timed out.")), startupTimeout)),
+                this.#initialize()
+            ]);
+        } catch (error) {
+            throw new Error(`Failed to load: ${error.message}`);
+        } finally {
+            clearTimeout(timer);
         }
-        // Mark all settings have loaded at startup.
-        this.#isInitialLoadCompleted = true;
     }
 
     /**
@@ -318,6 +327,37 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         };
         return new Disposable(remove);
+    }
+
+    /**
+     * Initializes the configuration provider.
+     */
+    async #initialize() {
+        if (this.#isInitialLoadCompleted) {
+            await this.#inspectFmPackage();
+            const startTimestamp = Date.now();
+            while (startTimestamp + MAX_STARTUP_TIMEOUT > Date.now()) {
+                try {
+                    await this.#loadSelectedAndWatchedKeyValues();
+                    if (this.#featureFlagEnabled) {
+                        await this.#loadFeatureFlags();
+                    }
+                    // Mark all settings have loaded at startup.
+                    this.#isInitialLoadCompleted = true;
+                    break;
+                } catch (error) {
+                    const timeElapsed = Date.now() - startTimestamp;
+                    let postAttempts = 0;
+                    let backoffDuration = getFixedBackoffDuration(timeElapsed);
+                    if (backoffDuration === undefined) {
+                        postAttempts += 1;
+                        backoffDuration = calculateDynamicBackoffDuration(postAttempts);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, backoffDuration));
+                    console.warn("Failed to load configuration settings at startup. Retrying...");
+                }
+            }
+        }
     }
 
     /**

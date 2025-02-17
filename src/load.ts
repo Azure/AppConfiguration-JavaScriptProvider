@@ -7,7 +7,7 @@ import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager, instanceOfTokenCredential } from "./ConfigurationClientManager.js";
 
-const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
+const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5_000; // 5 seconds
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.

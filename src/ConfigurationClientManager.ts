@@ -4,10 +4,14 @@
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList } from "./common/utils.js";
+
+// Configuration client retry options
+const CLIENT_MAX_RETRIES = 2;
+const CLIENT_MAX_RETRY_DELAY = 60_000; // 1 minute in milliseconds
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -17,8 +21,8 @@ const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
 const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
-const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const SRV_QUERY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
+const MINIMAL_CLIENT_REFRESH_INTERVAL = 30_000; // 30 seconds in milliseconds
+const SRV_QUERY_TIMEOUT = 30_000; // 30 seconds in milliseconds
 
 export class ConfigurationClientManager {
     #isFailoverable: boolean;
@@ -143,16 +147,16 @@ export class ConfigurationClientManager {
 
     async #discoverFallbackClients(host: string) {
         let result;
-        let timeout;
+        let timer;
         try {
             result = await Promise.race([
-                new Promise((_, reject) => timeout = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
+                new Promise((_, reject) => timer = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
                 this.#querySrvTargetHost(host)
             ]);
         } catch (error) {
-            throw new Error(`Failed to build fallback clients, ${error.message}`);
+            throw new Error(`Failed to build fallback clients: ${error.message}`);
         } finally {
-            clearTimeout(timeout);
+            clearTimeout(timer);
         }
 
         const srvTargetHosts = shuffleList(result) as string[];
@@ -269,8 +273,8 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
 
     // retry options
     const defaultRetryOptions = {
-        maxRetries: MaxRetries,
-        maxRetryDelayInMs: MaxRetryDelayInMs,
+        maxRetries: CLIENT_MAX_RETRIES,
+        maxRetryDelayInMs: CLIENT_MAX_RETRY_DELAY,
     };
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
 

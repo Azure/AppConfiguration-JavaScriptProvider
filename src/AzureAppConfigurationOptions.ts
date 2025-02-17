@@ -6,9 +6,7 @@ import { KeyVaultOptions } from "./keyvault/KeyVaultOptions.js";
 import { RefreshOptions } from "./RefreshOptions.js";
 import { SettingSelector } from "./types.js";
 import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions.js";
-
-export const MaxRetries = 2;
-export const MaxRetryDelayInMs = 60000;
+import { StartupOptions } from "./StartupOptions.js";
 
 export interface AzureAppConfigurationOptions {
     /**
@@ -47,6 +45,11 @@ export interface AzureAppConfigurationOptions {
      * Specifies options used to configure feature flags.
      */
     featureFlagOptions?: FeatureFlagOptions;
+
+    /**
+     * Specifies options used to configure provider startup.
+     */
+    startupOptions?: StartupOptions;
 
     /**
      * Specifies whether to enable replica discovery or not.
