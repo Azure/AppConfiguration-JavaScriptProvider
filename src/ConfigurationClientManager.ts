@@ -35,6 +35,7 @@ export class ConfigurationClientManager {
     #replicaCount: number = 0;
     #lastFallbackClientRefreshTime: number = 0;
     #lastFallbackClientRefreshAttempt: number = 0;
+    #srvQueryPending: boolean = false;
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -116,7 +117,8 @@ export class ConfigurationClientManager {
             (!this.#dynamicClients ||
             // All dynamic clients are in backoff means no client is available
             this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
-            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)) {
+            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)
+        ) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
             await this.#discoverFallbackClients(this.endpoint.hostname);
             return availableClients.concat(this.#dynamicClients);
@@ -142,17 +144,33 @@ export class ConfigurationClientManager {
     }
 
     async #discoverFallbackClients(host: string) {
-        let result;
-        let timeout;
+        if (this.#srvQueryPending) {
+            return;
+        }
+        this.#srvQueryPending = true;
+        let result, timeoutId;
         try {
+            // Promise.race will not terminate the pending promises.
+            // This is a known issue in JavaScript and there is no good solution for it.
+            // We need to make sure the scale of the potential memory leak is controllable.
+            const srvQueryPromise = this.#querySrvTargetHost(host);
+            // There is no way to check the promise status synchronously, so we need to set the flag through the callback.
+            srvQueryPromise
+                .then(() => this.#srvQueryPending = false) // resolved
+                .catch(() => this.#srvQueryPending = false); // rejected
+            // If the srvQueryPromise is rejected before timeout, the error will be caught in the catch block.
+            // Otherwise, the timeout error will be caught in the catch block and the srvQueryPromise rejection will be ignored.
             result = await Promise.race([
-                new Promise((_, reject) => timeout = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
-                this.#querySrvTargetHost(host)
+                new Promise((_, reject) =>
+                    timeoutId = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
+                srvQueryPromise
             ]);
         } catch (error) {
-            throw new Error(`Failed to build fallback clients, ${error.message}`);
+            console.warn(`Failed to build fallback clients, ${error.message}`);
+            this.#lastFallbackClientRefreshTime = Date.now();
+            return; // silently fail when SRV record query times out
         } finally {
-            clearTimeout(timeout);
+            clearTimeout(timeoutId);
         }
 
         const srvTargetHosts = shuffleList(result) as string[];
