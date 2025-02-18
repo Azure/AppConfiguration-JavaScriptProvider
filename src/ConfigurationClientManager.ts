@@ -155,9 +155,7 @@ export class ConfigurationClientManager {
             // We need to make sure the scale of the potential memory leak is controllable.
             const srvQueryPromise = this.#querySrvTargetHost(host);
             // There is no way to check the promise status synchronously, so we need to set the flag through the callback.
-            srvQueryPromise
-                .then(() => this.#srvQueryPending = false) // resolved
-                .catch(() => this.#srvQueryPending = false); // rejected
+            srvQueryPromise.finally(() => this.#srvQueryPending = false)
             // If the srvQueryPromise is rejected before timeout, the error will be caught in the catch block.
             // Otherwise, the timeout error will be caught in the catch block and the srvQueryPromise rejection will be ignored.
             result = await Promise.race([
