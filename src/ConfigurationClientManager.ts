@@ -16,11 +16,11 @@ const ENDPOINT_KEY_NAME = "Endpoint";
 const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
-const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
+const FALLBACK_CLIENT_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const DNS_RESOLVER_TIMEOUT = 1_000; // 1 second in milliseconds
+const DNS_RESOLVER_TIMEOUT = 1_000; // 1 second in milliseconds, in most cases, dns resolution should be within 200 milliseconds
 const DNS_RESOLVER_TRIES = 2;
-const MAX_RESOLVESRV_TIMES = 15;
+const MAX_ALTNATIVE_SRV_COUNT = 10;
 
 export class ConfigurationClientManager {
     #isFailoverable: boolean;
@@ -35,8 +35,8 @@ export class ConfigurationClientManager {
     #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
     #dynamicClients: ConfigurationClientWrapper[];
     #replicaCount: number = 0;
-    #lastFallbackClientRefreshTime: number = 0;
-    #lastFallbackClientRefreshAttempt: number = 0;
+    #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
+    #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -119,8 +119,7 @@ export class ConfigurationClientManager {
             (!this.#dynamicClients ||
             // All dynamic clients are in backoff means no client is available
             this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
-            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)) {
-            this.#lastFallbackClientRefreshAttempt = currentTime;
+            currentTime >= this.#lastFallbackClientUpdateTime + FALLBACK_CLIENT_EXPIRE_INTERVAL)) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
             return availableClients.concat(this.#dynamicClients);
         }
@@ -138,19 +137,18 @@ export class ConfigurationClientManager {
     async refreshClients() {
         const currentTime = Date.now();
         if (this.#isFailoverable &&
-            currentTime >= new Date(this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL).getTime()) {
-            this.#lastFallbackClientRefreshAttempt = currentTime;
+            currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
         }
     }
 
     async #discoverFallbackClients(host: string) {
+        this.#lastFallbackClientRefreshAttempt = Date.now();
         let result: string[];
         try {
             result = await this.#querySrvTargetHost(host);
         } catch (error) {
             console.warn(`Failed to build fallback clients, ${error.message}`);
-            this.#lastFallbackClientRefreshTime = Date.now();
             return; // swallow the error when srv query fails
         }
 
@@ -163,14 +161,14 @@ export class ConfigurationClientManager {
                     continue;
                 }
                 const client = this.#credential ?
-                                new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
-                                new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
+                    new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
+                    new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
                 newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
             }
         }
 
         this.#dynamicClients = newDynamicClients;
-        this.#lastFallbackClientRefreshTime = Date.now();
+        this.#lastFallbackClientUpdateTime = Date.now();
         this.#replicaCount = this.#dynamicClients.length;
     }
 
@@ -194,7 +192,7 @@ export class ConfigurationClientManager {
 
             // Look up SRV records for alternate hosts
             let index = 0;
-            while (index < MAX_RESOLVESRV_TIMES) {
+            while (index < MAX_ALTNATIVE_SRV_COUNT) {
                 const currentAlt = `${ALT_KEY_NAME}${index}`;
                 const altRecords = await resolver.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
                 if (altRecords.length === 0) {
