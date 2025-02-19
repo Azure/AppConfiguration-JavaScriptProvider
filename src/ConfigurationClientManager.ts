@@ -18,7 +18,9 @@ const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
 const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
 const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const SRV_QUERY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
+const DNS_RESOLVER_TIMEOUT = 1_000; // 1 second in milliseconds
+const DNS_RESOLVER_TRIES = 2;
+const MAX_RESOLVESRV_TIMES = 15;
 
 export class ConfigurationClientManager {
     #isFailoverable: boolean;
@@ -35,7 +37,6 @@ export class ConfigurationClientManager {
     #replicaCount: number = 0;
     #lastFallbackClientRefreshTime: number = 0;
     #lastFallbackClientRefreshAttempt: number = 0;
-    #srvQueryPending: boolean = false;
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -144,34 +145,16 @@ export class ConfigurationClientManager {
     }
 
     async #discoverFallbackClients(host: string) {
-        if (this.#srvQueryPending) {
-            return;
-        }
-        this.#srvQueryPending = true;
-        let result, timeoutId;
+        let result: string[];
         try {
-            // Promise.race will not terminate the pending promises.
-            // This is a known issue in JavaScript and there is no good solution for it.
-            // We need to make sure the scale of the potential memory leak is controllable.
-            const srvQueryPromise = this.#querySrvTargetHost(host);
-            // There is no way to check the promise status synchronously, so we need to set the flag through the callback.
-            srvQueryPromise.finally(() => this.#srvQueryPending = false)
-            // If the srvQueryPromise is rejected before timeout, the error will be caught in the catch block.
-            // Otherwise, the timeout error will be caught in the catch block and the srvQueryPromise rejection will be ignored.
-            result = await Promise.race([
-                new Promise((_, reject) =>
-                    timeoutId = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
-                srvQueryPromise
-            ]);
+            result = await this.#querySrvTargetHost(host);
         } catch (error) {
             console.warn(`Failed to build fallback clients, ${error.message}`);
             this.#lastFallbackClientRefreshTime = Date.now();
-            return; // silently fail when SRV record query times out
-        } finally {
-            clearTimeout(timeoutId);
-        }
+            return; // swallow the error when srv query fails
+        } 
 
-        const srvTargetHosts = shuffleList(result) as string[];
+        const srvTargetHosts = shuffleList(result);
         const newDynamicClients: ConfigurationClientWrapper[] = [];
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
@@ -198,8 +181,9 @@ export class ConfigurationClientManager {
         const results: string[] = [];
 
         try {
+            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
             // Look up SRV records for the origin host
-            const originRecords = await this.#dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
+            const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
             if (originRecords.length === 0) {
                 return results;
             }
@@ -210,10 +194,9 @@ export class ConfigurationClientManager {
 
             // Look up SRV records for alternate hosts
             let index = 0;
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
+            while (index < MAX_RESOLVESRV_TIMES) {
                 const currentAlt = `${ALT_KEY_NAME}${index}`;
-                const altRecords = await this.#dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
+                const altRecords = await resolver.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
                 if (altRecords.length === 0) {
                     break; // No more alternate records, exit loop
                 }
