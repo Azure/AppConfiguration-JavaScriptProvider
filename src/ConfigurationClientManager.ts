@@ -8,7 +8,6 @@ import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./A
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList } from "./common/utils.js";
-import { Resolver   } from "dns/promises";
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -181,7 +180,7 @@ export class ConfigurationClientManager {
 
         try {
             // https://nodejs.org/api/dns.html#dnspromisesresolvesrvhostname
-            const resolver = new Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
+            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
             // On success, resolveSrv() returns an array of SrvRecord
             // On failure, resolveSrv() throws an error with code 'ENOTFOUND'.
             const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`); // look up SRV records for the origin host
