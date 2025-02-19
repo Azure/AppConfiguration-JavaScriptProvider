@@ -152,7 +152,7 @@ export class ConfigurationClientManager {
             console.warn(`Failed to build fallback clients, ${error.message}`);
             this.#lastFallbackClientRefreshTime = Date.now();
             return; // swallow the error when srv query fails
-        } 
+        }
 
         const srvTargetHosts = shuffleList(result);
         const newDynamicClients: ConfigurationClientWrapper[] = [];
