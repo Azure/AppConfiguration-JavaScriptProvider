@@ -118,8 +118,7 @@ export class ConfigurationClientManager {
             (!this.#dynamicClients ||
             // All dynamic clients are in backoff means no client is available
             this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
-            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)
-        ) {
+            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)) {
             this.#lastFallbackClientRefreshAttempt = currentTime;
             await this.#discoverFallbackClients(this.endpoint.hostname);
             return availableClients.concat(this.#dynamicClients);
