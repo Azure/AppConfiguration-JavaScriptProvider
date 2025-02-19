@@ -87,10 +87,11 @@ export class ConfigurationClientManager {
             this.#isFailoverable = false;
             return;
         }
-        if (this.#dns) {
+        if (this.#dns) { // dns module is already loaded
             return;
         }
 
+        // We can only know whether dns module is available during runtime.
         try {
             this.#dns = await import("dns/promises");
         } catch (error) {
