@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
-import { MAX_TIME_OUT, createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
+import { MAX_TIME_OUT, createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks, sleepInMs } from "./utils/testHelper";
 import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
 
 const mockedKVs = [{
@@ -62,15 +62,6 @@ describe("failover", function () {
         expect(settings).not.undefined;
         expect(settings.get("feature_management")).not.undefined;
         expect(settings.get<any>("feature_management").feature_flags).not.undefined;
-    });
-
-    it("should throw error when all clients failed", async () => {
-        const isFailoverable = false;
-        mockConfigurationManagerGetClients([], isFailoverable);
-
-        const connectionString = createMockedConnectionString();
-        return expect(load(connectionString, {startupOptions: {retryEnabled: false}}))
-            .eventually.rejectedWith("All clients failed to get configuration settings.");
     });
 
     it("should validate endpoint", () => {

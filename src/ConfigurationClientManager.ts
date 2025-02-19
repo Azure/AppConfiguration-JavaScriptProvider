@@ -8,6 +8,7 @@ import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js"
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList } from "./common/utils.js";
+import { OperationError } from "./error.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
@@ -60,7 +61,7 @@ export class ConfigurationClientManager {
                 this.#id = regexMatch[2];
                 this.#secret = regexMatch[3];
             } else {
-                throw new Error(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
+                throw new RangeError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
         } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
@@ -77,7 +78,7 @@ export class ConfigurationClientManager {
             this.#credential = credential;
             staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
-            throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
+            throw new OperationError("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
@@ -150,7 +151,8 @@ export class ConfigurationClientManager {
         let timer;
         try {
             result = await Promise.race([
-                new Promise((_, reject) => timer = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
+                new Promise((_, reject) => 
+                    timer = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
                 this.#querySrvTargetHost(host)
             ]);
         } catch (error) {

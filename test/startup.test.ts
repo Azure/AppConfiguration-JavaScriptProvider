@@ -25,29 +25,6 @@ describe("startup", function () {
         const failForInitialAttempt = () => {
             if (attempt < 1) {
                 attempt += 1;
-                throw new Error("Failed to list configuration settings.");
-            }
-        };
-        mockAppConfigurationClientListConfigurationSettings(
-            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
-            failForInitialAttempt);
-
-        const settings = await load(
-            createMockedConnectionString(), {
-                startupOptions: {
-                    retryEnabled: true
-                }
-            }
-        );
-        expect(settings).not.undefined;
-        expect(settings.get("TestKey")).eq("TestValue");
-    });
-
-    it("should not retry for load operation when retryEnabled is false", async () => {
-        let attempt = 0;
-        const failForInitialAttempt = () => {
-            if (attempt < 1) {
-                attempt += 1;
                 throw new Error("Test Error");
             }
         };
@@ -55,10 +32,8 @@ describe("startup", function () {
             [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
             failForInitialAttempt);
 
-        return expect(load(createMockedConnectionString(), {
-            startupOptions: {
-                retryEnabled: false
-            }
-        })).eventually.rejectedWith("Test Error");
+        const settings = await load(createMockedConnectionString());
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("TestValue");
     });
 });

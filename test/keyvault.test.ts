@@ -40,7 +40,7 @@ describe("key vault reference", function () {
     });
 
     it("require key vault options to resolve reference", async () => {
-        return expect(load(createMockedConnectionString(), {startupOptions: {retryEnabled: false}})).eventually.rejectedWith("Configure keyVaultOptions to resolve Key Vault Reference(s).");
+        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Configure keyVaultOptions to resolve Key Vault Reference(s).");
     });
 
     it("should resolve key vault reference with credential", async () => {
@@ -94,9 +94,6 @@ describe("key vault reference", function () {
                 secretClients: [
                     new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
                 ]
-            },
-            startupOptions: {
-                retryEnabled: false
             }
         });
         return expect(loadKeyVaultPromise).eventually.rejectedWith("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");

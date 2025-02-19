@@ -3,18 +3,10 @@
 
 export interface StartupOptions {
     /**
-     * Specifies whether to enable retry on startup or not.
-     *
-     * @remarks
-     * If not specified, the default value is true.
-     */
-    retryEnabled?: boolean;
-
-    /**
      * The amount of time allowed to load data from Azure App Configuration on startup.
      *
      * @remarks
-     * If not specified, the default value is 100 seconds.
+     * If not specified, the default value is 100 seconds. The maximum allowed value is 1 hour.
      */
     timeoutInMs?: number;
 }

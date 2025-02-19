@@ -41,6 +41,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateDynamicBackoffDuration } from "./failover.js";
+import { FailoverError, OperationError, isFailoverableError } from "./error.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -50,7 +51,6 @@ type PagedSettingSelector = SettingSelector & {
 };
 
 const DEFAULT_STARTUP_TIMEOUT = 100 * 1000; // 100 seconds in milliseconds
-const MAX_STARTUP_TIMEOUT = 60 * 60 * 1000; // 60 minutes in milliseconds
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -127,10 +127,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 for (const setting of watchedSettings) {
                     if (setting.key.includes("*") || setting.key.includes(",")) {
-                        throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
+                        throw new RangeError("The characters '*' and ',' are not supported in key of watched settings.");
                     }
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                        throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
+                        throw new RangeError("The characters '*' and ',' are not supported in label of watched settings.");
                     }
                     this.#sentinels.push(setting);
                 }
@@ -139,7 +139,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new Error(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
                     this.#kvRefreshInterval = refreshIntervalInMs;
                 }
@@ -157,7 +157,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                     } else {
                         this.#ffRefreshInterval = refreshIntervalInMs;
                     }
@@ -233,17 +233,29 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
-        const startupTimeout = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT;
-        let timer;
+        const startupTimeout: number = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT;
+        const abortController = new AbortController();
+        const abortSignal = abortController.signal;
+        let timeoutId;
         try {
+            // Promise.race will be settled when the first promise in the list is settled
+            // It will not cancel the remaining promises in the list.
+            // To avoid memory leaks, we need to cancel other promises when one promise is settled.
             await Promise.race([
-                new Promise((_, reject) => timer = setTimeout(() => reject(new Error("Load operation timed out.")), startupTimeout)),
-                this.#initialize()
+                this.#initializeWithRetryPolicy(abortSignal),
+                // this promise will be rejected after timeout
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        abortController.abort(); // abort the initialization promise
+                        reject(new Error("Load operation timed out."));
+                    },
+                    startupTimeout);
+                })
             ]);
         } catch (error) {
             throw new Error(`Failed to load: ${error.message}`);
         } finally {
-            clearTimeout(timer);
+            clearTimeout(timeoutId); // cancel the timeout promise
         }
     }
 
@@ -254,7 +266,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const separator = options?.separator ?? ".";
         const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
         if (!validSeparators.includes(separator)) {
-            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+            throw new RangeError(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
         }
 
         // construct hierarchical data object from map
@@ -267,7 +279,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const segment = segments[i];
                 // undefined or empty string
                 if (!segment) {
-                    throw new Error(`invalid key: ${key}`);
+                    throw new OperationError(`Failed to construct configuration object: Invalid key: ${key}`);
                 }
                 // create path if not exist
                 if (current[segment] === undefined) {
@@ -275,14 +287,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 // The path has been occupied by a non-object value, causing ambiguity.
                 if (typeof current[segment] !== "object") {
-                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
+                    throw new OperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
                 }
                 current = current[segment];
             }
 
             const lastSegment = segments[segments.length - 1];
             if (current[lastSegment] !== undefined) {
-                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+                throw new OperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
             }
             // set value to the last segment
             current[lastSegment] = value;
@@ -295,7 +307,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
+            throw new OperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         if (this.#refreshInProgress) {
@@ -314,7 +326,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
+            throw new OperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -332,12 +344,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Initializes the configuration provider.
      */
-    async #initialize() {
+    async #initializeWithRetryPolicy(abortSignal: AbortSignal) {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
-            const retryEnabled = this.#options?.startupOptions?.retryEnabled ?? true; // enable startup retry by default
             const startTimestamp = Date.now();
-            while (startTimestamp + MAX_STARTUP_TIMEOUT > Date.now()) {
+            while (!abortSignal.aborted) {
                 try {
                     await this.#loadSelectedAndWatchedKeyValues();
                     if (this.#featureFlagEnabled) {
@@ -347,23 +358,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
-                    if (retryEnabled) {
-                        const timeElapsed = Date.now() - startTimestamp;
-                        let postAttempts = 0;
-                        let backoffDuration = getFixedBackoffDuration(timeElapsed);
-                        if (backoffDuration === undefined) {
-                            postAttempts += 1;
-                            backoffDuration = calculateDynamicBackoffDuration(postAttempts);
-                        }
-                        await new Promise(resolve => setTimeout(resolve, backoffDuration));
-                        console.warn("Failed to load configuration settings at startup. Retrying...");
-                    } else {
-                        throw error;
+                    const timeElapsed = Date.now() - startTimestamp;
+                    let postAttempts = 0;
+                    let backoffDuration = getFixedBackoffDuration(timeElapsed);
+                    if (backoffDuration === undefined) {
+                        postAttempts += 1;
+                        backoffDuration = calculateDynamicBackoffDuration(postAttempts);
                     }
+                    await new Promise(resolve => setTimeout(resolve, backoffDuration));
+                    console.warn("Failed to load configuration settings at startup. Retrying...");
                 }
-            }
-            if (!this.#isInitialLoadCompleted) {
-                throw new Error("Load operation exceeded the maximum startup timeout limitation.");
             }
         }
     }
@@ -687,7 +691,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("All clients failed to get configuration settings.");
+        throw new FailoverError("All fallback clients failed to get configuration settings.");
     }
 
     async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -719,7 +723,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
-            throw new Error("The value of configuration setting cannot be undefined.");
+            throw new RangeError("The value of configuration setting cannot be undefined.");
         }
         const featureFlag = JSON.parse(rawFlag);
 
@@ -943,13 +947,13 @@ function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
-            throw new Error("Key filter cannot be null or empty.");
+            throw new RangeError("Key filter cannot be null or empty.");
         }
         if (!selector.labelFilter) {
             selector.labelFilter = LabelFilter.Null;
         }
         if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-            throw new Error("The characters '*' and ',' are not supported in label filters.");
+            throw new RangeError("The characters '*' and ',' are not supported in label filters.");
         }
         return selector;
     });
@@ -972,10 +976,4 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
     });
     return getValidSelectors(selectors);
-}
-
-function isFailoverableError(error: any): boolean {
-    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    return isRestError(error) && (error.code === "ENOTFOUND" || error.code === "ENOENT" ||
-        (error.statusCode !== undefined && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500)));
 }
