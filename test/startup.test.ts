@@ -15,16 +15,11 @@ describe("startup", function () {
         restoreMocks();
     });
 
-    it("should throw exception when timeout", async () => {
-        expect(load(createMockedConnectionString(), {startupOptions: {timeoutInMs: 1}}))
-            .eventually.rejectedWith("Load operation timed out.");
-    });
-
-    it("should retry for load operation when retryEnabled is true", async () => {
+    it("should retry for load operation before timeout", async () => {
         let attempt = 0;
         const failForInitialAttempt = () => {
-            if (attempt < 1) {
-                attempt += 1;
+            attempt += 1;
+            if (attempt <= 1) {
                 throw new Error("Test Error");
             }
         };
@@ -33,7 +28,44 @@ describe("startup", function () {
             failForInitialAttempt);
 
         const settings = await load(createMockedConnectionString());
+        expect(attempt).eq(2);
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("TestValue");
+    });
+
+    it("should not retry for load operation after timeout", async () => {
+        let attempt = 0;
+        const failForAllAttempts = () => {
+            attempt += 1;
+            throw new Error("Test Error");
+        };
+        mockAppConfigurationClientListConfigurationSettings(
+            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
+            failForAllAttempts);
+
+        await expect(load(createMockedConnectionString(), {
+            startupOptions: {
+                timeoutInMs: 5_000
+            }
+        })).to.be.rejectedWith("Load operation timed out.");
+        expect(attempt).eq(1);
+    });
+
+    it("should not retry on non-retriable error", async () => {
+        let attempt = 0;
+        const failForAllAttempts = () => {
+            attempt += 1;
+            throw new RangeError("Non-retriable Test Error");
+        };
+        mockAppConfigurationClientListConfigurationSettings(
+            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
+            failForAllAttempts);
+
+        await expect(load(createMockedConnectionString(), {
+            startupOptions: {
+                timeoutInMs: 10_000
+            }
+        })).to.be.rejectedWith("Non-retriable Test Error");
+        expect(attempt).eq(1);
     });
 });

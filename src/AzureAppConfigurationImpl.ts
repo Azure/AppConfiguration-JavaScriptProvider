@@ -7,6 +7,7 @@ import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from ".
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
+import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
 import { Disposable } from "./common/disposable.js";
 import { base64Helper, jsonSorter } from "./common/utils.js";
@@ -41,7 +42,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateDynamicBackoffDuration } from "./failover.js";
-import { FailoverError, OperationError, isFailoverableError } from "./error.js";
+import { FailoverError, OperationError, isFailoverableError, isRetriableError } from "./error.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -49,8 +50,6 @@ type PagedSettingSelector = SettingSelector & {
      */
     pageEtags?: string[];
 };
-
-const DEFAULT_STARTUP_TIMEOUT = 100 * 1000; // 100 seconds in milliseconds
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -233,7 +232,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
-        const startupTimeout: number = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT;
+        const startupTimeout: number = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT_IN_MS;
         const abortController = new AbortController();
         const abortSignal = abortController.signal;
         let timeoutId;
@@ -344,11 +343,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Initializes the configuration provider.
      */
-    async #initializeWithRetryPolicy(abortSignal: AbortSignal) {
+    async #initializeWithRetryPolicy(abortSignal: AbortSignal): Promise<void> {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
             const startTimestamp = Date.now();
-            while (!abortSignal.aborted) {
+            do { // at least try to load once
                 try {
                     await this.#loadSelectedAndWatchedKeyValues();
                     if (this.#featureFlagEnabled) {
@@ -358,6 +357,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
+
+                    if (!isRetriableError(error)) {
+                        throw error;
+                    }
+                    if (abortSignal.aborted) {
+                        return;
+                    }
                     const timeElapsed = Date.now() - startTimestamp;
                     let postAttempts = 0;
                     let backoffDuration = getFixedBackoffDuration(timeElapsed);
@@ -368,7 +374,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
                     console.warn("Failed to load configuration settings at startup. Retrying...");
                 }
-            }
+            } while (!abortSignal.aborted);
         }
     }
 

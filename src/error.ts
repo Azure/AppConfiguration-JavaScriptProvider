@@ -3,6 +3,9 @@
 
 import { isRestError } from "@azure/core-rest-pipeline";
 
+/**
+ * Error thrown when an operation is not allowed to be performed.
+ */
 export class OperationError extends Error {
     constructor(message: string) {
         super(message);
@@ -10,6 +13,9 @@ export class OperationError extends Error {
     }
 }
 
+/**
+ * Error thrown when fail to perform failover.
+ */
 export class FailoverError extends Error {
     constructor(message: string) {
         super(message);
@@ -24,7 +30,7 @@ export function isFailoverableError(error: any): boolean {
 }
 
 export function isRetriableError(error: any): boolean {
-    if (error instanceof OperationError || 
+    if (error instanceof OperationError ||
         error instanceof RangeError) {
         return false;
     }
