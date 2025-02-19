@@ -148,7 +148,7 @@ export class ConfigurationClientManager {
         try {
             result = await this.#querySrvTargetHost(host);
         } catch (error) {
-            console.warn(`Failed to build fallback clients, ${error.message}`);
+            console.warn(`Failed to build fallback clients. ${error.message}`);
             return; // swallow the error when srv query fails
         }
 
