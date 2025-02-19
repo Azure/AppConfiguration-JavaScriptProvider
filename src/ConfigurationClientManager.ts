@@ -8,6 +8,7 @@ import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./A
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList } from "./common/utils.js";
+import { Resolver   } from "dns/promises";
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -17,8 +18,8 @@ const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
 const FALLBACK_CLIENT_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
-const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const DNS_RESOLVER_TIMEOUT = 1_000; // 1 second in milliseconds, in most cases, dns resolution should be within 200 milliseconds
+const MINIMAL_CLIENT_REFRESH_INTERVAL = 30_000; // 30 seconds in milliseconds
+const DNS_RESOLVER_TIMEOUT = 3_000; // 3 seconds in milliseconds, in most cases, dns resolution should be within 200 milliseconds
 const DNS_RESOLVER_TRIES = 2;
 const MAX_ALTNATIVE_SRV_COUNT = 10;
 
@@ -173,31 +174,24 @@ export class ConfigurationClientManager {
     }
 
     /**
-     * Query SRV records and return target hosts.
+     * Queries SRV records for the given host and returns the target hosts.
      */
     async #querySrvTargetHost(host: string): Promise<string[]> {
         const results: string[] = [];
 
         try {
-            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
-            // Look up SRV records for the origin host
-            const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
-            if (originRecords.length === 0) {
-                return results;
-            }
-
-            // Add the first origin record to results
+            // https://nodejs.org/api/dns.html#dnspromisesresolvesrvhostname
+            const resolver = new Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
+            // On success, resolveSrv() returns an array of SrvRecord
+            // On failure, resolveSrv() throws an error with code 'ENOTFOUND'.
+            const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`); // look up SRV records for the origin host
             const originHost = originRecords[0].name;
-            results.push(originHost);
+            results.push(originHost); // add the first origin record to results
 
-            // Look up SRV records for alternate hosts
             let index = 0;
             while (index < MAX_ALTNATIVE_SRV_COUNT) {
-                const currentAlt = `${ALT_KEY_NAME}${index}`;
+                const currentAlt = `${ALT_KEY_NAME}${index}`; // look up SRV records for alternate hosts
                 const altRecords = await resolver.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
-                if (altRecords.length === 0) {
-                    break; // No more alternate records, exit loop
-                }
 
                 altRecords.forEach(record => {
                     const altHost = record.name;
@@ -209,7 +203,8 @@ export class ConfigurationClientManager {
             }
         } catch (err) {
             if (err.code === "ENOTFOUND") {
-                return results; // No more SRV records found, return results
+                // No more SRV records found, return results.
+                return results;
             } else {
                 throw new Error(`Failed to lookup SRV records: ${err.message}`);
             }
