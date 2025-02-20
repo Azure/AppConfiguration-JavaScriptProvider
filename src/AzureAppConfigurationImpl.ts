@@ -7,7 +7,7 @@ import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from ".
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
-import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
+import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
 import { Disposable } from "./common/disposable.js";
 import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
