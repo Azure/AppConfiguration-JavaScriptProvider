@@ -359,7 +359,7 @@ describe("load", function () {
      * When constructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
      * An error will be thrown when constructing from key "app5.settings" because there is ambiguity between the two keys.
      */
-    it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+    it("Edge case 2: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{

@@ -8,7 +8,7 @@ export interface StartupOptions {
      * The amount of time allowed to load data from Azure App Configuration on startup.
      *
      * @remarks
-     * If not specified, the default value is 100 seconds. Must be greater than 1 second.
+     * If not specified, the default value is 100 seconds.
      */
     timeoutInMs?: number;
 }

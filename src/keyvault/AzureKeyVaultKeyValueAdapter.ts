@@ -50,9 +50,9 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 
     /**
-     * 
+     *
      * @param vaultUrl - The url of the key vault.
-     * @returns 
+     * @returns
      */
     #getSecretClient(vaultUrl: URL): SecretClient | undefined {
         if (this.#secretClients === undefined) {
