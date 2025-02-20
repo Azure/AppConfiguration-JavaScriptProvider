@@ -18,7 +18,7 @@ export function isFailoverableError(error: any): boolean {
         return false;
     }
     // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    if (error.code == "ENOTFOUND" || error.code === "ENOENT"){
+    if (error.code == "ENOTFOUND" || error.code === "ENOENT") {
         return true;
     }
     // 401 Unauthorized, 403 Forbidden, 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
