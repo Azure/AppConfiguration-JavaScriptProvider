@@ -2,9 +2,10 @@
 // Licensed under the MIT license.
 
 import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
 
 /**
- * Error thrown when an operation is not allowed to be performed.
+ * Error thrown when an operation cannot be performed by the Azure App Configuration provider.
  */
 export class OperationError extends Error {
     constructor(message: string) {
@@ -31,8 +32,9 @@ export function isFailoverableError(error: any): boolean {
 }
 
 export function isRetriableError(error: any): boolean {
-    if (error instanceof OperationError ||
-        error instanceof RangeError) {
+    if (error instanceof AuthenticationError || // this error occurs when using wrong credential to access the key vault
+        error instanceof RangeError || // this error is caused by misconfiguration of the Azure App Configuration provider
+        error instanceof OperationError) {
         return false;
     }
     return true;

@@ -7,8 +7,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { shuffleList } from "./common/utils.js";
-import { OperationError } from "./error.js";
+import { instanceOfTokenCredential, shuffleList, getValidUrl } from "./common/utils.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
@@ -82,7 +81,7 @@ export class ConfigurationClientManager {
             this.#credential = credential;
             staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
-            throw new OperationError("A connection string or an endpoint with credential must be specified to create a client.");
+            throw new RangeError("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
@@ -207,12 +206,12 @@ export class ConfigurationClientManager {
                 });
                 index++;
             }
-        } catch (err) {
-            if (err.code === "ENOTFOUND") {
+        } catch (error) {
+            if (error.code === "ENOTFOUND") {
                 // No more SRV records found, return results.
                 return results;
             } else {
-                throw new Error(`Failed to lookup SRV records: ${err.message}`);
+                throw new Error(`Failed to lookup SRV records: ${error.message}`);
             }
         }
 
@@ -279,20 +278,3 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
         }
     });
 }
-
-function getValidUrl(endpoint: string): URL {
-    try {
-        return new URL(endpoint);
-    } catch (error) {
-        if (error.code === "ERR_INVALID_URL") {
-            throw new RangeError("Invalid endpoint URL.", { cause: error });
-        } else {
-            throw error;
-        }
-    }
-}
-
-export function instanceOfTokenCredential(obj: unknown) {
-    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
-}
-

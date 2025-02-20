@@ -96,7 +96,7 @@ describe("key vault reference", function () {
                 ]
             }
         });
-        return expect(loadKeyVaultPromise).eventually.rejectedWith("Failed to process the key vault reference. No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
+        return expect(loadKeyVaultPromise).eventually.rejectedWith("Failed to process the key vault reference. No key vault credential or secret resolver callback is configured.");
     });
 
     it("should fallback to use default credential when corresponding secret client not provided", async () => {

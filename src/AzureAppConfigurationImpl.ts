@@ -482,7 +482,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
 
-        // process key-values, watched settings have higher priority
+        // adapt configuration settings to key-values
         for (const setting of loadedSettings) {
             const [key, value] = await this.#processKeyValues(setting);
             keyValues.push([key, value]);
@@ -657,6 +657,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
+    // Only operations related to Azure App Configuration service should be executed with failover policy.
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         let clientWrappers = await this.#clientManager.getClients();
         if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
