@@ -16,9 +16,11 @@ const ENDPOINT_KEY_NAME = "Endpoint";
 const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
-const FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
-const MINIMAL_CLIENT_REFRESH_INTERVAL = 30 * 1000; // 30 seconds in milliseconds
-const SRV_QUERY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
+const FALLBACK_CLIENT_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
+const MINIMAL_CLIENT_REFRESH_INTERVAL = 30_000; // 30 seconds in milliseconds
+const DNS_RESOLVER_TIMEOUT = 3_000; // 3 seconds in milliseconds, in most cases, dns resolution should be within 200 milliseconds
+const DNS_RESOLVER_TRIES = 2;
+const MAX_ALTNATIVE_SRV_COUNT = 10;
 
 export class ConfigurationClientManager {
     #isFailoverable: boolean;
@@ -33,8 +35,8 @@ export class ConfigurationClientManager {
     #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
     #dynamicClients: ConfigurationClientWrapper[];
     #replicaCount: number = 0;
-    #lastFallbackClientRefreshTime: number = 0;
-    #lastFallbackClientRefreshAttempt: number = 0;
+    #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
+    #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -85,10 +87,11 @@ export class ConfigurationClientManager {
             this.#isFailoverable = false;
             return;
         }
-        if (this.#dns) {
+        if (this.#dns) { // dns module is already loaded
             return;
         }
 
+        // We can only know whether dns module is available during runtime.
         try {
             this.#dns = await import("dns/promises");
         } catch (error) {
@@ -116,8 +119,7 @@ export class ConfigurationClientManager {
             (!this.#dynamicClients ||
             // All dynamic clients are in backoff means no client is available
             this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
-            currentTime >= this.#lastFallbackClientRefreshTime + FALLBACK_CLIENT_REFRESH_EXPIRE_INTERVAL)) {
-            this.#lastFallbackClientRefreshAttempt = currentTime;
+            currentTime >= this.#lastFallbackClientUpdateTime + FALLBACK_CLIENT_EXPIRE_INTERVAL)) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
             return availableClients.concat(this.#dynamicClients);
         }
@@ -135,27 +137,22 @@ export class ConfigurationClientManager {
     async refreshClients() {
         const currentTime = Date.now();
         if (this.#isFailoverable &&
-            currentTime >= new Date(this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL).getTime()) {
-            this.#lastFallbackClientRefreshAttempt = currentTime;
+            currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
         }
     }
 
     async #discoverFallbackClients(host: string) {
-        let result;
-        let timeout;
+        this.#lastFallbackClientRefreshAttempt = Date.now();
+        let result: string[];
         try {
-            result = await Promise.race([
-                new Promise((_, reject) => timeout = setTimeout(() => reject(new Error("SRV record query timed out.")), SRV_QUERY_TIMEOUT)),
-                this.#querySrvTargetHost(host)
-            ]);
+            result = await this.#querySrvTargetHost(host);
         } catch (error) {
-            throw new Error(`Failed to build fallback clients, ${error.message}`);
-        } finally {
-            clearTimeout(timeout);
+            console.warn(`Failed to build fallback clients. ${error.message}`);
+            return; // swallow the error when srv query fails
         }
 
-        const srvTargetHosts = shuffleList(result) as string[];
+        const srvTargetHosts = shuffleList(result);
         const newDynamicClients: ConfigurationClientWrapper[] = [];
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
@@ -164,43 +161,36 @@ export class ConfigurationClientManager {
                     continue;
                 }
                 const client = this.#credential ?
-                                new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
-                                new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
+                    new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
+                    new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
                 newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
             }
         }
 
         this.#dynamicClients = newDynamicClients;
-        this.#lastFallbackClientRefreshTime = Date.now();
+        this.#lastFallbackClientUpdateTime = Date.now();
         this.#replicaCount = this.#dynamicClients.length;
     }
 
     /**
-     * Query SRV records and return target hosts.
+     * Queries SRV records for the given host and returns the target hosts.
      */
     async #querySrvTargetHost(host: string): Promise<string[]> {
         const results: string[] = [];
 
         try {
-            // Look up SRV records for the origin host
-            const originRecords = await this.#dns.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`);
-            if (originRecords.length === 0) {
-                return results;
-            }
-
-            // Add the first origin record to results
+            // https://nodejs.org/api/dns.html#dnspromisesresolvesrvhostname
+            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
+            // On success, resolveSrv() returns an array of SrvRecord
+            // On failure, resolveSrv() throws an error with code 'ENOTFOUND'.
+            const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`); // look up SRV records for the origin host
             const originHost = originRecords[0].name;
-            results.push(originHost);
+            results.push(originHost); // add the first origin record to results
 
-            // Look up SRV records for alternate hosts
             let index = 0;
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-                const currentAlt = `${ALT_KEY_NAME}${index}`;
-                const altRecords = await this.#dns.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
-                if (altRecords.length === 0) {
-                    break; // No more alternate records, exit loop
-                }
+            while (index < MAX_ALTNATIVE_SRV_COUNT) {
+                const currentAlt = `${ALT_KEY_NAME}${index}`; // look up SRV records for alternate hosts
+                const altRecords = await resolver.resolveSrv(`${currentAlt}.${TCP_KEY_NAME}.${originHost}`);
 
                 altRecords.forEach(record => {
                     const altHost = record.name;
@@ -212,7 +202,8 @@ export class ConfigurationClientManager {
             }
         } catch (err) {
             if (err.code === "ENOTFOUND") {
-                return results; // No more SRV records found, return results
+                // No more SRV records found, return results.
+                return results;
             } else {
                 throw new Error(`Failed to lookup SRV records: ${err.message}`);
             }
