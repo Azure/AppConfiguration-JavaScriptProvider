@@ -3,7 +3,7 @@
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
 import { KeyVaultOptions } from "./keyvault/KeyVaultOptions.js";
-import { RefreshOptions } from "./RefreshOptions.js";
+import { RefreshOptions } from "./refresh/refreshOptions.js";
 import { SettingSelector } from "./types.js";
 import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions.js";
 
