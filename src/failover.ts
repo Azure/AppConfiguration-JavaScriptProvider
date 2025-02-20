@@ -3,10 +3,9 @@
 
 const MIN_BACKOFF_DURATION = 30_000; // 30 seconds in milliseconds
 const MAX_BACKOFF_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
-const MAX_SAFE_EXPONENTIAL = 30; // Used to avoid overflow. bitwise operations in JavaScript are limited to 32 bits. It overflows at 2^31 - 1.
 const JITTER_RATIO = 0.25;
 
-// Reference: https://github.com/Azure/AppConfiguration-DotnetProvider/blob/main/src/Microsoft.Extensions.Configuration.AzureAppConfiguration/Extensions/TimeSpanExtensions.cs#L14
+// The backoff duration algorithm is consistent with the .NET configuration provider's implementation.
 export function getFixedBackoffDuration(timeElapsed: number): number | undefined {
     if (timeElapsed <= 100_000) { // 100 seconds in milliseconds
         return 5_000; // 5 seconds in milliseconds
@@ -20,14 +19,14 @@ export function getFixedBackoffDuration(timeElapsed: number): number | undefined
     return undefined;
 }
 
-export function calculateDynamicBackoffDuration(failedAttempts: number) {
+export function calculateBackoffDuration(failedAttempts: number) {
     if (failedAttempts <= 1) {
         return MIN_BACKOFF_DURATION;
     }
 
     // exponential: minBackoff * 2 ^ (failedAttempts - 1)
-    const exponential = Math.min(failedAttempts - 1, MAX_SAFE_EXPONENTIAL);
-    let calculatedBackoffDuration = MIN_BACKOFF_DURATION * (1 << exponential);
+    // The right shift operator is not used in order to avoid potential overflow. Bitwise operations in JavaScript are limited to 32 bits.
+    let calculatedBackoffDuration = MIN_BACKOFF_DURATION * Math.pow(2, failedAttempts - 1);
     if (calculatedBackoffDuration > MAX_BACKOFF_DURATION) {
         calculatedBackoffDuration = MAX_BACKOFF_DURATION;
     }

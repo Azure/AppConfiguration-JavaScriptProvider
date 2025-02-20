@@ -41,8 +41,8 @@ import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurat
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { getFixedBackoffDuration, calculateDynamicBackoffDuration } from "./failover.js";
-import { FailoverError, OperationError, isFailoverableError, isRetriableError } from "./error.js";
+import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
+import { OperationError, isFailoverableError, isRetriableError } from "./error.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -357,7 +357,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
-
                     if (!isRetriableError(error)) {
                         throw error;
                     }
@@ -369,7 +368,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     let backoffDuration = getFixedBackoffDuration(timeElapsed);
                     if (backoffDuration === undefined) {
                         postAttempts += 1;
-                        backoffDuration = calculateDynamicBackoffDuration(postAttempts);
+                        backoffDuration = calculateBackoffDuration(postAttempts);
                     }
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
                     console.warn("Failed to load configuration settings at startup. Retrying...");
@@ -697,7 +696,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new FailoverError("All fallback clients failed to get configuration settings.");
+        throw new Error("All fallback clients failed to get configuration settings.");
     }
 
     async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {

@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { calculateDynamicBackoffDuration } from "./failover.js";
+import { calculateBackoffDuration } from "./failover.js";
 
 export class ConfigurationClientWrapper {
     endpoint: string;
@@ -21,7 +21,7 @@ export class ConfigurationClientWrapper {
             this.backoffEndTime = Date.now();
         } else {
             this.#failedAttempts += 1;
-            this.backoffEndTime = Date.now() + calculateDynamicBackoffDuration(this.#failedAttempts);
+            this.backoffEndTime = Date.now() + calculateBackoffDuration(this.#failedAttempts);
         }
     }
 }
