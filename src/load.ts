@@ -6,8 +6,14 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager, instanceOfTokenCredential } from "./ConfigurationClientManager.js";
+import { EtagUrlPipelinePolicy } from "./EtagUrlPipelinePolicy.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5000; // 5 seconds
+
+// Empty token credential to be used when loading from CDN
+const emptyTokenCredential: TokenCredential = {
+    getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
+};
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
@@ -41,7 +47,7 @@ export async function load(
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options);
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, credentialOrOptions === emptyTokenCredential);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -54,4 +60,33 @@ export async function load(
         }
         throw error;
     }
+}
+
+/**
+ * Loads the data from a CDN and returns an instance of AzureAppConfiguration.
+ * @param cdnEndpoint  The URL to the CDN.
+ * @param appConfigOptions  Optional parameters.
+ */
+export async function loadFromCdn(cdnEndpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
+export async function loadFromCdn(
+    cdnEndpoint: string | URL,
+    appConfigOptions?: AzureAppConfigurationOptions
+): Promise<AzureAppConfiguration> {
+    if (appConfigOptions === undefined) {
+        appConfigOptions = { clientOptions: {}};
+    }
+
+    appConfigOptions.clientOptions = {
+        ...appConfigOptions.clientOptions,
+        // Specify the api version that supports sas token authentication
+        apiVersion: "2024-09-01-preview",
+        // Add etag url policy to append etag to the request url for breaking CDN cache
+        additionalPolicies: [
+            ...(appConfigOptions.clientOptions?.additionalPolicies || []),
+            { policy: new EtagUrlPipelinePolicy(), position: "perCall" }
+        ]
+    };
+
+    return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
 }
