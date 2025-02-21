@@ -1,15 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { ArgumentError } from "../error.js";
+
 export class RefreshTimer {
     #backoffEnd: number; // Timestamp
     #interval: number;
 
-    constructor(
-        interval: number
-    ) {
+    constructor(interval: number) {
         if (interval <= 0) {
-            throw new Error(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
+            throw new ArgumentError(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
         }
 
         this.#interval = interval;
