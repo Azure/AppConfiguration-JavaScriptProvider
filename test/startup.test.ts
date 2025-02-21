@@ -7,6 +7,7 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
 import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { AuthenticationError } from "@azure/identity";
 
 describe("startup", function () {
     this.timeout(MAX_TIME_OUT);
@@ -51,7 +52,25 @@ describe("startup", function () {
         expect(attempt).eq(1);
     });
 
-    it("should not retry on non-retriable error", async () => {
+    it("should not retry on non-retriable TypeError", async () => {
+        let attempt = 0;
+        const failForAllAttempts = () => {
+            attempt += 1;
+            throw new TypeError("Non-retriable Test Error");
+        };
+        mockAppConfigurationClientListConfigurationSettings(
+            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
+            failForAllAttempts);
+
+        await expect(load(createMockedConnectionString(), {
+            startupOptions: {
+                timeoutInMs: 10_000
+            }
+        })).to.be.rejectedWith("Non-retriable Test Error");
+        expect(attempt).eq(1);
+    });
+
+    it("should not retry on non-retriable RangeError", async () => {
         let attempt = 0;
         const failForAllAttempts = () => {
             attempt += 1;
@@ -66,6 +85,24 @@ describe("startup", function () {
                 timeoutInMs: 10_000
             }
         })).to.be.rejectedWith("Non-retriable Test Error");
+        expect(attempt).eq(1);
+    });
+
+    it("should not retry on non-retriable AuthenticationError", async () => {
+        let attempt = 0;
+        const failForAllAttempts = () => {
+            attempt += 1;
+            throw new AuthenticationError(400, "Test Error");
+        };
+        mockAppConfigurationClientListConfigurationSettings(
+            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
+            failForAllAttempts);
+
+        await expect(load(createMockedConnectionString(), {
+            startupOptions: {
+                timeoutInMs: 10_000
+            }
+        })).to.be.rejectedWith("authority_not_found");
         expect(attempt).eq(1);
     });
 });

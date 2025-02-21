@@ -7,7 +7,8 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { instanceOfTokenCredential, shuffleList, getValidUrl } from "./common/utils.js";
+import { instanceOfTokenCredential, shuffleList, getEndpointUrl } from "./common/utils.js";
+import { ArgumentError } from "./error.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
@@ -60,18 +61,18 @@ export class ConfigurationClientManager {
             const regexMatch = connectionString.match(ConnectionStringRegex);
             if (regexMatch) {
                 const endpointFromConnectionStr = regexMatch[1];
-                this.endpoint = getValidUrl(endpointFromConnectionStr);
+                this.endpoint = getEndpointUrl(endpointFromConnectionStr);
                 this.#id = regexMatch[2];
                 this.#secret = regexMatch[3];
             } else {
-                throw new RangeError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
+                throw new ArgumentError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
         } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
             if (typeof endpoint === "string") {
-                endpoint = getValidUrl(endpoint);
+                endpoint = getEndpointUrl(endpoint);
             }
 
             const credential = credentialOrOptions as TokenCredential;
@@ -81,7 +82,7 @@ export class ConfigurationClientManager {
             this.#credential = credential;
             staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
-            throw new RangeError("A connection string or an endpoint with credential must be specified to create a client.");
+            throw new ArgumentError("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];

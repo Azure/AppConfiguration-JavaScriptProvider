@@ -31,19 +31,15 @@ export function shuffleList<T>(array: T[]): T[] {
     return array;
 }
 
-export function getValidUrl(endpoint: string): URL {
+export function getEndpointUrl(endpoint: string): URL {
     try {
         return new URL(endpoint);
     } catch (error) {
-        if (error.code === "ERR_INVALID_URL") {
-            throw new RangeError("Invalid endpoint URL.", { cause: error });
-        } else {
-            throw error;
-        }
+        throw new TypeError(`Invalid Endpoint URL: ${endpoint}`);
     }
 }
 
-export function getUrlHost(url: string) {
+export function getUrlHost(url: string): string {
     return new URL(url).host;
 }
 

@@ -42,7 +42,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
-import { OperationError, isFailoverableError, isRetriableError } from "./error.js";
+import { OperationError, ArgumentError, isFailoverableError, isRetriableError } from "./error.js";
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -126,10 +126,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 for (const setting of watchedSettings) {
                     if (setting.key.includes("*") || setting.key.includes(",")) {
-                        throw new RangeError("The characters '*' and ',' are not supported in key of watched settings.");
+                        throw new ArgumentError("The characters '*' and ',' are not supported in key of watched settings.");
                     }
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                        throw new RangeError("The characters '*' and ',' are not supported in label of watched settings.");
+                        throw new ArgumentError("The characters '*' and ',' are not supported in label of watched settings.");
                     }
                     this.#sentinels.push(setting);
                 }
@@ -138,7 +138,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new ArgumentError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
                     this.#kvRefreshInterval = refreshIntervalInMs;
                 }
@@ -156,7 +156,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new ArgumentError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                     } else {
                         this.#ffRefreshInterval = refreshIntervalInMs;
                     }
@@ -265,7 +265,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const separator = options?.separator ?? ".";
         const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
         if (!validSeparators.includes(separator)) {
-            throw new RangeError(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+            throw new ArgumentError(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
         }
 
         // construct hierarchical data object from map
@@ -729,7 +729,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
-            throw new RangeError("The value of configuration setting cannot be undefined.");
+            throw new ArgumentError("The value of configuration setting cannot be undefined.");
         }
         const featureFlag = JSON.parse(rawFlag);
 
@@ -953,13 +953,13 @@ function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
-            throw new RangeError("Key filter cannot be null or empty.");
+            throw new ArgumentError("Key filter cannot be null or empty.");
         }
         if (!selector.labelFilter) {
             selector.labelFilter = LabelFilter.Null;
         }
         if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-            throw new RangeError("The characters '*' and ',' are not supported in label filters.");
+            throw new ArgumentError("The characters '*' and ',' are not supported in label filters.");
         }
         return selector;
     });

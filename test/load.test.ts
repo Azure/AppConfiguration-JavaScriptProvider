@@ -119,7 +119,7 @@ describe("load", function () {
 
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
-        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
+        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid Endpoint URL: invalid-endpoint-url");
     });
 
     it("should not include feature flags directly in the settings", async () => {

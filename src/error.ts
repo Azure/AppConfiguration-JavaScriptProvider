@@ -14,6 +14,16 @@ export class OperationError extends Error {
     }
 }
 
+/**
+ * Error thrown when an argument or configuration is invalid.
+ */
+export class ArgumentError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "ArgumentError";
+    }
+}
+
 export function isFailoverableError(error: any): boolean {
     if (!isRestError(error)) {
         return false;
@@ -33,8 +43,10 @@ export function isFailoverableError(error: any): boolean {
 
 export function isRetriableError(error: any): boolean {
     if (error instanceof AuthenticationError || // this error occurs when using wrong credential to access the key vault
-        error instanceof RangeError || // this error is caused by misconfiguration of the Azure App Configuration provider
-        error instanceof OperationError) {
+        error instanceof ArgumentError || // this error is caused by misconfiguration of the Azure App Configuration provider
+        error instanceof OperationError ||
+        error instanceof TypeError ||
+        error instanceof RangeError) {
         return false;
     }
     return true;

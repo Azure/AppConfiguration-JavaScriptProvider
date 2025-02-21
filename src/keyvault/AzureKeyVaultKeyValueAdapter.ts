@@ -5,6 +5,7 @@ import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { getUrlHost } from "../common/utils.js";
+import { ArgumentError } from "../error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
@@ -25,7 +26,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
         // TODO: cache results to save requests.
         if (!this.#keyVaultOptions) {
-            throw new RangeError("Failed to process the key vault reference. The keyVaultOptions is not configured.");
+            throw new ArgumentError("Failed to process the key vault reference. The keyVaultOptions is not configured.");
         }
 
         // precedence: secret clients > credential > secret resolver
@@ -46,7 +47,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 
         // When code reaches here, it means the key vault secret reference is not resolved.
 
-        throw new RangeError("Failed to process the key vault reference. No key vault credential or secret resolver callback is configured.");
+        throw new ArgumentError("Failed to process the key vault reference. No key vault credential or secret resolver callback is configured.");
     }
 
     /**
