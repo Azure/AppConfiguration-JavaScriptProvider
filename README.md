@@ -2,9 +2,21 @@
 
 [![app-configuration-provider](https://img.shields.io/npm/v/@azure/app-configuration-provider?label=@azure/app-configuration-provider)](https://www.npmjs.com/package/@azure/app-configuration-provider)
 
-The [Azure App Configuration](https://docs.microsoft.com/en-us/azure/azure-app-configuration/overview) provider for JavaScript enables developers to configure their applications using centralized configuration located in Azure App Configuration. 
+[Azure App Configuration](https://docs.microsoft.com/en-us/azure/azure-app-configuration/overview) is a managed service that helps developers centralize their application configurations simply and securely. The JavaScript configuration provider library enables loading configuration from an Azure App Configuration store in a managed way. 
+
+This client library adds additional [functionality](https://learn.microsoft.com/azure/azure-app-configuration/reference-javascript-provider) above the [Azure SDK for JavaScript](https://www.npmjs.com/package/@azure/app-configuration).
 
 ## Getting started
+
+[Quickstart](https://learn.microsoft.com/azure/azure-app-configuration/quickstart-javascript-provider): A quickstart guide about how to use the JavaScript configuration provider library.
+
+[Feature Flag Quickstart](https://learn.microsoft.com/azure/azure-app-configuration/quickstart-feature-flag-javascript): A quickstart guide about how to integrate feature flags from Azure App Configuration into your JavaScript applications.
+
+[Dynamic Configuration Tutorial](https://learn.microsoft.com/azure/azure-app-configuration/enable-dynamic-configuration-javascript): A tutorial about how to enable dynamic configuration in your JavaScript applications.
+
+[Feature Overview](https://learn.microsoft.com/azure/azure-app-configuration/configuration-provider-overview#feature-development-status): This document provides a feature status overview.
+
+[Feature Reference](https://learn.microsoft.com/azure/azure-app-configuration/reference-javascript-provider): This document provides a full feature rundown.
 
 ### Prerequisites
 
@@ -28,7 +40,6 @@ const settings = await load("<app-configuration-connection-string>");
 // Consume the settings by calling `get(key)`, e.g.
 const value = settings.get("<key-of-a-config>");
 ```
-
 
 ## Examples
 

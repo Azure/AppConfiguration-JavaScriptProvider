@@ -5,13 +5,14 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, HttpRequestHeadersPolicy, sleepInMs } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
+import { ConfigurationClientManager } from "../src/ConfigurationClientManager.js";
 import { load } from "./exportedApi.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
 describe("request tracing", function () {
-    this.timeout(15000);
+    this.timeout(MAX_TIME_OUT);
 
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();
@@ -42,9 +43,7 @@ describe("request tracing", function () {
 
     it("should have request type in correlation-context header", async () => {
         try {
-            await load(createMockedConnectionString(fakeEndpoint), {
-                clientOptions
-            });
+            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(headerPolicy.headers.get("Correlation-Context")).eq("RequestType=Startup");
@@ -65,12 +64,23 @@ describe("request tracing", function () {
         expect(correlationContext.includes("UsesKeyVault")).eq(true);
     });
 
+    it("should have replica count in correlation-context header", async () => {
+        const replicaCount = 2;
+        sinon.stub(ConfigurationClientManager.prototype, "getReplicaCount").returns(replicaCount);
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes(`ReplicaCount=${replicaCount}`)).eq(true);
+        sinon.restore();
+    });
+
     it("should detect env in correlation-context header", async () => {
         process.env.NODE_ENV = "development";
         try {
-            await load(createMockedConnectionString(fakeEndpoint), {
-                clientOptions
-            });
+            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -82,9 +92,7 @@ describe("request tracing", function () {
     it("should detect host type in correlation-context header", async () => {
         process.env.WEBSITE_SITE_NAME = "website-name";
         try {
-            await load(createMockedConnectionString(fakeEndpoint), {
-                clientOptions
-            });
+            await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
@@ -97,9 +105,7 @@ describe("request tracing", function () {
         for (const indicator of ["TRUE", "true"]) {
             process.env.AZURE_APP_CONFIGURATION_TRACING_DISABLED = indicator;
             try {
-                await load(createMockedConnectionString(fakeEndpoint), {
-                    clientOptions
-                });
+                await load(createMockedConnectionString(fakeEndpoint), { clientOptions });
             } catch (e) { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");

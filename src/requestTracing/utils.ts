@@ -23,27 +23,35 @@ import {
     REQUEST_TYPE_KEY,
     RequestType,
     SERVICE_FABRIC_ENV_VAR,
-    CORRELATION_CONTEXT_HEADER_NAME
+    CORRELATION_CONTEXT_HEADER_NAME,
+    REPLICA_COUNT_KEY,
+    FAILOVER_REQUEST_TAG,
+    FEATURES_KEY,
+    LOAD_BALANCE_CONFIGURED_TAG,
+    FM_VERSION_KEY
 } from "./constants";
+
+export interface RequestTracingOptions {
+    enabled: boolean;
+    appConfigOptions: AzureAppConfigurationOptions | undefined;
+    initialLoadCompleted: boolean;
+    replicaCount: number;
+    isFailoverRequest: boolean;
+    featureFlagTracing: FeatureFlagTracingOptions | undefined;
+    fmVersion: string | undefined;
+}
 
 // Utils
 export function listConfigurationSettingsWithTrace(
-    requestTracingOptions: {
-        requestTracingEnabled: boolean;
-        initialLoadCompleted: boolean;
-        appConfigOptions: AzureAppConfigurationOptions | undefined;
-        featureFlagTracingOptions: FeatureFlagTracingOptions | undefined;
-    },
+    requestTracingOptions: RequestTracingOptions,
     client: AppConfigurationClient,
     listOptions: ListConfigurationSettingsOptions
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, featureFlagTracingOptions } = requestTracingOptions;
-
     const actualListOptions = { ...listOptions };
-    if (requestTracingEnabled) {
+    if (requestTracingOptions.enabled) {
         actualListOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, featureFlagTracingOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
     }
@@ -52,23 +60,17 @@ export function listConfigurationSettingsWithTrace(
 }
 
 export function getConfigurationSettingWithTrace(
-    requestTracingOptions: {
-        requestTracingEnabled: boolean;
-        initialLoadCompleted: boolean;
-        appConfigOptions: AzureAppConfigurationOptions | undefined;
-        featureFlagTracingOptions: FeatureFlagTracingOptions | undefined;
-    },
+    requestTracingOptions: RequestTracingOptions,
     client: AppConfigurationClient,
     configurationSettingId: ConfigurationSettingId,
     getOptions?: GetConfigurationSettingOptions,
 ) {
-    const { requestTracingEnabled, initialLoadCompleted, appConfigOptions, featureFlagTracingOptions } = requestTracingOptions;
     const actualGetOptions = { ...getOptions };
 
-    if (requestTracingEnabled) {
+    if (requestTracingOptions.enabled) {
         actualGetOptions.requestOptions = {
             customHeaders: {
-                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(appConfigOptions, featureFlagTracingOptions, initialLoadCompleted)
+                [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
     }
@@ -76,18 +78,35 @@ export function getConfigurationSettingWithTrace(
     return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
 }
 
-export function createCorrelationContextHeader(options: AzureAppConfigurationOptions | undefined, featureFlagTracing: FeatureFlagTracingOptions | undefined, isInitialLoadCompleted: boolean): string {
+export function createCorrelationContextHeader(requestTracingOptions: RequestTracingOptions): string {
     /*
     RequestType: 'Startup' during application starting up, 'Watch' after startup completed.
     Host: identify with defined envs
-    Env: identify by env `NODE_ENV` which is a popular but not standard.usually the value can be "development", "production".
+    Env: identify by env `NODE_ENV` which is a popular but not standard. Usually, the value can be "development", "production".
+    ReplicaCount: identify how many replicas are found
+    Features: LB
+    Filter: CSTM+TIME+TRGT
+    MaxVariants: identify the max number of variants feature flag uses
+    FFFeatures: Seed+Telemetry
     UsersKeyVault
+    Failover
     */
     const keyValues = new Map<string, string | undefined>();
-    keyValues.set(REQUEST_TYPE_KEY, isInitialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
+    const tags: string[] = [];
+
+    keyValues.set(REQUEST_TYPE_KEY, requestTracingOptions.initialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
 
+    const appConfigOptions = requestTracingOptions.appConfigOptions;
+    if (appConfigOptions?.keyVaultOptions) {
+        const { credential, secretClients, secretResolver } = appConfigOptions.keyVaultOptions;
+        if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
+            tags.push(KEY_VAULT_CONFIGURED_TAG);
+        }
+    }
+
+    const featureFlagTracing = requestTracingOptions.featureFlagTracing;
     if (featureFlagTracing) {
         keyValues.set(FEATURE_FILTER_TYPE_KEY, featureFlagTracing.usesAnyFeatureFilter() ? featureFlagTracing.createFeatureFiltersString() : undefined);
         keyValues.set(FF_FEATURES_KEY, featureFlagTracing.usesAnyTracingFeature() ? featureFlagTracing.createFeaturesString() : undefined);
@@ -96,12 +115,19 @@ export function createCorrelationContextHeader(options: AzureAppConfigurationOpt
         }
     }
 
-    const tags: string[] = [];
-    if (options?.keyVaultOptions) {
-        const { credential, secretClients, secretResolver } = options.keyVaultOptions;
-        if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
-            tags.push(KEY_VAULT_CONFIGURED_TAG);
-        }
+    if (requestTracingOptions.isFailoverRequest) {
+        tags.push(FAILOVER_REQUEST_TAG);
+    }
+    if (requestTracingOptions.replicaCount > 0) {
+        keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
+    }
+    if (requestTracingOptions.fmVersion) {
+        keyValues.set(FM_VERSION_KEY, requestTracingOptions.fmVersion);
+    }
+
+    // Compact tags: Features=LB+...
+    if (appConfigOptions?.loadBalancingEnabled) {
+        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
     }
 
     const contextParts: string[] = [];
@@ -160,7 +186,7 @@ function isDevEnvironment(): boolean {
     return false;
 }
 
-function isBrowser() {
+export function isBrowser() {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window
     const isWindowDefinedAsExpected = typeof window === "object" && typeof Window === "function" && window instanceof Window;
     // https://developer.mozilla.org/en-US/docs/Web/API/Document
@@ -169,7 +195,7 @@ function isBrowser() {
     return isWindowDefinedAsExpected && isDocumentDefinedAsExpected;
 }
 
-function isWebWorker() {
+export function isWebWorker() {
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
     const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
@@ -179,3 +205,4 @@ function isWebWorker() {
 
     return workerGlobalScopeDefined && importScriptsAsGlobalFunction && isNavigatorDefinedAsExpected;
 }
+
