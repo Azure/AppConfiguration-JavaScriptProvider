@@ -7,7 +7,6 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi";
 import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
-import { AuthenticationError } from "@azure/identity";
 
 describe("startup", function () {
     this.timeout(MAX_TIME_OUT);

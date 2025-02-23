@@ -3,20 +3,19 @@
 
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
+import { AzureKeyVaultSecretProvider } from "./AzureKeyVaultSecretProvider.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { getUrlHost } from "../common/utils.js";
+import { RefreshTimer } from "../refresh/RefreshTimer.js";
 import { ArgumentError, KeyVaultReferenceError } from "../error.js";
-import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { parseKeyVaultSecretIdentifier, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
-    /**
-     * Map vault hostname to corresponding secret client.
-    */
-    #secretClients: Map<string, SecretClient>;
     #keyVaultOptions: KeyVaultOptions | undefined;
+    #keyVaultSecretProvider: AzureKeyVaultSecretProvider;
 
-    constructor(keyVaultOptions: KeyVaultOptions | undefined) {
+    constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
         this.#keyVaultOptions = keyVaultOptions;
+        this.#keyVaultSecretProvider = new AzureKeyVaultSecretProvider(keyVaultOptions, refreshTimer);
     }
 
     canProcess(setting: ConfigurationSetting): boolean {
@@ -24,58 +23,22 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 
     async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
-        // TODO: cache results to save requests.
         if (!this.#keyVaultOptions) {
             throw new ArgumentError("Failed to process the key vault reference. The keyVaultOptions is not configured.");
         }
 
-        const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
+        const secretIdentifier: KeyVaultSecretIdentifier = parseKeyVaultSecretIdentifier(
             parseSecretReference(setting).value.secretId
         );
         try {
-            // precedence: secret clients > credential > secret resolver
-            const client = this.#getSecretClient(new URL(vaultUrl));
-            if (client) {
-                const secret = await client.getSecret(secretName, { version });
-                return [setting.key, secret.value];
-            }
-            if (this.#keyVaultOptions.secretResolver) {
-                return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
-            }
+            const secretValue = await this.#keyVaultSecretProvider.getSecretValue(secretIdentifier);
+            return [setting.key, secretValue];
         } catch (error) {
-            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(error.message, setting, sourceId));
-        }
-
-        // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
-        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
-    }
-
-    /**
-     *
-     * @param vaultUrl - The url of the key vault.
-     * @returns
-     */
-    #getSecretClient(vaultUrl: URL): SecretClient | undefined {
-        if (this.#secretClients === undefined) {
-            this.#secretClients = new Map();
-            for (const client of this.#keyVaultOptions?.secretClients ?? []) {
-                this.#secretClients.set(getUrlHost(client.vaultUrl), client);
+            if (error instanceof ArgumentError) {
+                throw error;
             }
+            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(error.message, setting, secretIdentifier.sourceId));
         }
-
-        let client: SecretClient | undefined;
-        client = this.#secretClients.get(vaultUrl.host);
-        if (client !== undefined) {
-            return client;
-        }
-
-        if (this.#keyVaultOptions?.credential) {
-            client = new SecretClient(vaultUrl.toString(), this.#keyVaultOptions.credential);
-            this.#secretClients.set(vaultUrl.host, client);
-            return client;
-        }
-
-        return undefined;
     }
 }
 

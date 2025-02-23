@@ -3,15 +3,15 @@
 
 export class RefreshTimer {
     #backoffEnd: number; // Timestamp
-    #interval: number;
+    readonly interval: number;
 
     constructor(interval: number) {
         if (interval <= 0) {
-            throw new RangeError(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
+            throw new RangeError(`Refresh interval must be greater than 0. Given: ${this.interval}`);
         }
 
-        this.#interval = interval;
-        this.#backoffEnd = Date.now() + this.#interval;
+        this.interval = interval;
+        this.#backoffEnd = Date.now() + this.interval;
     }
 
     canRefresh(): boolean {
@@ -19,6 +19,6 @@ export class RefreshTimer {
     }
 
     reset(): void {
-        this.#backoffEnd = Date.now() + this.#interval;
+        this.#backoffEnd = Date.now() + this.interval;
     }
 }
