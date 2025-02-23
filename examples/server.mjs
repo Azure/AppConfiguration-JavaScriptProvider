@@ -27,6 +27,7 @@ const PORT = 3000;
 server.use(express.json());
 
 // Use a middleware to achieve request-driven configuration refresh
+// For more information, please go to dynamic refresh tutorial: https://learn.microsoft.com/azure/azure-app-configuration/enable-dynamic-configuration-javascript
 server.use((req, res, next) => {
     // this call s not blocking, the configuration will be updated asynchronously
     appConfig.refresh();

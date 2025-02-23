@@ -26,7 +26,7 @@ const settings = await load(connectionString, {
     refreshOptions: {
         enabled: true,
         watchedSettings: [{ key: "app.settings.sentinel" }],
-        refreshIntervalInMs: 10 * 1000 // Default value is 30 seconds, shorted for this sample
+        refreshIntervalInMs: 10_000 // Default value is 30 seconds, shorted for this sample
     }
 });
 
@@ -34,12 +34,10 @@ console.log("Using Azure portal or CLI, update the `app.settings.message` value,
 
 // eslint-disable-next-line no-constant-condition
 while (true) {
-    // Refreshing the configuration setting
-    await settings.refresh();
-
     // Current value of message
     console.log(settings.get("message"));
-
-    // Waiting before the next refresh
-    await sleepInMs(5000);
+    // Refreshing the configuration setting asynchronously
+    settings.refresh();
+    // wait for 5 seconds
+    await sleepInMs(5_000);
 }
