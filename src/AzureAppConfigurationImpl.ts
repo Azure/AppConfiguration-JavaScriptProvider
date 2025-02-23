@@ -138,7 +138,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new ArgumentError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
                     this.#kvRefreshInterval = refreshIntervalInMs;
                 }
@@ -156,7 +156,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new ArgumentError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                     } else {
                         this.#ffRefreshInterval = refreshIntervalInMs;
                     }
