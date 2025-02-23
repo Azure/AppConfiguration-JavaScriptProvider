@@ -36,7 +36,6 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 
         const client = this.#getSecretClient(new URL(vaultUrl));
         if (client) {
-            // If the credential of the secret client is wrong, AuthenticationError will be thrown.
             const secret = await client.getSecret(secretName, { version });
             return [setting.key, secret.value];
         }
@@ -45,9 +44,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
             return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
         }
 
-        // When code reaches here, it means the key vault secret reference is not resolved.
-
-        throw new ArgumentError("Failed to process the key vault reference. No key vault credential or secret resolver callback is configured.");
+        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is configured.");
     }
 
     /**
