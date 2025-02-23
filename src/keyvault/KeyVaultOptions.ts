@@ -22,7 +22,7 @@ export interface KeyVaultOptions {
      * Specifies the refresh interval in milliseconds for periodically reloading secret from Key Vault.
      * @remarks
      * If specified, the value must be greater than 60 seconds.
-     * Any refresh operation triggered using {@see AzureAppConfiguration.refresh()} will not update the value for a Key Vault secret until the refresh interval has expired.
+     * Any refresh operation triggered using @see AzureAppConfiguration.refresh() will not update the value for a Key Vault secret until the refresh interval has expired.
      */
     secretRefreshIntervalInMs?: number;
 
