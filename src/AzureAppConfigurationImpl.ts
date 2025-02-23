@@ -237,9 +237,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const abortSignal = abortController.signal;
         let timeoutId;
         try {
-            // Promise.race will be settled when the first promise in the list is settled
+            // Promise.race will be settled when the first promise in the list is settled.
             // It will not cancel the remaining promises in the list.
-            // To avoid memory leaks, we need to cancel other promises when one promise is settled.
+            // To avoid memory leaks, we must ensure other promises will be eventually terminated.
             await Promise.race([
                 this.#initializeWithRetryPolicy(abortSignal),
                 // this promise will be rejected after timeout
@@ -353,7 +353,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (this.#featureFlagEnabled) {
                         await this.#loadFeatureFlags();
                     }
-                    // Mark all settings have loaded at startup.
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
@@ -657,7 +656,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
-    // Only operations related to Azure App Configuration service should be executed with failover policy.
+    // Only operations related to Azure App Configuration should be executed with failover policy.
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         let clientWrappers = await this.#clientManager.getClients();
         if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
