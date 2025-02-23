@@ -19,6 +19,14 @@ export interface KeyVaultOptions {
     credential?: TokenCredential;
 
     /**
+     * Specifies the refresh interval in milliseconds for periodically reloading secret from Key Vault.
+     * @remarks
+     * If specified, the value must be greater than 60 seconds.
+     * Any refresh operation triggered using {@see AzureAppConfiguration.refresh()} will not update the value for a Key Vault secret until the refresh interval has expired.
+     */
+    secretRefreshIntervalInMs?: number;
+
+    /**
      * Specifies the callback used to resolve key vault references that have no applied SecretClient.
      * @param keyVaultReference The Key Vault reference to resolve.
      * @returns The secret value.
