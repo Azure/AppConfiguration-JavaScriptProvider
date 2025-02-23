@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { ArgumentError } from "../error.js";
-
 export class RefreshTimer {
     #backoffEnd: number; // Timestamp
     #interval: number;

@@ -47,7 +47,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 
         // When code reaches here, it means the key vault secret reference is not resolved.
 
-        throw new ArgumentError("Failed to process the key vault reference. No key vault credential or secret resolver callback is configured.");
+        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is configured.");
     }
 
     /**
