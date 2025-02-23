@@ -5,7 +5,7 @@ import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { getUrlHost } from "../common/utils.js";
-import { ArgumentError } from "../error.js";
+import { ArgumentError, KeyVaultReferenceError } from "../error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
@@ -29,21 +29,24 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
             throw new ArgumentError("Failed to process the key vault reference. The keyVaultOptions is not configured.");
         }
 
-        // precedence: secret clients > credential > secret resolver
         const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
             parseSecretReference(setting).value.secretId
         );
-
-        const client = this.#getSecretClient(new URL(vaultUrl));
-        if (client) {
-            const secret = await client.getSecret(secretName, { version });
-            return [setting.key, secret.value];
+        try {
+            // precedence: secret clients > credential > secret resolver
+            const client = this.#getSecretClient(new URL(vaultUrl));
+            if (client) {
+                const secret = await client.getSecret(secretName, { version });
+                return [setting.key, secret.value];
+            }
+            if (this.#keyVaultOptions.secretResolver) {
+                return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
+            }
+        } catch (error) {
+            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(error.message, setting, sourceId));
         }
 
-        if (this.#keyVaultOptions.secretResolver) {
-            return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
-        }
-
+        // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
         throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is configured.");
     }
 
@@ -74,4 +77,8 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 
         return undefined;
     }
+}
+
+function buildKeyVaultReferenceErrorMessage(message: string, setting: ConfigurationSetting, secretIdentifier?: string ): string {
+    return `${message} Key: ${setting.key} Label: ${setting.label ?? ""} ETag: ${setting.etag ?? ""} SecretIdentifier: ${secretIdentifier ?? ""}`;
 }

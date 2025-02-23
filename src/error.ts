@@ -23,6 +23,16 @@ export class ArgumentError extends Error {
     }
 }
 
+/**
+ * Error thrown when it fails to get the secret from the Key Vault.
+ */
+export class KeyVaultReferenceError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "KeyVaultReferenceError";
+    }
+}
+
 export function isFailoverableError(error: any): boolean {
     if (!isRestError(error)) {
         return false;
