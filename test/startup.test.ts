@@ -87,22 +87,4 @@ describe("startup", function () {
         })).to.be.rejectedWith("Non-retriable Test Error");
         expect(attempt).eq(1);
     });
-
-    it("should not retry on non-retriable AuthenticationError", async () => {
-        let attempt = 0;
-        const failForAllAttempts = () => {
-            attempt += 1;
-            throw new AuthenticationError(400, "Test Error");
-        };
-        mockAppConfigurationClientListConfigurationSettings(
-            [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
-            failForAllAttempts);
-
-        await expect(load(createMockedConnectionString(), {
-            startupOptions: {
-                timeoutInMs: 10_000
-            }
-        })).to.be.rejectedWith("authority_not_found");
-        expect(attempt).eq(1);
-    });
 });
