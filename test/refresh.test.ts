@@ -438,7 +438,7 @@ describe("dynamic refresh", function () {
 });
 
 describe("dynamic refresh feature flags", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
     });

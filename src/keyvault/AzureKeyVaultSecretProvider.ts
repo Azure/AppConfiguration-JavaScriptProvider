@@ -5,11 +5,13 @@ import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { RefreshTimer } from "../refresh/RefreshTimer.js";
 import { getUrlHost } from "../common/utils.js";
 import { ArgumentError } from "../error.js";
-import { SecretClient,  KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
+    #refreshTimer: RefreshTimer | undefined;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
+    #cachedSecretValue: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
     constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
@@ -21,6 +23,7 @@ export class AzureKeyVaultSecretProvider {
             }
         }
         this.#keyVaultOptions = keyVaultOptions;
+        this.#refreshTimer = refreshTimer;
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
             this.#secretClients.set(getUrlHost(client.vaultUrl), client);
@@ -28,6 +31,29 @@ export class AzureKeyVaultSecretProvider {
     }
 
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
+        if (this.#refreshTimer && !this.#refreshTimer.canRefresh()) {
+            // return the cached secret value if it exists
+            if (this.#cachedSecretValue.has(secretIdentifier.sourceId)) {
+                const cachedValue = this.#cachedSecretValue.get(secretIdentifier.sourceId);
+                return cachedValue;
+            }
+            // not found in cache, get the secret value from key vault
+            const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+            this.#cachedSecretValue.set(secretIdentifier.sourceId, secretValue);
+            return secretValue;
+        }
+
+        // Always reload the secret value from key vault when the refresh timer expires.
+        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+        this.#cachedSecretValue.set(secretIdentifier.sourceId, secretValue);
+        return secretValue;
+    }
+
+    clearCache(): void {
+        this.#cachedSecretValue.clear();
+    }
+
+    async #getSecretValueFromKeyVault(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         if (!this.#keyVaultOptions) {
             throw new ArgumentError("Failed to get secret value. The keyVaultOptions is not configured.");
         }
@@ -43,6 +69,7 @@ export class AzureKeyVaultSecretProvider {
         }
         // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
         throw new ArgumentError("Failed to get secret value. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+
     }
 
     #getSecretClient(vaultUrl: URL): SecretClient | undefined {

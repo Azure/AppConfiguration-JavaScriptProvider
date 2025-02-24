@@ -40,6 +40,11 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
             throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(error.message, setting, secretIdentifier.sourceId));
         }
     }
+
+    async onChangeDetected(): Promise<void> {
+        this.#keyVaultSecretProvider.clearCache();
+        return;
+    }
 }
 
 function buildKeyVaultReferenceErrorMessage(message: string, setting: ConfigurationSetting, secretIdentifier?: string ): string {

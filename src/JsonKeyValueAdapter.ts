@@ -33,6 +33,10 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         }
         return [setting.key, parsedValue];
     }
+
+    async onChangeDetected(): Promise<void> {
+        return;
+    }
 }
 
 // Determine whether a content type string is a valid JSON content type.
