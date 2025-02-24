@@ -82,7 +82,6 @@ export class AzureKeyVaultSecretProvider {
             this.#secretClients.set(vaultUrl.host, client);
             return client;
         }
-
         return undefined;
     }
 }
