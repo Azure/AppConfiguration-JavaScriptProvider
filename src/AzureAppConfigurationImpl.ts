@@ -79,12 +79,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Aka watched settings.
      */
+    #refreshEnabled: boolean = false;
     #sentinels: ConfigurationSettingId[] = [];
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
 
     // Feature flags
+    #featureFlagEnabled: boolean = false;
+    #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
 
@@ -117,14 +120,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#featureFlagTracing = new FeatureFlagTracingOptions();
         }
 
-        if (options?.trimKeyPrefixes) {
+        if (options?.trimKeyPrefixes !== undefined) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
 
         // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
         this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
 
-        if (options?.refreshOptions?.enabled) {
+        if (options?.refreshOptions?.enabled === true) {
+            this.#refreshEnabled = true;
             const { refreshIntervalInMs, watchedSettings } = options.refreshOptions;
             if (watchedSettings === undefined || watchedSettings.length === 0) {
                 this.#watchAll = true; // if no watched settings is specified, then watch all
@@ -151,11 +155,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         // feature flag options
-        if (options?.featureFlagOptions?.enabled) {
+        if (options?.featureFlagOptions?.enabled === true) {
+            this.#featureFlagEnabled = true;
             // validate feature flag selectors, only load feature flags when enabled
             this.#ffSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
-            if (options.featureFlagOptions.refresh?.enabled) {
+            if (options.featureFlagOptions.refresh?.enabled === true) {
+                this.#featureFlagRefreshEnabled = true;
                 const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
@@ -169,7 +175,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
 
-        if (options?.keyVaultOptions) {
+        if (options?.keyVaultOptions !== undefined) {
             const { secretRefreshIntervalInMs } = options.keyVaultOptions;
             if (secretRefreshIntervalInMs !== undefined) {
                 if (secretRefreshIntervalInMs < MIN_SECRET_REFRESH_INTERVAL_IN_MS) {
@@ -181,18 +187,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
         this.#adapters.push(new JsonKeyValueAdapter());
-    }
-
-    get #refreshEnabled(): boolean {
-        return !!this.#options?.refreshOptions?.enabled;
-    }
-
-    get #featureFlagEnabled(): boolean {
-        return !!this.#options?.featureFlagOptions?.enabled;
-    }
-
-    get #featureFlagRefreshEnabled(): boolean {
-        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
     get #requestTraceOptions(): RequestTracingOptions {
