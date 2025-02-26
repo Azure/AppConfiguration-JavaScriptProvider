@@ -14,6 +14,8 @@ This client library adds additional [functionality](https://learn.microsoft.com/
 
 [Dynamic Configuration Tutorial](https://learn.microsoft.com/azure/azure-app-configuration/enable-dynamic-configuration-javascript): A tutorial about how to enable dynamic configuration in your JavaScript applications.
 
+[Feature Overview](https://learn.microsoft.com/azure/azure-app-configuration/configuration-provider-overview#feature-development-status): This document provides a feature status overview.
+
 [Feature Reference](https://learn.microsoft.com/azure/azure-app-configuration/reference-javascript-provider): This document provides a full feature rundown.
 
 ### Prerequisites
