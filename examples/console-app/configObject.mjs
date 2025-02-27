@@ -37,9 +37,11 @@ const settings = await load(connectionString, {
     }]
 });
 
-const config = settings.constructConfigurationObject({
-    separator: "."
-});
+/**
+ * Construct configuration object based on Map-styled data structure and hierarchical keys.
+ * The default separator is ".", you can specify a custom separator by constructConfigurationObject({separator: "<custom_separator>"}).
+ */
+const config = settings.constructConfigurationObject();
 
 console.log("Constructed object 'config': ", config);
 console.log(`Message from Azure App Configuration: ${config.app.settings.message}`);
