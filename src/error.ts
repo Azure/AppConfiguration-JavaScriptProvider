@@ -59,3 +59,12 @@ export function isRetriableError(error: any): boolean {
     }
     return true;
 }
+
+export function isInstantlyThrowError(error: any): boolean {
+    if (error instanceof ArgumentError ||
+        error instanceof TypeError ||
+        error instanceof RangeError) {
+        return true;
+    }
+    return false;
+}

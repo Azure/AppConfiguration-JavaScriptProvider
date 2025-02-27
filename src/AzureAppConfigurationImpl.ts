@@ -42,7 +42,9 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
-import { OperationError, ArgumentError, isFailoverableError, isRetriableError } from "./error.js";
+import { OperationError, ArgumentError, isFailoverableError, isRetriableError, isInstantlyThrowError } from "./error.js";
+
+const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
 type PagedSettingSelector = SettingSelector & {
     /**
@@ -232,6 +234,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads the configuration store for the first time.
      */
     async load() {
+        const startTimestamp = Date.now();
         const startupTimeout: number = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT_IN_MS;
         const abortController = new AbortController();
         const abortSignal = abortController.signal;
@@ -252,6 +255,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 })
             ]);
         } catch (error) {
+            if (!isInstantlyThrowError(error)) {
+                const timeElapsed = Date.now() - startTimestamp;
+                if (timeElapsed < MIN_DELAY_FOR_UNHANDLED_FAILURE) {
+                    // load() method is called in the application's startup code path.
+                    // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+                    // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propogate fatal errors.
+                    await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
+                }
+            }
             throw new Error(`Failed to load: ${error.message}`);
         } finally {
             clearTimeout(timeoutId); // cancel the timeout promise
