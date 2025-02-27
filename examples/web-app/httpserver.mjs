@@ -12,9 +12,6 @@ const appConfig = await load(endpoint, credential, {
     refreshOptions: {
         enabled: true,
         // By default, the refresh interval is 30 seconds. You can change it by setting refreshIntervalInMs.
-    },
-    keyVaultOptions:{
-        credential: credential
     }
 });
 let config = appConfig.constructConfigurationObject();
