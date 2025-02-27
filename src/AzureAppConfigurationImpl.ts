@@ -10,7 +10,6 @@ import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
@@ -21,16 +20,9 @@ import {
     ETAG_KEY_NAME,
     FEATURE_FLAG_ID_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
-    ALLOCATION_ID_KEY_NAME,
     ALLOCATION_KEY_NAME,
-    DEFAULT_WHEN_ENABLED_KEY_NAME,
-    PERCENTILE_KEY_NAME,
-    FROM_KEY_NAME,
-    TO_KEY_NAME,
     SEED_KEY_NAME,
-    VARIANT_KEY_NAME,
     VARIANTS_KEY_NAME,
-    CONFIGURATION_VALUE_KEY_NAME,
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
@@ -746,15 +738,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
-            let allocationId = "";
-            if (featureFlag[ALLOCATION_KEY_NAME] !== undefined) {
-                allocationId = await this.#generateAllocationId(featureFlag);
-            }
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
                 [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
-                ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
         }
@@ -837,116 +824,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             featureFlagReference += `?label=${setting.label}`;
         }
         return featureFlagReference;
-    }
-
-    async #generateAllocationId(featureFlag: any): Promise<string> {
-        let rawAllocationId = "";
-        // Only default variant when enabled and variants allocated by percentile involve in the experimentation
-        // The allocation id is genearted from default variant when enabled and percentile allocation
-        const variantsForExperimentation: string[] = [];
-
-        rawAllocationId += `seed=${featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] ?? ""}\ndefault_when_enabled=`;
-
-        if (featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]) {
-            variantsForExperimentation.push(featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]);
-            rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
-        }
-
-        rawAllocationId += "\npercentiles=";
-
-        const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
-        if (percentileList) {
-            const sortedPercentileList = percentileList
-                .filter(p =>
-                    (p[FROM_KEY_NAME] !== undefined) &&
-                    (p[TO_KEY_NAME] !== undefined) &&
-                    (p[VARIANT_KEY_NAME] !== undefined) &&
-                    (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
-                .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
-
-            const percentileAllocation: string[] = [];
-            for (const percentile of sortedPercentileList) {
-                variantsForExperimentation.push(percentile[VARIANT_KEY_NAME]);
-                percentileAllocation.push(`${percentile[FROM_KEY_NAME]},${base64Helper(percentile[VARIANT_KEY_NAME])},${percentile[TO_KEY_NAME]}`);
-            }
-            rawAllocationId += percentileAllocation.join(";");
-        }
-
-        if (variantsForExperimentation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
-            // All fields required for generating allocation id are missing, short-circuit and return empty string
-            return "";
-        }
-
-        rawAllocationId += "\nvariants=";
-
-        if (variantsForExperimentation.length !== 0) {
-            const variantsList = featureFlag[VARIANTS_KEY_NAME];
-            if (variantsList) {
-                const sortedVariantsList = variantsList
-                    .filter(v =>
-                        (v[NAME_KEY_NAME] !== undefined) &&
-                        variantsForExperimentation.includes(v[NAME_KEY_NAME]))
-                    .sort((a, b) => (a.name > b.name ? 1 : -1));
-
-                    const variantConfiguration: string[] = [];
-                    for (const variant of sortedVariantsList) {
-                        const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], jsonSorter) ?? "";
-                        variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`);
-                    }
-                    rawAllocationId += variantConfiguration.join(";");
-            }
-        }
-
-        let crypto;
-
-        // Check for browser environment
-        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-            crypto = window.crypto;
-        }
-        // Check for Node.js environment
-        else if (typeof global !== "undefined" && global.crypto) {
-            crypto = global.crypto;
-        }
-        // Fallback to native Node.js crypto module
-        else {
-            try {
-                if (typeof module !== "undefined" && module.exports) {
-                    crypto = require("crypto");
-                }
-                else {
-                    crypto = await import("crypto");
-                }
-            } catch (error) {
-                console.error("Failed to load the crypto module:", error.message);
-                throw error;
-            }
-        }
-
-        // Convert to UTF-8 encoded bytes
-        const data = new TextEncoder().encode(rawAllocationId);
-
-        // In the browser, use crypto.subtle.digest
-        if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = new Uint8Array(hashBuffer);
-
-            // Only use the first 15 bytes
-            const first15Bytes = hashArray.slice(0, 15);
-
-            // btoa/atob is also available in Node.js 18+
-            const base64String = btoa(String.fromCharCode(...first15Bytes));
-            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            return base64urlString;
-        }
-        // In Node.js, use the crypto module's hash function
-        else {
-            const hash = crypto.createHash("sha256").update(data).digest();
-
-            // Only use the first 15 bytes
-            const first15Bytes = hash.slice(0, 15);
-
-            return first15Bytes.toString("base64url");
-        }
     }
 }
 
