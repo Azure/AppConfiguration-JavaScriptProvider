@@ -4,10 +4,15 @@
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
 import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfigurationOptions, MaxRetries, MaxRetryDelayInMs } from "./AzureAppConfigurationOptions.js";
+import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { shuffleList } from "./common/utils.js";
+import { instanceOfTokenCredential, shuffleList, getEndpointUrl } from "./common/utils.js";
+import { ArgumentError } from "./error.js";
+
+// Configuration client retry options
+const CLIENT_MAX_RETRIES = 2;
+const CLIENT_MAX_RETRY_DELAY = 60_000; // 1 minute in milliseconds
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -25,7 +30,6 @@ const MAX_ALTNATIVE_SRV_COUNT = 10;
 export class ConfigurationClientManager {
     #isFailoverable: boolean;
     #dns: any;
-    endpoint: URL;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
@@ -37,6 +41,9 @@ export class ConfigurationClientManager {
     #replicaCount: number = 0;
     #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
     #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
+
+    // This property is public to allow recording the last successful endpoint for failover.
+    endpoint: URL;
 
     constructor (
         connectionStringOrEndpoint?: string | URL,
@@ -54,18 +61,18 @@ export class ConfigurationClientManager {
             const regexMatch = connectionString.match(ConnectionStringRegex);
             if (regexMatch) {
                 const endpointFromConnectionStr = regexMatch[1];
-                this.endpoint = getValidUrl(endpointFromConnectionStr);
+                this.endpoint = getEndpointUrl(endpointFromConnectionStr);
                 this.#id = regexMatch[2];
                 this.#secret = regexMatch[3];
             } else {
-                throw new Error(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
+                throw new ArgumentError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
             staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
         } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
             if (typeof endpoint === "string") {
-                endpoint = getValidUrl(endpoint);
+                endpoint = getEndpointUrl(endpoint);
             }
 
             const credential = credentialOrOptions as TokenCredential;
@@ -75,7 +82,7 @@ export class ConfigurationClientManager {
             this.#credential = credential;
             staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
-            throw new Error("A connection string or an endpoint with credential must be specified to create a client.");
+            throw new ArgumentError("A connection string or an endpoint with credential must be specified to create a client.");
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
@@ -200,12 +207,12 @@ export class ConfigurationClientManager {
                 });
                 index++;
             }
-        } catch (err) {
-            if (err.code === "ENOTFOUND") {
+        } catch (error) {
+            if (error.code === "ENOTFOUND") {
                 // No more SRV records found, return results.
                 return results;
             } else {
-                throw new Error(`Failed to lookup SRV records: ${err.message}`);
+                throw new Error(`Failed to lookup SRV records: ${error.message}`);
             }
         }
 
@@ -260,8 +267,8 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
 
     // retry options
     const defaultRetryOptions = {
-        maxRetries: MaxRetries,
-        maxRetryDelayInMs: MaxRetryDelayInMs,
+        maxRetries: CLIENT_MAX_RETRIES,
+        maxRetryDelayInMs: CLIENT_MAX_RETRY_DELAY,
     };
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
 
@@ -272,20 +279,3 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
         }
     });
 }
-
-function getValidUrl(endpoint: string): URL {
-    try {
-        return new URL(endpoint);
-    } catch (error) {
-        if (error.code === "ERR_INVALID_URL") {
-            throw new Error("Invalid endpoint URL.", { cause: error });
-        } else {
-            throw error;
-        }
-    }
-}
-
-export function instanceOfTokenCredential(obj: unknown) {
-    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
-}
-
