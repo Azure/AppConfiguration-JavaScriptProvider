@@ -381,7 +381,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         postAttempts += 1;
                         backoffDuration = calculateBackoffDuration(postAttempts);
                     }
-                    console.warn(`Failed to load. Error message: ${error.message}. It Will retry in ${backoffDuration} ms.`);
+                    console.warn(`Failed to load. Error message: ${error.message}. Retrying in ${backoffDuration} ms.`);
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
                 }
             } while (!abortSignal.aborted);
