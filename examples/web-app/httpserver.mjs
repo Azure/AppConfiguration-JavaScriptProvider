@@ -39,10 +39,6 @@ server.get("/", (req, res) => {
     res.send(`Message from Azure App Configuration: ${config.message}`);
 });
 
-server.get("/config", (req, res) => {
-    res.json(config);
-});
-
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
