@@ -4,6 +4,8 @@
 import { TokenCredential } from "@azure/identity";
 import { SecretClient } from "@azure/keyvault-secrets";
 
+export const MIN_SECRET_REFRESH_INTERVAL_IN_MS = 60_000;
+
 /**
  * Options used to resolve Key Vault references.
  */
@@ -17,6 +19,13 @@ export interface KeyVaultOptions {
      * Specifies the credentials used to authenticate to key vaults that have no applied SecretClient.
      */
     credential?: TokenCredential;
+
+    /**
+     * Specifies the refresh interval in milliseconds for periodically reloading secret from Key Vault.
+     * @remarks
+     * If specified, the value must be greater than 60 seconds.
+     */
+    secretRefreshIntervalInMs?: number;
 
     /**
      * Specifies the callback used to resolve key vault references that have no applied SecretClient.

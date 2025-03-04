@@ -17,6 +17,7 @@ import {
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
+    KEY_VAULT_REFRESH_CONFIGURED_TAG,
     KUBERNETES_ENV_VAR,
     NODEJS_DEV_ENV_VAL,
     NODEJS_ENV_VAR,
@@ -100,9 +101,12 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
 
     const appConfigOptions = requestTracingOptions.appConfigOptions;
     if (appConfigOptions?.keyVaultOptions) {
-        const { credential, secretClients, secretResolver } = appConfigOptions.keyVaultOptions;
+        const { credential, secretClients, secretRefreshIntervalInMs, secretResolver } = appConfigOptions.keyVaultOptions;
         if (credential !== undefined || secretClients?.length || secretResolver !== undefined) {
             tags.push(KEY_VAULT_CONFIGURED_TAG);
+        }
+        if (secretRefreshIntervalInMs !== undefined) {
+            tags.push(KEY_VAULT_REFRESH_CONFIGURED_TAG);
         }
     }
 

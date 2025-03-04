@@ -13,4 +13,9 @@ export interface IKeyValueAdapter {
      * This method process the original configuration setting, and returns processed key and value in an array.
      */
     processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]>;
+
+    /**
+     * This method is called when a change is detected in the configuration setting.
+     */
+    onChangeDetected(setting?: ConfigurationSetting): void;
 }
