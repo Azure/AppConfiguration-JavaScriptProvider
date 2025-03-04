@@ -5,11 +5,9 @@ export class RefreshTimer {
     #backoffEnd: number; // Timestamp
     #interval: number;
 
-    constructor(
-        interval: number
-    ) {
+    constructor(interval: number) {
         if (interval <= 0) {
-            throw new Error(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
+            throw new RangeError(`Refresh interval must be greater than 0. Given: ${interval}`);
         }
 
         this.#interval = interval;

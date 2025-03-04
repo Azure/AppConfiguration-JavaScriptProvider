@@ -48,6 +48,9 @@ describe("custom client options", function () {
                         policy: countPolicy,
                         position: "perRetry"
                     }]
+                },
+                startupOptions: {
+                    timeoutInMs: 5_000
                 }
             });
         };
@@ -73,6 +76,9 @@ describe("custom client options", function () {
                     retryOptions: {
                         maxRetries
                     }
+                },
+                startupOptions: {
+                    timeoutInMs: 5_000
                 }
             });
         };
@@ -108,6 +114,9 @@ describe("custom client options", function () {
                         policy: countPolicy,
                         position: "perRetry"
                     }]
+                },
+                startupOptions: {
+                    timeoutInMs: 5_000
                 }
             });
         };
