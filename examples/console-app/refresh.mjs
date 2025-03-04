@@ -34,9 +34,9 @@ console.log("Using Azure portal or CLI, update the `app.settings.message` value,
 
 // eslint-disable-next-line no-constant-condition
 while (true) {
-    console.log(settings.get("message"));
     // this is a blocking call and you can remove await to make the refresh operation asynchronous
     await settings.refresh();
+    console.log(settings.get("message"));
     // wait for 5 seconds
     await sleepInMs(5_000);
 }
