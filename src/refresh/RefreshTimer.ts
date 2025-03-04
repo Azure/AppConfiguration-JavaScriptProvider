@@ -7,7 +7,7 @@ export class RefreshTimer {
 
     constructor(interval: number) {
         if (interval <= 0) {
-            throw new RangeError(`Refresh interval must be greater than 0. Given: ${this.#interval}`);
+            throw new RangeError(`Refresh interval must be greater than 0. Given: ${interval}`);
         }
 
         this.#interval = interval;

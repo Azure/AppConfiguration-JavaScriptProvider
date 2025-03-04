@@ -252,7 +252,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (timeElapsed < MIN_DELAY_FOR_UNHANDLED_FAILURE) {
                     // load() method is called in the application's startup code path.
                     // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
-                    // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propogate fatal errors.
+                    // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
                     await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
             }
@@ -351,6 +351,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
             const startTimestamp = Date.now();
+            let postAttempts = 0;
             do { // at least try to load once
                 try {
                     await this.#loadSelectedAndWatchedKeyValues();
@@ -367,7 +368,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         return;
                     }
                     const timeElapsed = Date.now() - startTimestamp;
-                    let postAttempts = 0;
                     let backoffDuration = getFixedBackoffDuration(timeElapsed);
                     if (backoffDuration === undefined) {
                         postAttempts += 1;
