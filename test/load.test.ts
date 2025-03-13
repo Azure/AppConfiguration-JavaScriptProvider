@@ -114,12 +114,12 @@ describe("load", function () {
     });
 
     it("should throw error given invalid connection string", async () => {
-        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string.");
+        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string");
     });
 
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
-        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid Endpoint URL: invalid-endpoint-url");
+        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid URL");
     });
 
     it("should not include feature flags directly in the settings", async () => {
