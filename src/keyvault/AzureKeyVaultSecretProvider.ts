@@ -3,7 +3,6 @@
 
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { RefreshTimer } from "../refresh/RefreshTimer.js";
-import { getUrlHost } from "../common/utils.js";
 import { ArgumentError } from "../error.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
@@ -26,7 +25,8 @@ export class AzureKeyVaultSecretProvider {
         this.#refreshTimer = refreshTimer;
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
-            this.#secretClients.set(getUrlHost(client.vaultUrl), client);
+            const clientUrl = new URL(client.vaultUrl);
+            this.#secretClients.set(clientUrl.host, client);
         }
     }
 

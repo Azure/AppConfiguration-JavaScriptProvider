@@ -5,7 +5,6 @@ const MIN_BACKOFF_DURATION = 30_000; // 30 seconds in milliseconds
 const MAX_BACKOFF_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
 const JITTER_RATIO = 0.25;
 
-// The backoff duration algorithm is consistent with the .NET configuration provider's implementation.
 export function getFixedBackoffDuration(timeElapsed: number): number | undefined {
     if (timeElapsed <= 100_000) { // 100 seconds in milliseconds
         return 5_000; // 5 seconds in milliseconds
