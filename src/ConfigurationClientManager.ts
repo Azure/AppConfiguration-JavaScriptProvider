@@ -7,7 +7,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { instanceOfTokenCredential, shuffleList, getEndpointUrl } from "./common/utils.js";
+import { instanceOfTokenCredential, shuffleList } from "./common/utils.js";
 import { ArgumentError } from "./error.js";
 
 // Configuration client retry options
@@ -61,7 +61,7 @@ export class ConfigurationClientManager {
             const regexMatch = connectionString.match(ConnectionStringRegex);
             if (regexMatch) {
                 const endpointFromConnectionStr = regexMatch[1];
-                this.endpoint = getEndpointUrl(endpointFromConnectionStr);
+                this.endpoint = new URL(endpointFromConnectionStr);
                 this.#id = regexMatch[2];
                 this.#secret = regexMatch[3];
             } else {
@@ -72,7 +72,7 @@ export class ConfigurationClientManager {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
             if (typeof endpoint === "string") {
-                endpoint = getEndpointUrl(endpoint);
+                endpoint = new URL(endpoint);
             }
 
             const credential = credentialOrOptions as TokenCredential;

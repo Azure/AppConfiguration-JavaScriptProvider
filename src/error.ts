@@ -6,10 +6,10 @@ import { isRestError } from "@azure/core-rest-pipeline";
 /**
  * Error thrown when an operation cannot be performed by the Azure App Configuration provider.
  */
-export class OperationError extends Error {
+export class InvalidOperationError extends Error {
     constructor(message: string) {
         super(message);
-        this.name = "OperationError";
+        this.name = "InvalidOperationError";
     }
 }
 
@@ -38,7 +38,7 @@ export function isFailoverableError(error: any): boolean {
         return false;
     }
     // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    if (error.code == "ENOTFOUND" || error.code === "ENOENT") {
+    if (error.code === "ENOTFOUND" || error.code === "ENOENT") {
         return true;
     }
     // 401 Unauthorized, 403 Forbidden, 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
@@ -51,16 +51,14 @@ export function isFailoverableError(error: any): boolean {
 }
 
 export function isRetriableError(error: any): boolean {
-    if (error instanceof ArgumentError ||
-        error instanceof OperationError ||
-        error instanceof TypeError ||
+    if (isArgumentError(error) ||
         error instanceof RangeError) {
         return false;
     }
     return true;
 }
 
-export function isInstantlyThrowError(error: any): boolean {
+export function isArgumentError(error: any): boolean {
     if (error instanceof ArgumentError ||
         error instanceof TypeError ||
         error instanceof RangeError) {

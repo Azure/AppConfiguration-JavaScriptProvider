@@ -34,7 +34,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
-import { OperationError, ArgumentError, isFailoverableError, isRetriableError, isInstantlyThrowError } from "./error.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isRetriableError, isArgumentError } from "./error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -247,7 +247,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 })
             ]);
         } catch (error) {
-            if (!isInstantlyThrowError(error)) {
+            if (!isArgumentError(error)) {
                 const timeElapsed = Date.now() - startTimestamp;
                 if (timeElapsed < MIN_DELAY_FOR_UNHANDLED_FAILURE) {
                     // load() method is called in the application's startup code path.
@@ -282,7 +282,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const segment = segments[i];
                 // undefined or empty string
                 if (!segment) {
-                    throw new OperationError(`Failed to construct configuration object: Invalid key: ${key}`);
+                    throw new InvalidOperationError(`Failed to construct configuration object: Invalid key: ${key}`);
                 }
                 // create path if not exist
                 if (current[segment] === undefined) {
@@ -290,14 +290,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 // The path has been occupied by a non-object value, causing ambiguity.
                 if (typeof current[segment] !== "object") {
-                    throw new OperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
+                    throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
                 }
                 current = current[segment];
             }
 
             const lastSegment = segments[segments.length - 1];
             if (current[lastSegment] !== undefined) {
-                throw new OperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+                throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
             }
             // set value to the last segment
             current[lastSegment] = value;
@@ -310,7 +310,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new OperationError("Refresh is not enabled for key-values or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         if (this.#refreshInProgress) {
@@ -329,7 +329,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new OperationError("Refresh is not enabled for key-values or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         const boundedListener = listener.bind(thisArg);

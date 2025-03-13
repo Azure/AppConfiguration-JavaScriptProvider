@@ -4,14 +4,13 @@
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { getUrlHost } from "../common/utils.js";
 import { ArgumentError, KeyVaultReferenceError } from "../error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     /**
      * Map vault hostname to corresponding secret client.
-    */
+     */
     #secretClients: Map<string, SecretClient>;
     #keyVaultOptions: KeyVaultOptions | undefined;
 
@@ -59,7 +58,8 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (this.#secretClients === undefined) {
             this.#secretClients = new Map();
             for (const client of this.#keyVaultOptions?.secretClients ?? []) {
-                this.#secretClients.set(getUrlHost(client.vaultUrl), client);
+                const clientUrl = new URL(client.vaultUrl);
+                this.#secretClients.set(clientUrl.host, client);
             }
         }
 
