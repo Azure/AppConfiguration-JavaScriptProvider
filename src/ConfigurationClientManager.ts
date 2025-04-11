@@ -23,15 +23,15 @@ const DNS_RESOLVER_TRIES = 2;
 const MAX_ALTNATIVE_SRV_COUNT = 10;
 
 export class ConfigurationClientManager {
+    readonly endpoint: URL; // primary endpoint, which is the one specified in the connection string or passed in as a parameter
     #isFailoverable: boolean;
     #dns: any;
-    endpoint: URL;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
     #clientOptions: AppConfigurationClientOptions | undefined;
     #appConfigOptions: AzureAppConfigurationOptions | undefined;
-    #validDomain: string;
+    #validDomain: string; // valid domain for the primary endpoint, which is used to discover replicas
     #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
     #dynamicClients: ConfigurationClientWrapper[];
     #replicaCount: number = 0;
