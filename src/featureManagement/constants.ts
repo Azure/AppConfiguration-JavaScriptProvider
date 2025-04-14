@@ -8,7 +8,6 @@ export const TELEMETRY_KEY_NAME = "telemetry";
 export const ENABLED_KEY_NAME = "enabled";
 export const METADATA_KEY_NAME = "metadata";
 export const ETAG_KEY_NAME = "ETag";
-export const FEATURE_FLAG_ID_KEY_NAME = "FeatureFlagId";
 export const FEATURE_FLAG_REFERENCE_KEY_NAME = "FeatureFlagReference";
 export const ALLOCATION_KEY_NAME = "allocation";
 export const DEFAULT_WHEN_ENABLED_KEY_NAME = "default_when_enabled";

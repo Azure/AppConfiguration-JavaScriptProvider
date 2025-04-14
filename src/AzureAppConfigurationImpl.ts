@@ -17,7 +17,6 @@ import {
     ENABLED_KEY_NAME,
     METADATA_KEY_NAME,
     ETAG_KEY_NAME,
-    FEATURE_FLAG_ID_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
     ALLOCATION_KEY_NAME,
     SEED_KEY_NAME,
@@ -671,7 +670,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
-                [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
                 ...(metadata || {})
             };
@@ -697,56 +695,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         return featureFlag;
-    }
-
-    async #calculateFeatureFlagId(setting: ConfigurationSetting<string>): Promise<string> {
-        let crypto;
-
-        // Check for browser environment
-        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-            crypto = window.crypto;
-        }
-        // Check for Node.js environment
-        else if (typeof global !== "undefined" && global.crypto) {
-            crypto = global.crypto;
-        }
-        // Fallback to native Node.js crypto module
-        else {
-            try {
-                if (typeof module !== "undefined" && module.exports) {
-                    crypto = require("crypto");
-                }
-                else {
-                    crypto = await import("crypto");
-                }
-            } catch (error) {
-                console.error("Failed to load the crypto module:", error.message);
-                throw error;
-            }
-        }
-
-        let baseString = `${setting.key}\n`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            baseString += `${setting.label}`;
-        }
-
-        // Convert to UTF-8 encoded bytes
-        const data = new TextEncoder().encode(baseString);
-
-        // In the browser, use crypto.subtle.digest
-        if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = new Uint8Array(hashBuffer);
-            // btoa/atob is also available in Node.js 18+
-            const base64String = btoa(String.fromCharCode(...hashArray));
-            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            return base64urlString;
-        }
-        // In Node.js, use the crypto module's hash function
-        else {
-            const hash = crypto.createHash("sha256").update(data).digest();
-            return hash.toString("base64url");
-        }
     }
 
     #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
