@@ -4,6 +4,7 @@
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
 import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./AIConfigurationTracingOptions.js";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
@@ -39,6 +40,7 @@ export interface RequestTracingOptions {
     isFailoverRequest: boolean;
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
     fmVersion: string | undefined;
+    aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
 }
 
 // Utils

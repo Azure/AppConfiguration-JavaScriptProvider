@@ -18,7 +18,7 @@ export class FeatureFlagTracingOptions {
     usesSeed: boolean = false;
     maxVariants: number = 0;
 
-    resetFeatureFlagTracing(): void {
+    reset(): void {
         this.usesCustomFilter = false;
         this.usesTimeWindowFilter = false;
         this.usesTargetingFilter = false;

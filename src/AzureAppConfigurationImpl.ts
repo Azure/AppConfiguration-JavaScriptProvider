@@ -24,11 +24,12 @@ import {
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
-import { FM_PACKAGE_NAME } from "./requestTracing/constants.js";
+import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
@@ -58,6 +59,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isFailoverRequest: boolean = false;
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
     #fmVersion: string | undefined;
+    #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -178,7 +180,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
-            fmVersion: this.#fmVersion
+            fmVersion: this.#fmVersion,
+            aiConfigurationTracing: this.#aiConfigurationTracing
         };
     }
 
@@ -634,9 +637,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        this.#setAIConfigurationTracing(setting);
+
         const [key, value] = await this.#processAdapters(setting);
         const trimmedKey = this.#keyWithPrefixesTrimmed(key);
         return [trimmedKey, value];
+    }
+
+    #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            // Reset old AI configuration tracing in order to track the information present in the current response from server.
+            this.#aiConfigurationTracing.reset();
+
+            
+        }
     }
 
     async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -675,7 +689,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             };
         }
 
+        this.#setFeatureFlagTracing(featureFlag);
+
+        return featureFlag;
+    }
+
+    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            featureFlagReference += `?label=${setting.label}`;
+        }
+        return featureFlagReference;
+    }
+
+    #setFeatureFlagTracing(featureFlag: any): void {
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            // Reset old feature flag tracing in order to track the information present in the current response from server.
+            this.#featureFlagTracing.reset();
+
             if (featureFlag[CONDITIONS_KEY_NAME] &&
                 featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
                 Array.isArray(featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME])) {
@@ -693,16 +724,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#featureFlagTracing.usesSeed = true;
             }
         }
-
-        return featureFlag;
-    }
-
-    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            featureFlagReference += `?label=${setting.label}`;
-        }
-        return featureFlagReference;
     }
 }
 
