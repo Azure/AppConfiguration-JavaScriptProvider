@@ -659,6 +659,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             const contentType = parseContentType(setting.contentType);
+            // content type: application/json; profile="https://azconfig.io/mime-profiles/ai"
             if (isJsonContentType(contentType)) {
                 const profile = contentType?.parameters["profile"];
                 if (profile === undefined) {
