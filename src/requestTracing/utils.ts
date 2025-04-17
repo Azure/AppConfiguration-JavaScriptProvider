@@ -29,7 +29,10 @@ import {
     FAILOVER_REQUEST_TAG,
     FEATURES_KEY,
     LOAD_BALANCE_CONFIGURED_TAG,
-    FM_VERSION_KEY
+    FM_VERSION_KEY,
+    DELIMITER,
+    AI_CONFIGURATION_TAG,
+    AI_CHAT_COMPLETION_CONFIGURATION_TAG
 } from "./constants";
 
 export interface RequestTracingOptions {
@@ -127,9 +130,22 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
         keyValues.set(FM_VERSION_KEY, requestTracingOptions.fmVersion);
     }
 
-    // Compact tags: Features=LB+...
-    if (appConfigOptions?.loadBalancingEnabled) {
-        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
+    // Compact tags: Features=LB+AI+AICC...
+    if (appConfigOptions?.loadBalancingEnabled || requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature()) {
+        const tags: string[] = [];
+        if (appConfigOptions?.loadBalancingEnabled) {
+            tags.push(LOAD_BALANCE_CONFIGURED_TAG);
+        }
+        if (requestTracingOptions.aiConfigurationTracing?.usesAIConfiguration) {
+            tags.push(AI_CONFIGURATION_TAG);
+        }
+        if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
+            tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
+        }
+
+        if (tags.length > 0) {
+            keyValues.set(FEATURES_KEY, tags.join(DELIMITER));
+        }
     }
 
     const contextParts: string[] = [];

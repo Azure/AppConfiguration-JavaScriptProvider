@@ -25,6 +25,7 @@ import {
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
 import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
+import { parseContentType, isJsonContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
@@ -99,6 +100,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
         if (this.#requestTracingEnabled) {
+            this.#aiConfigurationTracing = new AIConfigurationTracingOptions();
             this.#featureFlagTracing = new FeatureFlagTracingOptions();
         }
 
@@ -419,9 +421,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
 
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            // Reset old AI configuration tracing in order to track the information present in the current response from server.
+            this.#aiConfigurationTracing.reset();
+        }
+
         // process key-values, watched settings have higher priority
         for (const setting of loadedSettings) {
-            const [key, value] = await this.#processKeyValues(setting);
+            const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
 
@@ -469,6 +476,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
         const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            // Reset old feature flag tracing in order to track the information present in the current response from server.
+            this.#featureFlagTracing.reset();
+        }
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -636,7 +648,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         throw new Error("All clients failed to get configuration settings.");
     }
 
-    async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+    async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
         this.#setAIConfigurationTracing(setting);
 
         const [key, value] = await this.#processAdapters(setting);
@@ -646,10 +658,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
-            // Reset old AI configuration tracing in order to track the information present in the current response from server.
-            this.#aiConfigurationTracing.reset();
-
-            
+            const contentType = parseContentType(setting.contentType);
+            if (isJsonContentType(contentType)) {
+                const profile = contentType?.parameters["profile"];
+                if (profile === undefined) {
+                    return;
+                }
+                if (profile.includes(AI_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIConfiguration = true;
+                }
+                if (profile.includes(AI_CHAT_COMPLETION_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIChatCompletionConfiguration = true;
+                }
+            }
         }
     }
 
@@ -704,9 +725,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     #setFeatureFlagTracing(featureFlag: any): void {
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
-            // Reset old feature flag tracing in order to track the information present in the current response from server.
-            this.#featureFlagTracing.reset();
-
             if (featureFlag[CONDITIONS_KEY_NAME] &&
                 featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
                 Array.isArray(featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME])) {

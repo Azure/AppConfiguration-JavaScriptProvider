@@ -9,4 +9,8 @@ export class AIConfigurationTracingOptions {
         this.usesAIConfiguration = false;
         this.usesAIChatCompletionConfiguration = false;
     }
+
+    usesAnyTracingFeature() {
+        return this.usesAIConfiguration || this.usesAIChatCompletionConfiguration;
+    }
 }
