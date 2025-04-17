@@ -10,11 +10,11 @@ export function parseContentType(contentTypeValue: string | undefined): ContentT
     if (!contentTypeValue) {
         return undefined;
     }
-    const [mediaType, ...args] = contentTypeValue.split(";").map((s) => s.trim());
+    const [mediaType, ...args] = contentTypeValue.split(";").map((s) => s.trim().toLowerCase());
     const parameters: Record<string, string> = {};
 
     for (const param of args) {
-        const [key, value] = param.split("=").map((s) => s.trim());
+        const [key, value] = param.split("=").map((s) => s.trim().toLowerCase());
         if (key && value) {
             parameters[key] = value;
         }
@@ -26,7 +26,7 @@ export function parseContentType(contentTypeValue: string | undefined): ContentT
 // Determine whether a content type string is a valid JSON content type.
 // https://docs.microsoft.com/en-us/azure/azure-app-configuration/howto-leverage-json-content-type
 export function isJsonContentType(contentType: ContentType | undefined): boolean {
-    const mediaType = contentType?.mediaType?.trim().toLowerCase();
+    const mediaType = contentType?.mediaType;
     if (!mediaType) {
         return false;
     }
