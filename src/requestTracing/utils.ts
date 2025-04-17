@@ -130,28 +130,13 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
         keyValues.set(FM_VERSION_KEY, requestTracingOptions.fmVersion);
     }
 
-    // Compact tags: Features=LB+AI+AICC...
-    if (appConfigOptions?.loadBalancingEnabled || requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature()) {
-        const tags: string[] = [];
-        if (appConfigOptions?.loadBalancingEnabled) {
-            tags.push(LOAD_BALANCE_CONFIGURED_TAG);
-        }
-        if (requestTracingOptions.aiConfigurationTracing?.usesAIConfiguration) {
-            tags.push(AI_CONFIGURATION_TAG);
-        }
-        if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
-            tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
-        }
-
-        if (tags.length > 0) {
-            keyValues.set(FEATURES_KEY, tags.join(DELIMITER));
-        }
-    }
+    // Use compact tags for new tracing features: Features=LB+AI+AICC...
+    keyValues.set(FEATURES_KEY, usesAnyTracingFeature(requestTracingOptions) ? createFeaturesString(requestTracingOptions) : undefined);
 
     const contextParts: string[] = [];
-    for (const [k, v] of keyValues) {
-        if (v !== undefined) {
-            contextParts.push(`${k}=${v}`);
+    for (const [key, value] of keyValues) {
+        if (value !== undefined) {
+            contextParts.push(`${key}=${value}`);
         }
     }
     for (const tag of tags) {
@@ -165,6 +150,25 @@ export function requestTracingEnabled(): boolean {
     const requestTracingDisabledEnv = getEnvironmentVariable(ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED);
     const disabled = requestTracingDisabledEnv?.toLowerCase() === "true";
     return !disabled;
+}
+
+function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
+    return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
+        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false);
+}
+
+function createFeaturesString(requestTracingOptions: RequestTracingOptions): string {
+    const tags: string[] = [];
+    if (requestTracingOptions.appConfigOptions?.loadBalancingEnabled) {
+        tags.push(LOAD_BALANCE_CONFIGURED_TAG);
+    }
+    if (requestTracingOptions.aiConfigurationTracing?.usesAIConfiguration) {
+        tags.push(AI_CONFIGURATION_TAG);
+    }
+    if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
+        tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
+    }
+    return tags.join(DELIMITER);
 }
 
 function getEnvironmentVariable(name: string) {
