@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { secretReferenceContentType, featureFlagContentType } from "@azure/app-configuration";
+
 export type ContentType = {
     mediaType: string;
     parameters: Record<string, string>;
@@ -41,4 +43,20 @@ export function isJsonContentType(contentType: ContentType | undefined): boolean
     }
 
     return typeParts[1].split("+").includes("json");
+}
+
+export function isFeatureFlagContentType(contentType: ContentType | undefined): boolean {
+    const mediaType = contentType?.mediaType;
+    if (!mediaType) {
+        return false;
+    }
+    return mediaType === featureFlagContentType;
+}
+
+export function isSecretReferenceContentType(contentType: ContentType | undefined): boolean {
+    const mediaType = contentType?.mediaType;
+    if (!mediaType) {
+        return false;
+    }
+    return mediaType === secretReferenceContentType;
 }

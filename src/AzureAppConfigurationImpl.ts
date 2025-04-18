@@ -25,7 +25,7 @@ import {
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
 import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
-import { parseContentType, isJsonContentType } from "./common/contentType.js";
+import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
@@ -659,8 +659,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             const contentType = parseContentType(setting.contentType);
-            // content type: application/json; profile="https://azconfig.io/mime-profiles/ai"
-            if (isJsonContentType(contentType)) {
+            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\"""
+            if (isJsonContentType(contentType) &&
+                !isFeatureFlagContentType(contentType) &&
+                !isSecretReferenceContentType(contentType)) {
                 const profile = contentType?.parameters["profile"];
                 if (profile === undefined) {
                     return;
