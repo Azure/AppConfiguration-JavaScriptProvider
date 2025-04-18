@@ -18,7 +18,7 @@ export class FeatureFlagTracingOptions {
     usesSeed: boolean = false;
     maxVariants: number = 0;
 
-    resetFeatureFlagTracing(): void {
+    reset(): void {
         this.usesCustomFilter = false;
         this.usesTimeWindowFilter = false;
         this.usesTargetingFilter = false;
@@ -52,44 +52,27 @@ export class FeatureFlagTracingOptions {
     }
 
     createFeatureFiltersString(): string {
-        if (!this.usesAnyFeatureFilter()) {
-            return "";
-        }
-
-        let result: string = "";
+        const tags: string[] = [];
         if (this.usesCustomFilter) {
-            result += CUSTOM_FILTER_KEY;
+            tags.push(CUSTOM_FILTER_KEY);
         }
         if (this.usesTimeWindowFilter) {
-            if (result !== "") {
-                result += DELIMITER;
-            }
-            result += TIME_WINDOW_FILTER_KEY;
+            tags.push(TIME_WINDOW_FILTER_KEY);
         }
         if (this.usesTargetingFilter) {
-            if (result !== "") {
-                result += DELIMITER;
-            }
-            result += TARGETING_FILTER_KEY;
+            tags.push(TARGETING_FILTER_KEY);
         }
-        return result;
+        return tags.join(DELIMITER);
     }
 
     createFeaturesString(): string {
-        if (!this.usesAnyTracingFeature()) {
-            return "";
-        }
-
-        let result: string = "";
+        const tags: string[] = [];
         if (this.usesSeed) {
-            result += FF_SEED_USED_TAG;
+            tags.push(FF_SEED_USED_TAG);
         }
         if (this.usesTelemetry) {
-            if (result !== "") {
-                result += DELIMITER;
-            }
-            result += FF_TELEMETRY_USED_TAG;
+            tags.push(FF_TELEMETRY_USED_TAG);
         }
-        return result;
+        return tags.join(DELIMITER);
     }
 }

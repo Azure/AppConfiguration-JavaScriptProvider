@@ -70,4 +70,11 @@ export const FF_MAX_VARIANTS_KEY = "MaxVariants";
 export const FF_SEED_USED_TAG = "Seed";
 export const FF_FEATURES_KEY = "FFFeatures";
 
+// AI Configuration tracing
+export const AI_CONFIGURATION_TAG = "AI";
+export const AI_CHAT_COMPLETION_CONFIGURATION_TAG = "AICC";
+
+export const AI_MIME_PROFILE = "https://azconfig.io/mime-profiles/ai";
+export const AI_CHAT_COMPLETION_MIME_PROFILE = "https://azconfig.io/mime-profiles/ai/chat-completion";
+
 export const DELIMITER = "+";
