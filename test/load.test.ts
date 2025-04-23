@@ -490,11 +490,11 @@ describe("load", function () {
         const snapshotName = "Test";
         mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key_label"});
         const connectionString = createMockedConnectionString();
-        expect(load(connectionString, {
+        await expect(load(connectionString, {
             selectors: [{
                 snapshotName: snapshotName
             }]
-        })).eventually.rejectedWith(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
+        })).to.eventually.be.rejectedWith(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
         restoreMocks();
     });
 });
