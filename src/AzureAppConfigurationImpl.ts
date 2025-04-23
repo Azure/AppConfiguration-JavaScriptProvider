@@ -842,7 +842,7 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
                 throw new Error("Key, label or tag filter should not be used for a snapshot.");
             }
         } else {
-            if (!selector.keyFilter) {
+            if (!selector.keyFilter && (!selector.tagFilters || selector.tagFilters.length === 0)) {
                 throw new Error("Key filter cannot be null or empty.");
             }
             if (!selector.labelFilter) {
@@ -869,10 +869,10 @@ function areTagFiltersEqual(tagsA?: string[], tagsB?: string[]): boolean {
     if (tagsA.length !== tagsB.length) {
         return false;
     }
-    
-    const sortedStringA = [...tagsA].sort().join('\n');
-    const sortedStringB = [...tagsB].sort().join('\n');
-    
+
+    const sortedStringA = [...tagsA].sort().join("\n");
+    const sortedStringB = [...tagsB].sort().join("\n");
+
     return sortedStringA === sortedStringB;
 }
 
@@ -900,12 +900,9 @@ function validateTagFilters(tagFilters: string[]): void {
         throw new Error(`The number of tag filters cannot exceed ${MAX_TAG_FILTERS}.`);
     }
     for (const tagFilter of tagFilters) {
-        if (!tagFilter.includes("=")) {
+        const res = tagFilter.split("=");
+        if (res[0] === "" || res.length !== 2) {
             throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
-        }
-        const [tagName, tagValue] = tagFilter.split("=");
-        if (tagName === "") {
-            throw new Error(`Invalid tag filter: ${tagFilter}. Tag name cannot be empty.`);
         }
     }
 }

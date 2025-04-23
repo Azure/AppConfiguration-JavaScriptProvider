@@ -29,10 +29,12 @@ const mockedKVs = [{
 }, {
     key: "TestKey",
     label: "Test",
+    tags: {"testTag": ""},
     value: "TestValue",
 }, {
     key: "TestKey",
     label: "Prod",
+    tags: {"testTag": ""},
     value: "TestValueForProd",
 }, {
     key: "KeyForNullValue",
@@ -73,6 +75,18 @@ const mockedKVs = [{
         }
     }),
     contentType: "application/vnd.microsoft.appconfig.ff+json;charset=utf-8"
+}, {
+    key: "keyWithMultipleTags",
+    value: "someValue",
+    tags: {"tag1": "someValue", "tag2": "someValue"}
+}, {
+    key: "keyWithTag1",
+    value: "someValue",
+    tags: {"tag1": "someValue"}
+}, {
+    key: "keyWithTag2",
+    value: "someValue",
+    tags: {"tag2": "someValue"}
 }
 ].map(createMockedKeyValue);
 
@@ -144,6 +158,30 @@ describe("load", function () {
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");
         expect(settings.get("app.settings.fontFamily")).undefined;
+    });
+
+    it("should filter by tags, has(key) and get(key) should work", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithTag1 = await load(connectionString, {
+            selectors: [{
+                tagFilters: ["tag1=someValue"]
+            }]
+        });
+        expect(loadWithTag1.has("keyWithTag1")).true;
+        expect(loadWithTag1.get("keyWithTag1")).eq("someValue");
+        expect(loadWithTag1.has("keyWithTag2")).false;
+        expect(loadWithTag1.has("keyWithMultipleTags")).true;
+        expect(loadWithTag1.get("keyWithMultipleTags")).eq("someValue");
+
+        const loadWithMultipleTags = await load(connectionString, {
+            selectors: [{
+                tagFilters: ["tag1=someValue", "tag2=someValue"]
+            }]
+        });
+        expect(loadWithMultipleTags.has("keyWithTag1")).false;
+        expect(loadWithMultipleTags.has("keyWithTag2")).false;
+        expect(loadWithMultipleTags.has("keyWithMultipleTags")).true;
+        expect(loadWithMultipleTags.get("keyWithMultipleTags")).eq("someValue");
     });
 
     it("should also work with other ReadonlyMap APIs", async () => {
@@ -255,6 +293,17 @@ describe("load", function () {
         return expect(loadWithMultipleLabelFilter).to.eventually.rejectedWith("The characters '*' and ',' are not supported in label filters.");
     });
 
+    it("should throw exception when there is any invalid tag filter", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithInvalidTagFilter = load(connectionString, {
+            selectors: [{
+                tagFilters: ["testTag"]
+            }]
+        });
+        return expect(loadWithInvalidTagFilter).to.eventually.rejectedWith("Tag filter must follow the format \"tagName=tagValue\"");
+    });
+
+
     it("should override config settings with same key but different label", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -275,13 +324,15 @@ describe("load", function () {
         const settings = await load(connectionString, {
             selectors: [{
                 keyFilter: "Test*",
-                labelFilter: "Prod"
+                labelFilter: "Prod",
+                tagFilters: ["testTag="]
             }, {
                 keyFilter: "Test*",
                 labelFilter: "Test"
             }, {
                 keyFilter: "Test*",
-                labelFilter: "Prod"
+                labelFilter: "Prod",
+                tagFilters: ["testTag="]
             }]
         });
         expect(settings).not.undefined;
