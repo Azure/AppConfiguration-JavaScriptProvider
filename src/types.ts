@@ -31,6 +31,16 @@ export type SettingSelector = {
     labelFilter?: string
 
     /**
+     * The tag filter to apply when querying Azure App Configuration for key-values.
+     *
+     * @remarks
+     * Each tag filter must follow the format "tagName=tagValue". Only those key-values will be loaded whose tags match all the tags provided here.
+     * Built in tag filter value is `TagFilter.Null`, which indicates the tag has no value. For example, $"tagName={TagFilter.Null}" will match all key-values with the tag "tagName" that has no value.
+     * Up to 5 tag filters can be provided. If no tag filters are provided, key-values will not be filtered based on tags.
+     */
+    tagFilters?: string[]
+
+    /**
      * The name of snapshot to load from App Configuration.
      *
      * @remarks
@@ -54,6 +64,16 @@ export enum KeyFilter {
  * LabelFilter is used to filter key-values based on labels.
  */
 export enum LabelFilter {
+    /**
+     * Matches key-values without a label.
+     */
+    Null = "\0"
+}
+
+/**
+ * TagFilter is used to filter key-values based on tags.
+ */
+export enum TagFilter {
     /**
      * Matches key-values without a label.
      */

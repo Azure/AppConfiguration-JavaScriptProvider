@@ -53,6 +53,8 @@ import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationT
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 
+const MAX_TAG_FILTERS = 5;
+
 type PagedSettingSelector = SettingSelector & {
     /**
      * Key: page eTag, Value: feature flag configurations
@@ -830,8 +832,8 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (selector.snapshotName) {
-            if (selector.keyFilter || selector.labelFilter) {
-                throw new Error("Key or label filter should not be used for a snapshot.");
+            if (selector.keyFilter || selector.labelFilter || selector.tagFilters) {
+                throw new Error("Key, label or tag filter should not be used for a snapshot.");
             }
         } else {
             if (!selector.keyFilter) {
@@ -842,6 +844,9 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
             }
             if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
                 throw new Error("The characters '*' and ',' are not supported in label filters.");
+            }
+            if (selector.tagFilters) {
+                validateTagFilters(selector.tagFilters);
             }
         }
         return selector;
@@ -865,6 +870,21 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
     });
     return getValidSettingSelectors(selectors);
+}
+
+function validateTagFilters(tagFilters: string[]): void {
+    if (tagFilters.length > MAX_TAG_FILTERS) {
+        throw new Error(`The number of tag filters cannot exceed ${MAX_TAG_FILTERS}.`);
+    }
+    for (const tagFilter of tagFilters) {
+        if (!tagFilter.includes("=")) {
+            throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
+        }
+        const [tagName, tagValue] = tagFilter.split("=");
+        if (tagName === "" || tagValue === "") {
+            throw new Error(`Invalid tag filter: ${tagFilter}. Tag name and value cannot be empty.`);
+        }
+    }
 }
 
 function isFailoverableError(error: any): boolean {
