@@ -824,7 +824,11 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
     // below code deduplicates selectors, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
-        const existingSelectorIndex = uniqueSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter && s.snapshotName === selector.snapshotName);
+        const existingSelectorIndex = uniqueSelectors.findIndex(
+            s => s.keyFilter === selector.keyFilter &&
+                s.labelFilter === selector.labelFilter &&
+                s.snapshotName === selector.snapshotName &&
+                areTagFiltersEqual(s.tagFilters, selector.tagFilters));
         if (existingSelectorIndex >= 0) {
             uniqueSelectors.splice(existingSelectorIndex, 1);
         }
@@ -855,6 +859,23 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
     });
 }
 
+function areTagFiltersEqual(tagsA?: string[], tagsB?: string[]): boolean {
+    if (!tagsA && !tagsB) {
+        return true;
+    }
+    if (!tagsA || !tagsB) {
+        return false;
+    }
+    if (tagsA.length !== tagsB.length) {
+        return false;
+    }
+    
+    const sortedStringA = [...tagsA].sort().join('\n');
+    const sortedStringB = [...tagsB].sort().join('\n');
+    
+    return sortedStringA === sortedStringB;
+}
+
 function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelector[] {
     if (selectors === undefined || selectors.length === 0) {
         // Default selector: key: *, label: \0
@@ -883,8 +904,8 @@ function validateTagFilters(tagFilters: string[]): void {
             throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
         }
         const [tagName, tagValue] = tagFilter.split("=");
-        if (tagName === "" || tagValue === "") {
-            throw new Error(`Invalid tag filter: ${tagFilter}. Tag name and value cannot be empty.`);
+        if (tagName === "") {
+            throw new Error(`Invalid tag filter: ${tagFilter}. Tag name cannot be empty.`);
         }
     }
 }
