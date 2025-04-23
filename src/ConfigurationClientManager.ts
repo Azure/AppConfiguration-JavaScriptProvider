@@ -43,9 +43,6 @@ export class ConfigurationClientManager {
     #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
     #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
 
-    // This property is public to allow recording the last successful endpoint for failover.
-    endpoint: URL;
-
     constructor (
         connectionStringOrEndpoint?: string | URL,
         credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
