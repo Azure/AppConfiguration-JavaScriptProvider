@@ -19,7 +19,6 @@ import {
     ENABLED_KEY_NAME,
     METADATA_KEY_NAME,
     ETAG_KEY_NAME,
-    FEATURE_FLAG_ID_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
     ALLOCATION_KEY_NAME,
     SEED_KEY_NAME,
@@ -27,11 +26,13 @@ import {
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
-import { FM_PACKAGE_NAME } from "./requestTracing/constants.js";
+import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
+import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
@@ -65,6 +66,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isFailoverRequest: boolean = false;
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
     #fmVersion: string | undefined;
+    #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -111,6 +113,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
         if (this.#requestTracingEnabled) {
+            this.#aiConfigurationTracing = new AIConfigurationTracingOptions();
             this.#featureFlagTracing = new FeatureFlagTracingOptions();
         }
 
@@ -191,7 +194,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             replicaCount: this.#clientManager.getReplicaCount(),
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
-            fmVersion: this.#fmVersion
+            fmVersion: this.#fmVersion,
+            aiConfigurationTracing: this.#aiConfigurationTracing
         };
     }
 
@@ -489,19 +493,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads selected key-values and watched settings (sentinels) for refresh from App Configuration to the local configuration.
      */
     async #loadSelectedAndWatchedKeyValues() {
+        this.#secretReferences = []; // clear all cached key vault reference configuration settings
         const keyValues: [key: string, value: unknown][] = [];
         const loadedSettings = await this.#loadConfigurationSettings();
         if (this.#refreshEnabled && !this.#watchAll) {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
 
-        // clear all cached key vault reference configuration settings
-        this.#secretReferences = [];
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            // reset old AI configuration tracing in order to track the information present in the current response from server
+            this.#aiConfigurationTracing.reset();
+        }
+
+        // adapt configuration settings to key-values
         for (const setting of loadedSettings) {
             if (this.#secretRefreshEnabled && isSecretReference(setting)) {
                 this.#secretReferences.push(setting);
             }
-            const [key, value] = await this.#processKeyValues(setting);
+            const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
 
@@ -549,6 +558,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
         const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            // Reset old feature flag tracing in order to track the information present in the current response from server.
+            this.#featureFlagTracing.reset();
+        }
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -625,7 +639,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         for (const setting of this.#secretReferences) {
-            const [key, value] = await this.#processKeyValues(setting);
+            const [key, value] = await this.#processKeyValue(setting);
             this.#configMap.set(key, value);
         }
 
@@ -735,10 +749,33 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         throw new Error("All fallback clients failed to get configuration settings.");
     }
 
-    async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+    async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        this.#setAIConfigurationTracing(setting);
+
         const [key, value] = await this.#processAdapters(setting);
         const trimmedKey = this.#keyWithPrefixesTrimmed(key);
         return [trimmedKey, value];
+    }
+
+    #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            const contentType = parseContentType(setting.contentType);
+            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\"""
+            if (isJsonContentType(contentType) &&
+                !isFeatureFlagContentType(contentType) &&
+                !isSecretReferenceContentType(contentType)) {
+                const profile = contentType?.parameters["profile"];
+                if (profile === undefined) {
+                    return;
+                }
+                if (profile.includes(AI_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIConfiguration = true;
+                }
+                if (profile.includes(AI_CHAT_COMPLETION_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIChatCompletionConfiguration = true;
+                }
+            }
+        }
     }
 
     async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -772,12 +809,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
-                [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
                 ...(metadata || {})
             };
         }
 
+        this.#setFeatureFlagTracing(featureFlag);
+
+        return featureFlag;
+    }
+
+    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            featureFlagReference += `?label=${setting.label}`;
+        }
+        return featureFlagReference;
+    }
+
+    #setFeatureFlagTracing(featureFlag: any): void {
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             if (featureFlag[CONDITIONS_KEY_NAME] &&
                 featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
@@ -796,66 +846,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#featureFlagTracing.usesSeed = true;
             }
         }
-
-        return featureFlag;
-    }
-
-    async #calculateFeatureFlagId(setting: ConfigurationSetting<string>): Promise<string> {
-        let crypto;
-
-        // Check for browser environment
-        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-            crypto = window.crypto;
-        }
-        // Check for Node.js environment
-        else if (typeof global !== "undefined" && global.crypto) {
-            crypto = global.crypto;
-        }
-        // Fallback to native Node.js crypto module
-        else {
-            try {
-                if (typeof module !== "undefined" && module.exports) {
-                    crypto = require("crypto");
-                }
-                else {
-                    crypto = await import("crypto");
-                }
-            } catch (error) {
-                console.error("Failed to load the crypto module:", error.message);
-                throw error;
-            }
-        }
-
-        let baseString = `${setting.key}\n`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            baseString += `${setting.label}`;
-        }
-
-        // Convert to UTF-8 encoded bytes
-        const data = new TextEncoder().encode(baseString);
-
-        // In the browser, use crypto.subtle.digest
-        if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = new Uint8Array(hashBuffer);
-            // btoa/atob is also available in Node.js 18+
-            const base64String = btoa(String.fromCharCode(...hashArray));
-            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            return base64urlString;
-        }
-        // In Node.js, use the crypto module's hash function
-        else {
-            const hash = crypto.createHash("sha256").update(data).digest();
-            return hash.toString("base64url");
-        }
-    }
-
-    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            featureFlagReference += `?label=${setting.label}`;
-        }
-        return featureFlagReference;
     }
 }
 

@@ -77,6 +77,19 @@ describe("request tracing", function () {
         expect(correlationContext.includes("UsesKeyVault")).eq(true);
     });
 
+    it("should have loadbalancing tag in correlation-context header", async () => {
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions,
+                loadBalancingEnabled: true,
+            });
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("Features=LB")).eq(true);
+    });
+
     it("should have replica count in correlation-context header", async () => {
         const replicaCount = 2;
         sinon.stub(ConfigurationClientManager.prototype, "getReplicaCount").returns(replicaCount);
@@ -322,6 +335,37 @@ describe("request tracing", function () {
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("RequestType=Watch")).eq(true);
         expect(correlationContext?.includes("FFFeatures=Seed+Telemetry")).eq(true);
+
+        restoreMocks();
+    });
+
+    it("should have AI tag in correlation-context header if key values use AI configuration", async () => {
+        let correlationContext: string = "";
+        const listKvCallback = (listOptions) => {
+            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+        };
+
+        mockAppConfigurationClientListConfigurationSettings([[
+            createMockedKeyValue({ contentType: "application/json; profile=\"https://azconfig.io/mime-profiles/ai/chat-completion\"" })
+        ]], listKvCallback);
+
+        const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 1000
+            }
+        });
+
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+
+        await sleepInMs(1000 + 1);
+        try {
+            await settings.refresh();
+        } catch (e) { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(correlationContext).not.undefined;
+        expect(correlationContext?.includes("Features=AI+AICC")).eq(true);
 
         restoreMocks();
     });

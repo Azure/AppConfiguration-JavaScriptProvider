@@ -4,6 +4,7 @@
 import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions } from "@azure/app-configuration";
 import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
 import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./AIConfigurationTracingOptions.js";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
@@ -29,7 +30,10 @@ import {
     FAILOVER_REQUEST_TAG,
     FEATURES_KEY,
     LOAD_BALANCE_CONFIGURED_TAG,
-    FM_VERSION_KEY
+    FM_VERSION_KEY,
+    DELIMITER,
+    AI_CONFIGURATION_TAG,
+    AI_CHAT_COMPLETION_CONFIGURATION_TAG
 } from "./constants";
 
 export interface RequestTracingOptions {
@@ -40,6 +44,7 @@ export interface RequestTracingOptions {
     isFailoverRequest: boolean;
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
     fmVersion: string | undefined;
+    aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
 }
 
 // Utils
@@ -129,15 +134,13 @@ export function createCorrelationContextHeader(requestTracingOptions: RequestTra
         keyValues.set(FM_VERSION_KEY, requestTracingOptions.fmVersion);
     }
 
-    // Compact tags: Features=LB+...
-    if (appConfigOptions?.loadBalancingEnabled) {
-        keyValues.set(FEATURES_KEY, LOAD_BALANCE_CONFIGURED_TAG);
-    }
+    // Use compact tags for new tracing features: Features=LB+AI+AICC...
+    keyValues.set(FEATURES_KEY, usesAnyTracingFeature(requestTracingOptions) ? createFeaturesString(requestTracingOptions) : undefined);
 
     const contextParts: string[] = [];
-    for (const [k, v] of keyValues) {
-        if (v !== undefined) {
-            contextParts.push(`${k}=${v}`);
+    for (const [key, value] of keyValues) {
+        if (value !== undefined) {
+            contextParts.push(`${key}=${value}`);
         }
     }
     for (const tag of tags) {
@@ -151,6 +154,25 @@ export function requestTracingEnabled(): boolean {
     const requestTracingDisabledEnv = getEnvironmentVariable(ENV_AZURE_APP_CONFIGURATION_TRACING_DISABLED);
     const disabled = requestTracingDisabledEnv?.toLowerCase() === "true";
     return !disabled;
+}
+
+function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
+    return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
+        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false);
+}
+
+function createFeaturesString(requestTracingOptions: RequestTracingOptions): string {
+    const tags: string[] = [];
+    if (requestTracingOptions.appConfigOptions?.loadBalancingEnabled) {
+        tags.push(LOAD_BALANCE_CONFIGURED_TAG);
+    }
+    if (requestTracingOptions.aiConfigurationTracing?.usesAIConfiguration) {
+        tags.push(AI_CONFIGURATION_TAG);
+    }
+    if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
+        tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
+    }
+    return tags.join(DELIMITER);
 }
 
 function getEnvironmentVariable(name: string) {

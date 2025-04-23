@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 import { ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
+import { parseContentType, isJsonContentType } from "./common/contentType.js";
 import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 
 export class JsonKeyValueAdapter implements IKeyValueAdapter {
@@ -17,7 +18,8 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         if (JsonKeyValueAdapter.#ExcludedJsonContentTypes.includes(setting.contentType)) {
             return false;
         }
-        return isJsonContentType(setting.contentType);
+        const contentType = parseContentType(setting.contentType);
+        return isJsonContentType(contentType);
     }
 
     async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
@@ -37,25 +39,4 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
     async onChangeDetected(): Promise<void> {
         return;
     }
-}
-
-// Determine whether a content type string is a valid JSON content type.
-// https://docs.microsoft.com/en-us/azure/azure-app-configuration/howto-leverage-json-content-type
-function isJsonContentType(contentTypeValue: string): boolean {
-    if (!contentTypeValue) {
-        return false;
-    }
-
-    const contentTypeNormalized: string = contentTypeValue.trim().toLowerCase();
-    const mimeType: string = contentTypeNormalized.split(";", 1)[0].trim();
-    const typeParts: string[] = mimeType.split("/");
-    if (typeParts.length !== 2) {
-        return false;
-    }
-
-    if (typeParts[0] !== "application") {
-        return false;
-    }
-
-    return typeParts[1].split("+").includes("json");
 }
