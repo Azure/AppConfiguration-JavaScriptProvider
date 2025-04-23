@@ -402,7 +402,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (selector.snapshotName === undefined) {
                     const listOptions: ListConfigurationSettingsOptions = {
                         keyFilter: selector.keyFilter,
-                        labelFilter: selector.labelFilter
+                        labelFilter: selector.labelFilter,
+                        tagsFilter: selector.tagFilters
                     };
                     const pageEtags: string[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
@@ -605,6 +606,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
+                    tagsFilter: selector.tagFilters,
                     pageEtags: selector.pageEtags
                 };
 
