@@ -82,6 +82,9 @@ describe("request tracing", function () {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions,
                 loadBalancingEnabled: true,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
             });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
