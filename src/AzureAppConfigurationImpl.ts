@@ -34,7 +34,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
+import { getFixedBackoffDuration, calculateBackoffDuration } from "./backoffDuration.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isRetriableError, isArgumentError } from "./error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds

@@ -51,13 +51,15 @@ export function isFailoverableError(error: any): boolean {
 }
 
 export function isRetriableError(error: any): boolean {
-    if (isArgumentError(error) ||
-        error instanceof RangeError) {
+    if (isArgumentError(error)) {
         return false;
     }
     return true;
 }
 
+/**
+ * Check if the error is an instance of ArgumentError, TypeError, or RangeError.
+ */
 export function isArgumentError(error: any): boolean {
     if (error instanceof ArgumentError ||
         error instanceof TypeError ||

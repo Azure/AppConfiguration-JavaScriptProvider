@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { calculateBackoffDuration } from "./failover.js";
+import { calculateBackoffDuration } from "./backoffDuration.js";
 
 export class ConfigurationClientWrapper {
     endpoint: string;

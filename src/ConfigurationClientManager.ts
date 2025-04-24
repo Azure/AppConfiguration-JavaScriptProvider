@@ -7,7 +7,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { instanceOfTokenCredential, shuffleList } from "./common/utils.js";
+import { shuffleList, instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./error.js";
 
 // Configuration client retry options
