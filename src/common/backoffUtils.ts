@@ -5,20 +5,20 @@ const MIN_BACKOFF_DURATION = 30_000; // 30 seconds in milliseconds
 const MAX_BACKOFF_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
 const JITTER_RATIO = 0.25;
 
-export function getFixedBackoffDuration(timeElapsed: number): number | undefined {
-    if (timeElapsed < 100_000) { // 100 seconds in milliseconds
-        return 5_000; // 5 seconds in milliseconds
+export function getFixedBackoffDuration(timeElapsedInMs: number): number | undefined {
+    if (timeElapsedInMs < 100_000) {
+        return 5_000;
     }
-    if (timeElapsed < 200_000) { // 200 seconds in milliseconds
-        return 10_000; // 10 seconds in milliseconds
+    if (timeElapsedInMs < 200_000) {
+        return 10_000;
     }
-    if (timeElapsed < 10 * 60 * 1000) { // 10 minutes in milliseconds
+    if (timeElapsedInMs < 10 * 60 * 1000) {
         return MIN_BACKOFF_DURATION;
     }
     return undefined;
 }
 
-export function calculateBackoffDuration(failedAttempts: number) {
+export function getExponentialBackoffDuration(failedAttempts: number): number {
     if (failedAttempts <= 1) {
         return MIN_BACKOFF_DURATION;
     }

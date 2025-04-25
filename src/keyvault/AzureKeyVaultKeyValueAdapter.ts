@@ -25,7 +25,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
         // TODO: cache results to save requests.
         if (!this.#keyVaultOptions) {
-            throw new ArgumentError("Failed to process the key vault reference. The keyVaultOptions is not configured.");
+            throw new ArgumentError("Failed to process the Key Vault reference because Key Vault options are not configured.");
         }
 
         const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(

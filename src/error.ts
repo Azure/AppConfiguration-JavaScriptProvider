@@ -14,7 +14,7 @@ export class InvalidOperationError extends Error {
 }
 
 /**
- * Error thrown when an argument or configuration is invalid.
+ * Error thrown when an input argument is invalid.
  */
 export class ArgumentError extends Error {
     constructor(message: string) {
@@ -24,7 +24,7 @@ export class ArgumentError extends Error {
 }
 
 /**
- * Error thrown when it fails to get the secret from the Key Vault.
+ * Error thrown when a Key Vault reference cannot be resolved.
  */
 export class KeyVaultReferenceError extends Error {
     constructor(message: string) {
@@ -50,17 +50,10 @@ export function isFailoverableError(error: any): boolean {
     return false;
 }
 
-export function isRetriableError(error: any): boolean {
-    if (isArgumentError(error)) {
-        return false;
-    }
-    return true;
-}
-
 /**
  * Check if the error is an instance of ArgumentError, TypeError, or RangeError.
  */
-export function isArgumentError(error: any): boolean {
+export function isInputError(error: any): boolean {
     if (error instanceof ArgumentError ||
         error instanceof TypeError ||
         error instanceof RangeError) {

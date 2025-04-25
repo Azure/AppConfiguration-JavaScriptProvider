@@ -40,7 +40,7 @@ describe("key vault reference", function () {
     });
 
     it("require key vault options to resolve reference", async () => {
-        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Failed to process the key vault reference. The keyVaultOptions is not configured.");
+        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Failed to process the Key Vault reference because Key Vault options are not configured.");
     });
 
     it("should resolve key vault reference with credential", async () => {
