@@ -27,11 +27,12 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (!this.#keyVaultOptions) {
             throw new ArgumentError("Failed to process the Key Vault reference because Key Vault options are not configured.");
         }
-
-        const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
-            parseSecretReference(setting).value.secretId
-        );
+        let sourceId;
         try {
+            const { name: secretName, vaultUrl, sourceId: parsedSourceId, version } = parseKeyVaultSecretIdentifier(
+                parseSecretReference(setting).value.secretId
+            );
+            sourceId = parsedSourceId;
             // precedence: secret clients > credential > secret resolver
             const client = this.#getSecretClient(new URL(vaultUrl));
             if (client) {
@@ -42,7 +43,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
                 return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
             }
         } catch (error) {
-            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(error.message, setting, sourceId));
+            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(setting, sourceId), { cause: error });
         }
 
         // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
@@ -79,6 +80,6 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 }
 
-function buildKeyVaultReferenceErrorMessage(message: string, setting: ConfigurationSetting, secretIdentifier?: string ): string {
-    return `${message} Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' SecretIdentifier: '${secretIdentifier ?? ""}'`;
+function buildKeyVaultReferenceErrorMessage(setting: ConfigurationSetting, secretIdentifier?: string ): string {
+    return `Failed to resolve Key Vault reference. Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' SecretIdentifier: '${secretIdentifier ?? ""}'`;
 }

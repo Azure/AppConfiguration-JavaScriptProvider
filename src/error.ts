@@ -2,6 +2,8 @@
 // Licensed under the MIT license.
 
 import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
+
 
 /**
  * Error thrown when an operation cannot be performed by the Azure App Configuration provider.
@@ -27,13 +29,16 @@ export class ArgumentError extends Error {
  * Error thrown when a Key Vault reference cannot be resolved.
  */
 export class KeyVaultReferenceError extends Error {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
         this.name = "KeyVaultReferenceError";
     }
 }
 
 export function isFailoverableError(error: any): boolean {
+    if (error instanceof AuthenticationError) {
+        return true;
+    }
     if (!isRestError(error)) {
         return false;
     }
