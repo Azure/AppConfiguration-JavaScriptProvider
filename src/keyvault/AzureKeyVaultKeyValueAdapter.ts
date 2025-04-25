@@ -81,5 +81,5 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 }
 
 function buildKeyVaultReferenceErrorMessage(setting: ConfigurationSetting, secretIdentifier?: string ): string {
-    return `Failed to resolve Key Vault reference. Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' SecretIdentifier: '${secretIdentifier ?? ""}'`;
+    return `Failed to resolve Key Vault reference. Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' ${secretIdentifier ? ` SecretIdentifier: '${secretIdentifier}'` : ""}`;
 }
