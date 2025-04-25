@@ -2,8 +2,6 @@
 // Licensed under the MIT license.
 
 import { isRestError } from "@azure/core-rest-pipeline";
-import { AuthenticationError } from "@azure/identity";
-
 
 /**
  * Error thrown when an operation cannot be performed by the Azure App Configuration provider.
@@ -36,14 +34,12 @@ export class KeyVaultReferenceError extends Error {
 }
 
 export function isFailoverableError(error: any): boolean {
-    if (error instanceof AuthenticationError) {
-        return true;
-    }
     if (!isRestError(error)) {
         return false;
     }
-    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    if (error.code === "ENOTFOUND" || error.code === "ENOENT") {
+    // https://nodejs.org/api/errors.html#common-system-errors
+    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory, ECONNREFUSED: connection refused, ECONNRESET: connection reset by peer, ETIMEDOUT: connection timed out
+    if (error.code === "ENOTFOUND" || error.code === "ENOENT" || error.code === "ECONNREFUSED" || error.code === "ECONNRESET" || error.code === "ETIMEDOUT") {
         return true;
     }
     // 401 Unauthorized, 403 Forbidden, 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
