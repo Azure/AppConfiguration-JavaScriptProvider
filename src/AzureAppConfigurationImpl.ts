@@ -35,7 +35,7 @@ import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationT
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./error.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 

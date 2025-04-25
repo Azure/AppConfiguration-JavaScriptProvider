@@ -4,7 +4,7 @@
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { ArgumentError, KeyVaultReferenceError } from "../error.js";
+import { ArgumentError, KeyVaultReferenceError } from "../common/error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {

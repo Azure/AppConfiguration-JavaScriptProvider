@@ -8,7 +8,7 @@ import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js"
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList, instanceOfTokenCredential } from "./common/utils.js";
-import { ArgumentError } from "./error.js";
+import { ArgumentError } from "./common/error.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
