@@ -5,7 +5,6 @@ import { AppConfigurationClient } from "@azure/app-configuration";
 
 const MaxBackoffDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
 const MinBackoffDuration = 30 * 1000; // 30 seconds in milliseconds
-const MAX_SAFE_EXPONENTIAL = 30; // Used to avoid overflow. bitwise operations in JavaScript are limited to 32 bits. It overflows at 2^31 - 1.
 const JITTER_RATIO = 0.25;
 
 export class ConfigurationClientWrapper {
@@ -36,8 +35,8 @@ export function calculateBackoffDuration(failedAttempts: number) {
     }
 
     // exponential: minBackoff * 2 ^ (failedAttempts - 1)
-    const exponential = Math.min(failedAttempts - 1, MAX_SAFE_EXPONENTIAL);
-    let calculatedBackoffDuration = MinBackoffDuration * (1 << exponential);
+    // The right shift operator is not used in order to avoid potential overflow. Bitwise operations in JavaScript are limited to 32 bits.
+    let calculatedBackoffDuration = MinBackoffDuration * Math.pow(2, failedAttempts - 1);
     if (calculatedBackoffDuration > MaxBackoffDuration) {
         calculatedBackoffDuration = MaxBackoffDuration;
     }
