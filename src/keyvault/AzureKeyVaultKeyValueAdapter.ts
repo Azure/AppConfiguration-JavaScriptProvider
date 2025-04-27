@@ -6,6 +6,8 @@ import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { ArgumentError, KeyVaultReferenceError } from "../common/error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     /**
@@ -27,12 +29,20 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (!this.#keyVaultOptions) {
             throw new ArgumentError("Failed to process the Key Vault reference because Key Vault options are not configured.");
         }
-        let sourceId;
+        let secretName, vaultUrl, sourceId, version;
         try {
-            const { name: secretName, vaultUrl, sourceId: parsedSourceId, version } = parseKeyVaultSecretIdentifier(
+            const { name: parsedName, vaultUrl: parsedVaultUrl, sourceId: parsedSourceId, version: parsedVersion } = parseKeyVaultSecretIdentifier(
                 parseSecretReference(setting).value.secretId
             );
+            secretName = parsedName;
+            vaultUrl = parsedVaultUrl;
             sourceId = parsedSourceId;
+            version = parsedVersion;
+        } catch (error) {
+            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Invalid Key Vault reference.", setting), { cause: error });
+        }
+
+        try {
             // precedence: secret clients > credential > secret resolver
             const client = this.#getSecretClient(new URL(vaultUrl));
             if (client) {
@@ -43,7 +53,10 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
                 return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
             }
         } catch (error) {
-            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage(setting, sourceId), { cause: error });
+            if (isRestError(error) || error instanceof AuthenticationError) {
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, sourceId), { cause: error });
+            }
+            throw error;
         }
 
         // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
@@ -80,6 +93,6 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 }
 
-function buildKeyVaultReferenceErrorMessage(setting: ConfigurationSetting, secretIdentifier?: string ): string {
-    return `Failed to resolve Key Vault reference. Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' ${secretIdentifier ? ` SecretIdentifier: '${secretIdentifier}'` : ""}`;
+function buildKeyVaultReferenceErrorMessage(message: string, setting: ConfigurationSetting, secretIdentifier?: string ): string {
+    return `${message} Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' ${secretIdentifier ? ` SecretIdentifier: '${secretIdentifier}'` : ""}`;
 }
