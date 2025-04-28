@@ -260,7 +260,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
             }
-            throw new Error(`Failed to load: ${error.message}`);
+            throw new Error("Failed to load.", { cause: error });
         } finally {
             clearTimeout(timeoutId); // cancel the timeout promise
         }
