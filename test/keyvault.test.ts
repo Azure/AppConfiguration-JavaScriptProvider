@@ -40,7 +40,15 @@ describe("key vault reference", function () {
     });
 
     it("require key vault options to resolve reference", async () => {
-        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Failed to process the Key Vault reference because Key Vault options are not configured.");
+        try {
+            await load(createMockedConnectionString());
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Failed to process the Key Vault reference because Key Vault options are not configured.");
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should resolve key vault reference with credential", async () => {
@@ -89,14 +97,21 @@ describe("key vault reference", function () {
     });
 
     it("should throw error when secret clients not provided for all key vault references", async () => {
-        const loadKeyVaultPromise = load(createMockedConnectionString(), {
-            keyVaultOptions: {
-                secretClients: [
-                    new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
-                ]
-            }
-        });
-        return expect(loadKeyVaultPromise).eventually.rejectedWith("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+        try {
+            await load(createMockedConnectionString(), {
+                keyVaultOptions: {
+                    secretClients: [
+                        new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
+                    ]
+                }
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should fallback to use default credential when corresponding secret client not provided", async () => {
