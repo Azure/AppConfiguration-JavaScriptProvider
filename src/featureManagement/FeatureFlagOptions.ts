@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { FeatureFlagRefreshOptions } from "../RefreshOptions.js";
+import { FeatureFlagRefreshOptions } from "../refresh/refreshOptions.js";
 import { SettingSelector } from "../types.js";
 
 /**

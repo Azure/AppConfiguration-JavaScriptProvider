@@ -4,12 +4,15 @@
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
+import { ArgumentError, KeyVaultReferenceError } from "../common/error.js";
 import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
 
 export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     /**
      * Map vault hostname to corresponding secret client.
-    */
+     */
     #secretClients: Map<string, SecretClient>;
     #keyVaultOptions: KeyVaultOptions | undefined;
 
@@ -24,33 +27,53 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     async processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]> {
         // TODO: cache results to save requests.
         if (!this.#keyVaultOptions) {
-            throw new Error("Configure keyVaultOptions to resolve Key Vault Reference(s).");
+            throw new ArgumentError("Failed to process the Key Vault reference because Key Vault options are not configured.");
+        }
+        let secretName, vaultUrl, sourceId, version;
+        try {
+            const { name: parsedName, vaultUrl: parsedVaultUrl, sourceId: parsedSourceId, version: parsedVersion } = parseKeyVaultSecretIdentifier(
+                parseSecretReference(setting).value.secretId
+            );
+            secretName = parsedName;
+            vaultUrl = parsedVaultUrl;
+            sourceId = parsedSourceId;
+            version = parsedVersion;
+        } catch (error) {
+            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Invalid Key Vault reference.", setting), { cause: error });
         }
 
-        // precedence: secret clients > credential > secret resolver
-        const { name: secretName, vaultUrl, sourceId, version } = parseKeyVaultSecretIdentifier(
-            parseSecretReference(setting).value.secretId
-        );
-
-        const client = this.#getSecretClient(new URL(vaultUrl));
-        if (client) {
-            // TODO: what if error occurs when reading a key vault value? Now it breaks the whole load.
-            const secret = await client.getSecret(secretName, { version });
-            return [setting.key, secret.value];
+        try {
+            // precedence: secret clients > credential > secret resolver
+            const client = this.#getSecretClient(new URL(vaultUrl));
+            if (client) {
+                const secret = await client.getSecret(secretName, { version });
+                return [setting.key, secret.value];
+            }
+            if (this.#keyVaultOptions.secretResolver) {
+                return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
+            }
+        } catch (error) {
+            if (isRestError(error) || error instanceof AuthenticationError) {
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, sourceId), { cause: error });
+            }
+            throw error;
         }
 
-        if (this.#keyVaultOptions.secretResolver) {
-            return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
-        }
-
-        throw new Error("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
+        // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
+        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
     }
 
+    /**
+     *
+     * @param vaultUrl - The url of the key vault.
+     * @returns
+     */
     #getSecretClient(vaultUrl: URL): SecretClient | undefined {
         if (this.#secretClients === undefined) {
             this.#secretClients = new Map();
-            for (const c of this.#keyVaultOptions?.secretClients ?? []) {
-                this.#secretClients.set(getHost(c.vaultUrl), c);
+            for (const client of this.#keyVaultOptions?.secretClients ?? []) {
+                const clientUrl = new URL(client.vaultUrl);
+                this.#secretClients.set(clientUrl.host, client);
             }
         }
 
@@ -70,6 +93,6 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 }
 
-function getHost(url: string) {
-    return new URL(url).host;
+function buildKeyVaultReferenceErrorMessage(message: string, setting: ConfigurationSetting, secretIdentifier?: string ): string {
+    return `${message} Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}' ${secretIdentifier ? ` SecretIdentifier: '${secretIdentifier}'` : ""}`;
 }
