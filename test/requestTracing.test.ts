@@ -114,7 +114,10 @@ describe("request tracing", function () {
     it("should have cdn tag in correlation-context header when loadFromCdn is used", async () => {
         try {
             await loadFromCdn(fakeEndpoint, {
-                clientOptions
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
             });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
@@ -126,7 +129,10 @@ describe("request tracing", function () {
     it("should not have cdn tag in correlation-context header when load is used", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
-                clientOptions
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
             });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
