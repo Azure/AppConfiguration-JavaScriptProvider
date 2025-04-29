@@ -399,7 +399,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                             // use the etag of the first watched setting (sentinel)
                             this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
                         }
-            
+
                         if (this.#featureFlagRefreshEnabled) {
                             const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
                             if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
@@ -409,7 +409,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                             }
                         }
                     }
-                    
+
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
