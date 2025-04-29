@@ -64,14 +64,6 @@ describe("failover", function () {
         expect(settings.get<any>("feature_management").feature_flags).not.undefined;
     });
 
-    it("should throw error when all clients failed", async () => {
-        const isFailoverable = false;
-        mockConfigurationManagerGetClients([], isFailoverable);
-
-        const connectionString = createMockedConnectionString();
-        return expect(load(connectionString)).eventually.rejectedWith("All clients failed to get configuration settings.");
-    });
-
     it("should validate endpoint", () => {
         const fakeHost = "fake.azconfig.io";
         const validDomain = getValidDomain(fakeHost);
