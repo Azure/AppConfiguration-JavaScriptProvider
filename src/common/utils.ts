@@ -30,3 +30,7 @@ export function shuffleList<T>(array: T[]): T[] {
     }
     return array;
 }
+
+export function instanceOfTokenCredential(obj: unknown) {
+    return obj && typeof obj === "object" && "getToken" in obj && typeof obj.getToken === "function";
+}

@@ -3,6 +3,9 @@
 
 import { Disposable } from "./common/disposable.js";
 
+/**
+ * Azure App Configuration provider.
+ */
 export type AzureAppConfiguration = {
     /**
      * API to trigger refresh operation.
