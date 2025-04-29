@@ -114,12 +114,12 @@ describe("load", function () {
     });
 
     it("should throw error given invalid connection string", async () => {
-        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string.");
+        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string");
     });
 
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
-        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
+        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid URL");
     });
 
     it("should not include feature flags directly in the settings", async () => {
@@ -359,7 +359,7 @@ describe("load", function () {
      * When constructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
      * An error will be thrown when constructing from key "app5.settings" because there is ambiguity between the two keys.
      */
-    it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+    it("Edge case 2: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
