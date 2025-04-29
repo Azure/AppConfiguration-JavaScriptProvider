@@ -7,7 +7,8 @@ import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from ".
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
-import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./RefreshOptions.js";
+import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
+import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
 import { Disposable } from "./common/disposable.js";
 import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
@@ -18,7 +19,6 @@ import {
     ENABLED_KEY_NAME,
     METADATA_KEY_NAME,
     ETAG_KEY_NAME,
-    FEATURE_FLAG_ID_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
     ALLOCATION_ID_KEY_NAME,
     ALLOCATION_KEY_NAME,
@@ -33,14 +33,20 @@ import {
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
-import { FM_PACKAGE_NAME } from "./requestTracing/constants.js";
+import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
+import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/RefreshTimer.js";
 import { RequestTracingOptions, getConfigurationSettingWithTrace, listConfigurationSettingsWithTrace, requestTracingEnabled } from "./requestTracing/utils.js";
 import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { ETAG_LOOKUP_HEADER } from "./EtagUrlPipelinePolicy.js";
+import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
+
+const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
 type PagedSettingSelector = SettingSelector & {
     pageEtags?: string[];
@@ -75,6 +81,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isFailoverRequest: boolean = false;
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
     #fmVersion: string | undefined;
+    #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -119,6 +126,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
         if (this.#requestTracingEnabled) {
+            this.#aiConfigurationTracing = new AIConfigurationTracingOptions();
             this.#featureFlagTracing = new FeatureFlagTracingOptions();
         }
 
@@ -133,10 +141,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 for (const setting of watchedSettings) {
                     if (setting.key.includes("*") || setting.key.includes(",")) {
-                        throw new Error("The characters '*' and ',' are not supported in key of watched settings.");
+                        throw new ArgumentError("The characters '*' and ',' are not supported in key of watched settings.");
                     }
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                        throw new Error("The characters '*' and ',' are not supported in label of watched settings.");
+                        throw new ArgumentError("The characters '*' and ',' are not supported in label of watched settings.");
                     }
                     this.#sentinels.push(setting);
                 }
@@ -145,7 +153,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new Error(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 } else {
                     this.#kvRefreshInterval = refreshIntervalInMs;
                 }
@@ -166,7 +174,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new Error(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                     } else {
                         this.#ffRefreshInterval = refreshIntervalInMs;
                     }
@@ -201,7 +209,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             isCdnUsed: this.#isCdnUsed,
             featureFlagTracing: this.#featureFlagTracing,
-            fmVersion: this.#fmVersion
+            fmVersion: this.#fmVersion,
+            aiConfigurationTracing: this.#aiConfigurationTracing
         };
     }
 
@@ -244,39 +253,40 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @internal
      */
     async load() {
-        await this.#inspectFmPackage();
-        await this.#loadSelectedAndWatchedKeyValues();
-
-        if (this.#featureFlagEnabled) {
-            await this.#loadFeatureFlags();
-        }
-
-        if (this.#isCdnUsed) {
-            if (this.#watchAll) { // collection monitoring based refresh
-                // use the first page etag of the first kv selector
-                const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
-                if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                    this.#kvSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
-                } else {
-                    this.#kvSelectorCollection.cdnCacheBreakString = undefined;
+        const startTimestamp = Date.now();
+        const startupTimeout: number = this.#options?.startupOptions?.timeoutInMs ?? DEFAULT_STARTUP_TIMEOUT_IN_MS;
+        const abortController = new AbortController();
+        const abortSignal = abortController.signal;
+        let timeoutId;
+        try {
+            // Promise.race will be settled when the first promise in the list is settled.
+            // It will not cancel the remaining promises in the list.
+            // To avoid memory leaks, we must ensure other promises will be eventually terminated.
+            await Promise.race([
+                this.#initializeWithRetryPolicy(abortSignal),
+                // this promise will be rejected after timeout
+                new Promise((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        abortController.abort(); // abort the initialization promise
+                        reject(new Error("Load operation timed out."));
+                    },
+                    startupTimeout);
+                })
+            ]);
+        } catch (error) {
+            if (!isInputError(error)) {
+                const timeElapsed = Date.now() - startTimestamp;
+                if (timeElapsed < MIN_DELAY_FOR_UNHANDLED_FAILURE) {
+                    // load() method is called in the application's startup code path.
+                    // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
+                    // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
+                    await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
-            } else if (this.#refreshEnabled) { // watched settings based refresh
-                // use the etag of the first watched setting (sentinel)
-                this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
             }
-
-            if (this.#featureFlagRefreshEnabled) {
-                const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
-                if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                    this.#ffSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
-                } else {
-                    this.#ffSelectorCollection.cdnCacheBreakString = undefined;
-                }
-            }
+            throw new Error("Failed to load.", { cause: error });
+        } finally {
+            clearTimeout(timeoutId); // cancel the timeout promise
         }
-
-        // mark all settings have loaded at startup.
-        this.#isInitialLoadCompleted = true;
     }
 
     /**
@@ -286,7 +296,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const separator = options?.separator ?? ".";
         const validSeparators = [".", ",", ";", "-", "_", "__", "/", ":"];
         if (!validSeparators.includes(separator)) {
-            throw new Error(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
+            throw new ArgumentError(`Invalid separator '${separator}'. Supported values: ${validSeparators.map(s => `'${s}'`).join(", ")}.`);
         }
 
         // construct hierarchical data object from map
@@ -299,7 +309,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const segment = segments[i];
                 // undefined or empty string
                 if (!segment) {
-                    throw new Error(`invalid key: ${key}`);
+                    throw new InvalidOperationError(`Failed to construct configuration object: Invalid key: ${key}`);
                 }
                 // create path if not exist
                 if (current[segment] === undefined) {
@@ -307,14 +317,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 // The path has been occupied by a non-object value, causing ambiguity.
                 if (typeof current[segment] !== "object") {
-                    throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
+                    throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The path '${segments.slice(0, i + 1).join(separator)}' has been occupied.`);
                 }
                 current = current[segment];
             }
 
             const lastSegment = segments[segments.length - 1];
             if (current[lastSegment] !== undefined) {
-                throw new Error(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
+                throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
             }
             // set value to the last segment
             current[lastSegment] = value;
@@ -327,7 +337,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         if (this.#refreshInProgress) {
@@ -346,7 +356,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new Error("Refresh is not enabled for key-values or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -359,6 +369,67 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         };
         return new Disposable(remove);
+    }
+
+    /**
+     * Initializes the configuration provider.
+     */
+    async #initializeWithRetryPolicy(abortSignal: AbortSignal): Promise<void> {
+        if (!this.#isInitialLoadCompleted) {
+            await this.#inspectFmPackage();
+            const startTimestamp = Date.now();
+            let postAttempts = 0;
+            do { // at least try to load once
+                try {
+                    await this.#loadSelectedAndWatchedKeyValues();
+                    if (this.#featureFlagEnabled) {
+                        await this.#loadFeatureFlags();
+                    }
+
+                    if (this.#isCdnUsed) {
+                        if (this.#watchAll) { // collection monitoring based refresh
+                            // use the first page etag of the first kv selector
+                            const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
+                            if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
+                                this.#kvSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                            } else {
+                                this.#kvSelectorCollection.cdnCacheBreakString = undefined;
+                            }
+                        } else if (this.#refreshEnabled) { // watched settings based refresh
+                            // use the etag of the first watched setting (sentinel)
+                            this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
+                        }
+            
+                        if (this.#featureFlagRefreshEnabled) {
+                            const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
+                            if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
+                                this.#ffSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                            } else {
+                                this.#ffSelectorCollection.cdnCacheBreakString = undefined;
+                            }
+                        }
+                    }
+                    
+                    this.#isInitialLoadCompleted = true;
+                    break;
+                } catch (error) {
+                    if (isInputError(error)) {
+                        throw error;
+                    }
+                    if (abortSignal.aborted) {
+                        return;
+                    }
+                    const timeElapsed = Date.now() - startTimestamp;
+                    let backoffDuration = getFixedBackoffDuration(timeElapsed);
+                    if (backoffDuration === undefined) {
+                        postAttempts += 1;
+                        backoffDuration = getExponentialBackoffDuration(postAttempts);
+                    }
+                    console.warn(`Failed to load. Error message: ${error.message}. Retrying in ${backoffDuration} ms.`);
+                    await new Promise(resolve => setTimeout(resolve, backoffDuration));
+                }
+            } while (!abortSignal.aborted);
+        }
     }
 
     /**
@@ -474,9 +545,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
 
-        // process key-values, watched settings have higher priority
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            // Reset old AI configuration tracing in order to track the information present in the current response from server.
+            this.#aiConfigurationTracing.reset();
+        }
+
+        // adapt configuration settings to key-values
         for (const setting of loadedSettings) {
-            const [key, value] = await this.#processKeyValues(setting);
+            const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
 
@@ -523,6 +599,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
         const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+
+        if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
+            // Reset old feature flag tracing in order to track the information present in the current response from server.
+            this.#featureFlagTracing.reset();
+        }
 
         // parse feature flags
         const featureFlags = await Promise.all(
@@ -677,6 +758,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
+    // Only operations related to Azure App Configuration should be executed with failover policy.
     async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         let clientWrappers = await this.#clientManager.getClients();
         if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
@@ -716,13 +798,36 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("All clients failed to get configuration settings.");
+        throw new Error("All fallback clients failed to get configuration settings.");
     }
 
-    async #processKeyValues(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+    async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
+        this.#setAIConfigurationTracing(setting);
+
         const [key, value] = await this.#processAdapters(setting);
         const trimmedKey = this.#keyWithPrefixesTrimmed(key);
         return [trimmedKey, value];
+    }
+
+    #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
+        if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
+            const contentType = parseContentType(setting.contentType);
+            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\"""
+            if (isJsonContentType(contentType) &&
+                !isFeatureFlagContentType(contentType) &&
+                !isSecretReferenceContentType(contentType)) {
+                const profile = contentType?.parameters["profile"];
+                if (profile === undefined) {
+                    return;
+                }
+                if (profile.includes(AI_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIConfiguration = true;
+                }
+                if (profile.includes(AI_CHAT_COMPLETION_MIME_PROFILE)) {
+                    this.#aiConfigurationTracing.usesAIChatCompletionConfiguration = true;
+                }
+            }
+        }
     }
 
     async #processAdapters(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
@@ -748,7 +853,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
-            throw new Error("The value of configuration setting cannot be undefined.");
+            throw new ArgumentError("The value of configuration setting cannot be undefined.");
         }
         const featureFlag = JSON.parse(rawFlag);
 
@@ -760,13 +865,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
-                [FEATURE_FLAG_ID_KEY_NAME]: await this.#calculateFeatureFlagId(setting),
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
                 ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
         }
 
+        this.#setFeatureFlagTracing(featureFlag);
+
+        return featureFlag;
+    }
+
+    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
+        if (setting.label && setting.label.trim().length !== 0) {
+            featureFlagReference += `?label=${setting.label}`;
+        }
+        return featureFlagReference;
+    }
+
+    #setFeatureFlagTracing(featureFlag: any): void {
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             if (featureFlag[CONDITIONS_KEY_NAME] &&
                 featureFlag[CONDITIONS_KEY_NAME][CLIENT_FILTERS_KEY_NAME] &&
@@ -785,66 +903,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#featureFlagTracing.usesSeed = true;
             }
         }
-
-        return featureFlag;
-    }
-
-    async #calculateFeatureFlagId(setting: ConfigurationSetting<string>): Promise<string> {
-        let crypto;
-
-        // Check for browser environment
-        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-            crypto = window.crypto;
-        }
-        // Check for Node.js environment
-        else if (typeof global !== "undefined" && global.crypto) {
-            crypto = global.crypto;
-        }
-        // Fallback to native Node.js crypto module
-        else {
-            try {
-                if (typeof module !== "undefined" && module.exports) {
-                    crypto = require("crypto");
-                }
-                else {
-                    crypto = await import("crypto");
-                }
-            } catch (error) {
-                console.error("Failed to load the crypto module:", error.message);
-                throw error;
-            }
-        }
-
-        let baseString = `${setting.key}\n`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            baseString += `${setting.label}`;
-        }
-
-        // Convert to UTF-8 encoded bytes
-        const data = new TextEncoder().encode(baseString);
-
-        // In the browser, use crypto.subtle.digest
-        if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-            const hashArray = new Uint8Array(hashBuffer);
-            // btoa/atob is also available in Node.js 18+
-            const base64String = btoa(String.fromCharCode(...hashArray));
-            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            return base64urlString;
-        }
-        // In Node.js, use the crypto module's hash function
-        else {
-            const hash = crypto.createHash("sha256").update(data).digest();
-            return hash.toString("base64url");
-        }
-    }
-
-    #createFeatureFlagReference(setting: ConfigurationSetting<string>): string {
-        let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
-        if (setting.label && setting.label.trim().length !== 0) {
-            featureFlagReference += `?label=${setting.label}`;
-        }
-        return featureFlagReference;
     }
 
     async #generateAllocationId(featureFlag: any): Promise<string> {
@@ -972,13 +1030,13 @@ function getValidSelectors(selectors: SettingSelector[]): SettingSelector[] {
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (!selector.keyFilter) {
-            throw new Error("Key filter cannot be null or empty.");
+            throw new ArgumentError("Key filter cannot be null or empty.");
         }
         if (!selector.labelFilter) {
             selector.labelFilter = LabelFilter.Null;
         }
         if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-            throw new Error("The characters '*' and ',' are not supported in label filters.");
+            throw new ArgumentError("The characters '*' and ',' are not supported in label filters.");
         }
         return selector;
     });
@@ -1001,10 +1059,4 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
     });
     return getValidSelectors(selectors);
-}
-
-function isFailoverableError(error: any): boolean {
-    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    return isRestError(error) && (error.code === "ENOTFOUND" || error.code === "ENOENT" ||
-        (error.statusCode !== undefined && (error.statusCode === 401 || error.statusCode === 403 || error.statusCode === 408 || error.statusCode === 429 || error.statusCode >= 500)));
 }
