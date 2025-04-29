@@ -58,6 +58,8 @@ import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
+const MAX_TAG_FILTERS = 5;
+
 type PagedSettingSelector = SettingSelector & {
     /**
      * Key: page eTag, Value: feature flag configurations
@@ -468,7 +470,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (selector.snapshotName === undefined) {
                     const listOptions: ListConfigurationSettingsOptions = {
                         keyFilter: selector.keyFilter,
-                        labelFilter: selector.labelFilter
+                        labelFilter: selector.labelFilter,
+                        tagsFilter: selector.tagFilters
                     };
                     const pageEtags: string[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
@@ -671,6 +674,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
+                    tagsFilter: selector.tagFilters,
                     pageEtags: selector.pageEtags
                 };
 
@@ -889,7 +893,11 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
     // below code deduplicates selectors, the latter selector wins
     const uniqueSelectors: SettingSelector[] = [];
     for (const selector of selectors) {
-        const existingSelectorIndex = uniqueSelectors.findIndex(s => s.keyFilter === selector.keyFilter && s.labelFilter === selector.labelFilter && s.snapshotName === selector.snapshotName);
+        const existingSelectorIndex = uniqueSelectors.findIndex(
+            s => s.keyFilter === selector.keyFilter &&
+                s.labelFilter === selector.labelFilter &&
+                s.snapshotName === selector.snapshotName &&
+                areTagFiltersEqual(s.tagFilters, selector.tagFilters));
         if (existingSelectorIndex >= 0) {
             uniqueSelectors.splice(existingSelectorIndex, 1);
         }
@@ -899,11 +907,11 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
     return uniqueSelectors.map(selectorCandidate => {
         const selector = { ...selectorCandidate };
         if (selector.snapshotName) {
-            if (selector.keyFilter || selector.labelFilter) {
-                throw new ArgumentError("Key or label filter should not be used for a snapshot.");
+            if (selector.keyFilter || selector.labelFilter || selector.tagFilters) {
+                throw new ArgumentError("Key, label or tag filter should not be used for a snapshot.");
             }
         } else {
-            if (!selector.keyFilter) {
+            if (!selector.keyFilter && (!selector.tagFilters || selector.tagFilters.length === 0)) {
                 throw new ArgumentError("Key filter cannot be null or empty.");
             }
             if (!selector.labelFilter) {
@@ -912,9 +920,29 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
             if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
                 throw new ArgumentError("The characters '*' and ',' are not supported in label filters.");
             }
+            if (selector.tagFilters) {
+                validateTagFilters(selector.tagFilters);
+            }
         }
         return selector;
     });
+}
+
+function areTagFiltersEqual(tagsA?: string[], tagsB?: string[]): boolean {
+    if (!tagsA && !tagsB) {
+        return true;
+    }
+    if (!tagsA || !tagsB) {
+        return false;
+    }
+    if (tagsA.length !== tagsB.length) {
+        return false;
+    }
+
+    const sortedStringA = [...tagsA].sort().join("\n");
+    const sortedStringB = [...tagsB].sort().join("\n");
+
+    return sortedStringA === sortedStringB;
 }
 
 function getValidKeyValueSelectors(selectors?: SettingSelector[]): SettingSelector[] {
@@ -934,4 +962,16 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
     });
     return getValidSettingSelectors(selectors);
+}
+
+function validateTagFilters(tagFilters: string[]): void {
+    if (tagFilters.length > MAX_TAG_FILTERS) {
+        throw new Error(`The number of tag filters cannot exceed ${MAX_TAG_FILTERS}.`);
+    }
+    for (const tagFilter of tagFilters) {
+        const res = tagFilter.split("=");
+        if (res[0] === "" || res.length !== 2) {
+            throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
+        }
+    }
 }
