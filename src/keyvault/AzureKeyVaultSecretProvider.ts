@@ -3,7 +3,7 @@
 
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { RefreshTimer } from "../refresh/RefreshTimer.js";
-import { ArgumentError } from "../error.js";
+import { ArgumentError } from "../common/error.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
 export class AzureKeyVaultSecretProvider {
@@ -68,8 +68,7 @@ export class AzureKeyVaultSecretProvider {
             return await this.#keyVaultOptions.secretResolver(new URL(sourceId));
         }
         // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
-        throw new ArgumentError("Failed to get secret value. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
-
+        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
     }
 
     #getSecretClient(vaultUrl: URL): SecretClient | undefined {

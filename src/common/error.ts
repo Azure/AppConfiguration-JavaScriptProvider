@@ -14,7 +14,7 @@ export class InvalidOperationError extends Error {
 }
 
 /**
- * Error thrown when an argument or configuration is invalid.
+ * Error thrown when an input argument is invalid.
  */
 export class ArgumentError extends Error {
     constructor(message: string) {
@@ -24,11 +24,11 @@ export class ArgumentError extends Error {
 }
 
 /**
- * Error thrown when it fails to get the secret from the Key Vault.
+ * Error thrown when a Key Vault reference cannot be resolved.
  */
 export class KeyVaultReferenceError extends Error {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
         this.name = "KeyVaultReferenceError";
     }
 }
@@ -37,8 +37,10 @@ export function isFailoverableError(error: any): boolean {
     if (!isRestError(error)) {
         return false;
     }
-    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory
-    if (error.code === "ENOTFOUND" || error.code === "ENOENT") {
+    // https://nodejs.org/api/errors.html#common-system-errors
+    // ENOTFOUND: DNS lookup failed, ENOENT: no such file or directory, ECONNREFUSED: connection refused, ECONNRESET: connection reset by peer, ETIMEDOUT: connection timed out
+    if (error.code !== undefined &&
+        (error.code === "ENOTFOUND" || error.code === "ENOENT" || error.code === "ECONNREFUSED" || error.code === "ECONNRESET" || error.code === "ETIMEDOUT")) {
         return true;
     }
     // 401 Unauthorized, 403 Forbidden, 408 Request Timeout, 429 Too Many Requests, 5xx Server Errors
@@ -50,19 +52,11 @@ export function isFailoverableError(error: any): boolean {
     return false;
 }
 
-export function isRetriableError(error: any): boolean {
-    if (isArgumentError(error) ||
-        error instanceof RangeError) {
-        return false;
-    }
-    return true;
-}
-
-export function isArgumentError(error: any): boolean {
-    if (error instanceof ArgumentError ||
+/**
+ * Check if the error is an instance of ArgumentError, TypeError, or RangeError.
+ */
+export function isInputError(error: any): boolean {
+    return error instanceof ArgumentError ||
         error instanceof TypeError ||
-        error instanceof RangeError) {
-        return true;
-    }
-    return false;
+        error instanceof RangeError;
 }

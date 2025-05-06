@@ -43,12 +43,20 @@ describe("startup", function () {
             [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
             failForAllAttempts);
 
-        await expect(load(createMockedConnectionString(), {
-            startupOptions: {
-                timeoutInMs: 5_000
-            }
-        })).to.be.rejectedWith("Load operation timed out.");
-        expect(attempt).eq(1);
+        try {
+            await load(createMockedConnectionString(), {
+                startupOptions: {
+                    timeoutInMs: 5_000
+                }
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Load operation timed out.");
+            expect(attempt).eq(1);
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should not retry on non-retriable TypeError", async () => {
@@ -61,12 +69,20 @@ describe("startup", function () {
             [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
             failForAllAttempts);
 
-        await expect(load(createMockedConnectionString(), {
-            startupOptions: {
-                timeoutInMs: 10_000
-            }
-        })).to.be.rejectedWith("Non-retriable Test Error");
-        expect(attempt).eq(1);
+        try {
+            await load(createMockedConnectionString(), {
+                startupOptions: {
+                    timeoutInMs: 10_000
+                }
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Non-retriable Test Error");
+            expect(attempt).eq(1);
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should not retry on non-retriable RangeError", async () => {
@@ -79,11 +95,19 @@ describe("startup", function () {
             [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)],
             failForAllAttempts);
 
-        await expect(load(createMockedConnectionString(), {
-            startupOptions: {
-                timeoutInMs: 10_000
-            }
-        })).to.be.rejectedWith("Non-retriable Test Error");
-        expect(attempt).eq(1);
+        try {
+            await load(createMockedConnectionString(), {
+                startupOptions: {
+                    timeoutInMs: 10_000
+                }
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Non-retriable Test Error");
+            expect(attempt).eq(1);
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 });

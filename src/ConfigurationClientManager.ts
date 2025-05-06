@@ -7,12 +7,12 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
-import { instanceOfTokenCredential, shuffleList } from "./common/utils.js";
-import { ArgumentError } from "./error.js";
+import { shuffleList, instanceOfTokenCredential } from "./common/utils.js";
+import { ArgumentError } from "./common/error.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
-const CLIENT_MAX_RETRY_DELAY = 60_000; // 1 minute in milliseconds
+const CLIENT_MAX_RETRY_DELAY_IN_MS = 60_000;
 
 const TCP_ORIGIN_KEY_NAME = "_origin._tcp";
 const ALT_KEY_NAME = "_alt";
@@ -21,9 +21,9 @@ const ENDPOINT_KEY_NAME = "Endpoint";
 const ID_KEY_NAME = "Id";
 const SECRET_KEY_NAME = "Secret";
 const TRUSTED_DOMAIN_LABELS = [".azconfig.", ".appconfig."];
-const FALLBACK_CLIENT_EXPIRE_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
-const MINIMAL_CLIENT_REFRESH_INTERVAL = 30_000; // 30 seconds in milliseconds
-const DNS_RESOLVER_TIMEOUT = 3_000; // 3 seconds in milliseconds, in most cases, dns resolution should be within 200 milliseconds
+const FALLBACK_CLIENT_EXPIRE_INTERVAL_IN_MS = 60 * 60 * 1000;
+const MINIMAL_CLIENT_REFRESH_INTERVAL_IN_MS = 30_000;
+const DNS_RESOLVER_TIMEOUT_IN_MS = 3_000;
 const DNS_RESOLVER_TRIES = 2;
 const MAX_ALTNATIVE_SRV_COUNT = 10;
 
@@ -120,11 +120,11 @@ export class ConfigurationClientManager {
         const currentTime = Date.now();
         // Filter static clients whose backoff time has ended
         let availableClients = this.#staticClients.filter(client => client.backoffEndTime <= currentTime);
-        if (currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL &&
+        if (currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL_IN_MS &&
             (!this.#dynamicClients ||
             // All dynamic clients are in backoff means no client is available
             this.#dynamicClients.every(client => currentTime < client.backoffEndTime) ||
-            currentTime >= this.#lastFallbackClientUpdateTime + FALLBACK_CLIENT_EXPIRE_INTERVAL)) {
+            currentTime >= this.#lastFallbackClientUpdateTime + FALLBACK_CLIENT_EXPIRE_INTERVAL_IN_MS)) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
             return availableClients.concat(this.#dynamicClients);
         }
@@ -142,7 +142,7 @@ export class ConfigurationClientManager {
     async refreshClients() {
         const currentTime = Date.now();
         if (this.#isFailoverable &&
-            currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL) {
+            currentTime >= this.#lastFallbackClientRefreshAttempt + MINIMAL_CLIENT_REFRESH_INTERVAL_IN_MS) {
             await this.#discoverFallbackClients(this.endpoint.hostname);
         }
     }
@@ -185,7 +185,7 @@ export class ConfigurationClientManager {
 
         try {
             // https://nodejs.org/api/dns.html#dnspromisesresolvesrvhostname
-            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT, tries: DNS_RESOLVER_TRIES});
+            const resolver = new this.#dns.Resolver({timeout: DNS_RESOLVER_TIMEOUT_IN_MS, tries: DNS_RESOLVER_TRIES});
             // On success, resolveSrv() returns an array of SrvRecord
             // On failure, resolveSrv() throws an error with code 'ENOTFOUND'.
             const originRecords = await resolver.resolveSrv(`${TCP_ORIGIN_KEY_NAME}.${host}`); // look up SRV records for the origin host
@@ -266,7 +266,7 @@ function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurat
     // retry options
     const defaultRetryOptions = {
         maxRetries: CLIENT_MAX_RETRIES,
-        maxRetryDelayInMs: CLIENT_MAX_RETRY_DELAY,
+        maxRetryDelayInMs: CLIENT_MAX_RETRY_DELAY_IN_MS,
     };
     const retryOptions = Object.assign({}, defaultRetryOptions, options?.clientOptions?.retryOptions);
 

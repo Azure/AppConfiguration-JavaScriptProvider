@@ -35,8 +35,8 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { getFixedBackoffDuration, calculateBackoffDuration } from "./failover.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isRetriableError, isArgumentError } from "./error.js";
+import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -258,7 +258,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 })
             ]);
         } catch (error) {
-            if (!isArgumentError(error)) {
+            if (!isInputError(error)) {
                 const timeElapsed = Date.now() - startTimestamp;
                 if (timeElapsed < MIN_DELAY_FOR_UNHANDLED_FAILURE) {
                     // load() method is called in the application's startup code path.
@@ -267,7 +267,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
             }
-            throw new Error(`Failed to load: ${error.message}`);
+            throw new Error("Failed to load.", { cause: error });
         } finally {
             clearTimeout(timeoutId); // cancel the timeout promise
         }
@@ -372,7 +372,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
-                    if (!isRetriableError(error)) {
+                    if (isInputError(error)) {
                         throw error;
                     }
                     if (abortSignal.aborted) {
@@ -382,7 +382,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     let backoffDuration = getFixedBackoffDuration(timeElapsed);
                     if (backoffDuration === undefined) {
                         postAttempts += 1;
-                        backoffDuration = calculateBackoffDuration(postAttempts);
+                        backoffDuration = getExponentialBackoffDuration(postAttempts);
                     }
                     console.warn(`Failed to load. Error message: ${error.message}. Retrying in ${backoffDuration} ms.`);
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
