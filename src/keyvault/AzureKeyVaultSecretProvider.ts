@@ -31,26 +31,34 @@ export class AzureKeyVaultSecretProvider {
     }
 
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
+        // The map key is a combination of sourceId and version: "{sourceId}\n{version}"
+        const identifierKey = `${secretIdentifier.sourceId}\n${secretIdentifier.version ?? ""}`;
         if (this.#refreshTimer && !this.#refreshTimer.canRefresh()) {
             // return the cached secret value if it exists
-            if (this.#cachedSecretValue.has(secretIdentifier.sourceId)) {
-                const cachedValue = this.#cachedSecretValue.get(secretIdentifier.sourceId);
+            if (this.#cachedSecretValue.has(identifierKey)) {
+                const cachedValue = this.#cachedSecretValue.get(identifierKey);
                 return cachedValue;
             }
             // not found in cache, get the secret value from key vault
             const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-            this.#cachedSecretValue.set(secretIdentifier.sourceId, secretValue);
+            this.#cachedSecretValue.set(identifierKey, secretValue);
             return secretValue;
         }
 
         // Always reload the secret value from key vault when the refresh timer expires.
         const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-        this.#cachedSecretValue.set(secretIdentifier.sourceId, secretValue);
+        this.#cachedSecretValue.set(identifierKey, secretValue);
         return secretValue;
     }
 
     clearCache(): void {
-        this.#cachedSecretValue.clear();
+        // If the secret identifier has specified a version, it is not removed from the cache.
+        // If the secret identifier has not specified a version, it means that the latest version should be used. Remove the cached value to force a reload.
+        for (const key of this.#cachedSecretValue.keys()) {
+            if (key.endsWith("\n")) {
+                this.#cachedSecretValue.delete(key);
+            }
+        }
     }
 
     async #getSecretValueFromKeyVault(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
