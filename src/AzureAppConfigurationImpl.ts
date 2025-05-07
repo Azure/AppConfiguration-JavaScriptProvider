@@ -340,7 +340,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, key vault secrets or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
         }
 
         const boundedListener = listener.bind(thisArg);
