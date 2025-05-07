@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, ConfigurationSettingId, GetConfigurationSettingOptions, GetConfigurationSettingResponse, ListConfigurationSettingsOptions, featureFlagPrefix, isFeatureFlag, isSecretReference } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
@@ -494,11 +494,22 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
+        const secretResolutionPromises: Promise<void>[] = [];
         // adapt configuration settings to key-values
         for (const setting of loadedSettings) {
+            if (isSecretReference(setting)) {
+                // resolve secret references asynchronously to improve performance
+                const secretResolutionPromise = this.#processKeyValue(setting).then(([key, value]) => {
+                    keyValues.push([key, value]);
+                });
+                secretResolutionPromises.push(secretResolutionPromise);
+                continue;
+            }
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
+        // wait for all secret resolution promises to be resolved
+        await Promise.all(secretResolutionPromises);
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
