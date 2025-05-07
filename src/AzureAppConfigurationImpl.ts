@@ -321,7 +321,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, key vault secrets or feature flags.");
+            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
         }
 
         if (this.#refreshInProgress) {
