@@ -155,7 +155,7 @@ describe("key vault secret refresh", function () {
                 secretRefreshIntervalInMs: 59999 // less than 60_000 milliseconds
             }
         });
-        return expect(loadWithInvalidSecretRefreshInterval).eventually.rejectedWith("The key vault secret refresh interval cannot be less than 60000 milliseconds.");
+        return expect(loadWithInvalidSecretRefreshInterval).eventually.rejectedWith("The Key Vault secret refresh interval cannot be less than 60000 milliseconds.");
     });
 
     it("should reload key vault secret when there is no change to key-values", async () => {
