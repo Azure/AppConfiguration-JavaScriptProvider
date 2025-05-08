@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { TokenCredential } from "@azure/identity";
-import { SecretClient } from "@azure/keyvault-secrets";
+import { SecretClient, SecretClientOptions } from "@azure/keyvault-secrets";
 
 /**
  * Options used to resolve Key Vault references.
@@ -17,6 +17,14 @@ export interface KeyVaultOptions {
      * Specifies the credentials used to authenticate to key vaults that have no applied SecretClient.
      */
     credential?: TokenCredential;
+
+    /**
+     * Configures the client options used when connecting to key vaults that have no registered SecretClient.
+     * 
+     * @remarks
+     * The client options will not affect the registered SecretClient instances.
+     */
+    clientOptions?: SecretClientOptions;
 
     /**
      * Specifies the callback used to resolve key vault references that have no applied SecretClient.
