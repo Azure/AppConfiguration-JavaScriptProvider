@@ -20,7 +20,7 @@ export interface KeyVaultOptions {
 
     /**
      * Configures the client options used when connecting to key vaults that have no registered SecretClient.
-     * 
+     *
      * @remarks
      * The client options will not affect the registered SecretClient instances.
      */
