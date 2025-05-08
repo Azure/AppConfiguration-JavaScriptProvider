@@ -31,21 +31,22 @@ export class AzureKeyVaultSecretProvider {
     }
 
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
-        // The map key is a combination of sourceId and version: "{sourceId}\n{version}"
+        // The map key is a combination of sourceId and version: "{sourceId}\n{version}".
         const identifierKey = `${secretIdentifier.sourceId}\n${secretIdentifier.version ?? ""}`;
-        if (this.#refreshTimer && !this.#refreshTimer.canRefresh()) {
-            // return the cached secret value if it exists
-            if (this.#cachedSecretValue.has(identifierKey)) {
-                const cachedValue = this.#cachedSecretValue.get(identifierKey);
-                return cachedValue;
-            }
-            // not found in cache, get the secret value from key vault
-            const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-            this.#cachedSecretValue.set(identifierKey, secretValue);
-            return secretValue;
+
+        // If the secret has a version, always use the cached value if available.
+        if (secretIdentifier.version && this.#cachedSecretValue.has(identifierKey)) {
+            return this.#cachedSecretValue.get(identifierKey);
         }
 
-        // Always reload the secret value from key vault when the refresh timer expires.
+        if (this.#refreshTimer && !this.#refreshTimer.canRefresh()) {
+            // If the refresh interval is not expired, return the cached value if available.
+            if (this.#cachedSecretValue.has(identifierKey)) {
+                return this.#cachedSecretValue.get(identifierKey);
+            }
+        }
+
+        // Fallback to fetching the secret value from Key Vault.
         const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
         this.#cachedSecretValue.set(identifierKey, secretValue);
         return secretValue;
