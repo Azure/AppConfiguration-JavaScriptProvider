@@ -1,0 +1,7 @@
+{
+    "dependencies": {
+      "@azure/app-configuration-provider": "../../",
+      "@azure/identity": "^4.1.0",
+      "dotenv": "^16.3.1"
+    }
+  }
