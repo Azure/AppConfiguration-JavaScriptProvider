@@ -80,7 +80,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         }
 
         if (this.#keyVaultOptions?.credential) {
-            client = new SecretClient(vaultUrl.toString(), this.#keyVaultOptions.credential);
+            client = new SecretClient(vaultUrl.toString(), this.#keyVaultOptions.credential, this.#keyVaultOptions.clientOptions);
             this.#secretClients.set(vaultUrl.host, client);
             return client;
         }
