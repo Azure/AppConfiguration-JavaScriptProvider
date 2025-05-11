@@ -408,14 +408,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
-        if (this.#refreshEnabled) {
-            refreshTasks.push(this.#refreshKeyValues());
+        if (this.#refreshEnabled || this.#secretRefreshEnabled) {
+            refreshTasks.push(
+                this.#refreshKeyValues()
+                .then(keyValueRefreshed => {
+                    // Only refresh secrets if key values didn't change and secret refresh is enabled
+                    // If key values are refreshed, all secret references will be refreshed as well.
+                    if (!keyValueRefreshed && this.#secretRefreshEnabled) {
+                        // Returns the refreshSecrets promise directly.
+                        // in a Promise chain, this automatically flattens nested Promises without requiring await.
+                        return this.#refreshSecrets();
+                    }
+                    return keyValueRefreshed;
+                })
+            );
         }
         if (this.#featureFlagRefreshEnabled) {
             refreshTasks.push(this.#refreshFeatureFlags());
-        }
-        if (this.#secretRefreshEnabled) {
-            refreshTasks.push(this.#refreshSecrets());
         }
 
         // wait until all tasks are either resolved or rejected
@@ -579,7 +588,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshKeyValues(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#kvRefreshTimer.canRefresh()) {
+        if (this.#kvRefreshTimer === undefined || !this.#kvRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -619,7 +628,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#ffRefreshTimer.canRefresh()) {
+        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -634,7 +643,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #refreshSecrets(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#secretRefreshTimer.canRefresh()) {
+        if (this.#secretRefreshTimer === undefined || !this.#secretRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
