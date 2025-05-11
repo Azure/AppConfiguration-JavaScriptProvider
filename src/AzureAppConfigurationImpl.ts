@@ -176,7 +176,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const { secretRefreshIntervalInMs } = options.keyVaultOptions;
             if (secretRefreshIntervalInMs !== undefined) {
                 if (secretRefreshIntervalInMs < MIN_SECRET_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The key vault secret refresh interval cannot be less than ${MIN_SECRET_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(`The Key Vault secret refresh interval cannot be less than ${MIN_SECRET_REFRESH_INTERVAL_IN_MS} milliseconds.`);
                 }
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
