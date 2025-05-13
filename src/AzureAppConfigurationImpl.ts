@@ -484,7 +484,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
-        const loadedSettings = await this.#loadConfigurationSettings();
+        const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
         if (this.#refreshEnabled && !this.#watchAll) {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
@@ -495,16 +495,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         const secretResolutionPromises: Promise<void>[] = [];
-        // adapt configuration settings to key-values
         for (const setting of loadedSettings) {
             if (isSecretReference(setting)) {
-                // resolve secret references asynchronously to improve performance
-                const secretResolutionPromise = this.#processKeyValue(setting).then(([key, value]) => {
-                    keyValues.push([key, value]);
-                });
+                // secret references are resolved asynchronously to improve performance
+                const secretResolutionPromise = this.#processKeyValue(setting)
+                    .then(([key, value]) => {
+                        keyValues.push([key, value]);
+                    });
                 secretResolutionPromises.push(secretResolutionPromise);
                 continue;
             }
+            // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
@@ -554,7 +555,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
-        const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+        const featureFlagSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings(loadFeatureFlag);
 
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
