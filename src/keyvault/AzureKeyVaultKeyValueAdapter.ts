@@ -5,7 +5,7 @@ import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@
 import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
 import { KeyVaultOptions } from "./KeyVaultOptions.js";
 import { ArgumentError, KeyVaultReferenceError } from "../common/error.js";
-import { SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { KeyVaultSecretIdentifier, SecretClient, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 import { isRestError } from "@azure/core-rest-pipeline";
 import { AuthenticationError } from "@azure/identity";
 
@@ -29,32 +29,28 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (!this.#keyVaultOptions) {
             throw new ArgumentError("Failed to process the Key Vault reference because Key Vault options are not configured.");
         }
-        let secretName, vaultUrl, sourceId, version;
+        let secretIdentifier: KeyVaultSecretIdentifier;
         try {
-            const { name: parsedName, vaultUrl: parsedVaultUrl, sourceId: parsedSourceId, version: parsedVersion } = parseKeyVaultSecretIdentifier(
+            secretIdentifier = parseKeyVaultSecretIdentifier(
                 parseSecretReference(setting).value.secretId
             );
-            secretName = parsedName;
-            vaultUrl = parsedVaultUrl;
-            sourceId = parsedSourceId;
-            version = parsedVersion;
         } catch (error) {
             throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Invalid Key Vault reference.", setting), { cause: error });
         }
 
         try {
             // precedence: secret clients > credential > secret resolver
-            const client = this.#getSecretClient(new URL(vaultUrl));
+            const client = this.#getSecretClient(new URL(secretIdentifier.vaultUrl));
             if (client) {
-                const secret = await client.getSecret(secretName, { version });
+                const secret = await client.getSecret(secretIdentifier.name, { version: secretIdentifier.version });
                 return [setting.key, secret.value];
             }
             if (this.#keyVaultOptions.secretResolver) {
-                return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(sourceId))];
+                return [setting.key, await this.#keyVaultOptions.secretResolver(new URL(secretIdentifier.sourceId))];
             }
         } catch (error) {
             if (isRestError(error) || error instanceof AuthenticationError) {
-                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, sourceId), { cause: error });
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, secretIdentifier.sourceId), { cause: error });
             }
             throw error;
         }
@@ -84,7 +80,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         }
 
         if (this.#keyVaultOptions?.credential) {
-            client = new SecretClient(vaultUrl.toString(), this.#keyVaultOptions.credential);
+            client = new SecretClient(vaultUrl.toString(), this.#keyVaultOptions.credential, this.#keyVaultOptions.clientOptions);
             this.#secretClients.set(vaultUrl.host, client);
             return client;
         }
