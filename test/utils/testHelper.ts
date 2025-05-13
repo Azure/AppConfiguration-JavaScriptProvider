@@ -26,6 +26,7 @@ function _sha256(input) {
 function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     const keyFilter = listOptions?.keyFilter ?? "*";
     const labelFilter = listOptions?.labelFilter ?? "*";
+    const tagsFilter = listOptions?.tagsFilter ?? [];
     return unfilteredKvs.filter(kv => {
         const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, -1)) : kv.key === keyFilter;
         let labelMatched = false;
@@ -38,7 +39,14 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
         } else {
             labelMatched = kv.label === labelFilter;
         }
-        return keyMatched && labelMatched;
+        let tagsMatched = true;
+        if (tagsFilter.length > 0) {
+            tagsMatched = tagsFilter.every(tag => {
+                const [tagName, tagValue] = tag.split("=");
+                return kv.tags && kv.tags[tagName] === tagValue;
+            });
+        }
+        return keyMatched && labelMatched && tagsMatched;
     });
 }
 
@@ -233,8 +241,7 @@ const createMockedKeyVaultReference = (key: string, vaultUri: string): Configura
     key,
     contentType: "application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8",
     lastModified: new Date(),
-    tags: {
-    },
+    tags: {},
     etag: uuid.v4(),
     isReadOnly: false,
 });
