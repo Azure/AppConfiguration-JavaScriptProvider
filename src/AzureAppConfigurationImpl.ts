@@ -91,6 +91,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #secretRefreshEnabled: boolean = false;
     #secretReferences: ConfigurationSetting[] = []; // cached key vault references
     #secretRefreshTimer: RefreshTimer;
+    #resolveSecretInParallel: boolean = false;
+
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
@@ -181,6 +183,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
             }
+            this.#resolveSecretInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled ?? false;
         }
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
         this.#adapters.push(new JsonKeyValueAdapter());
@@ -504,7 +507,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadSelectedAndWatchedKeyValues() {
         this.#secretReferences = []; // clear all cached key vault reference configuration settings
         const keyValues: [key: string, value: unknown][] = [];
-        const loadedSettings = await this.#loadConfigurationSettings();
+        const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
         if (this.#refreshEnabled && !this.#watchAll) {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
@@ -514,13 +517,29 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
-        // adapt configuration settings to key-values
+        const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
-            if (this.#secretRefreshEnabled && isSecretReference(setting)) {
-                this.#secretReferences.push(setting);
+            if (isSecretReference(setting)) {
+                if (this.#secretRefreshEnabled) {
+                    this.#secretReferences.push(setting);
+                }
+                if (this.#resolveSecretInParallel) {
+                    // secret references are resolved asynchronously to improve performance
+                    const secretResolutionPromise = this.#processKeyValue(setting)
+                        .then(([key, value]) => {
+                            keyValues.push([key, value]);
+                        });
+                    secretResolutionPromises.push(secretResolutionPromise);
+                    continue;
+                }
             }
+            // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
+        }
+        if (secretResolutionPromises.length > 0) {
+            // wait for all secret resolution promises to be resolved
+            await Promise.all(secretResolutionPromises);
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -566,7 +585,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
-        const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+        const featureFlagSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings(loadFeatureFlag);
 
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
