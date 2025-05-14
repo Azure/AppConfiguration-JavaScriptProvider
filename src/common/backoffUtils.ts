@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-const MIN_BACKOFF_DURATION = 30_000; // 30 seconds in milliseconds
-const MAX_BACKOFF_DURATION = 10 * 60 * 1000; // 10 minutes in milliseconds
+const MIN_BACKOFF_DURATION_IN_MS = 30_000;
+const MAX_BACKOFF_DURATION_IN_MS = 10 * 60 * 1000;
 const JITTER_RATIO = 0.25;
 
 export function getFixedBackoffDuration(timeElapsedInMs: number): number | undefined {
@@ -13,21 +13,21 @@ export function getFixedBackoffDuration(timeElapsedInMs: number): number | undef
         return 10_000;
     }
     if (timeElapsedInMs < 10 * 60 * 1000) {
-        return MIN_BACKOFF_DURATION;
+        return MIN_BACKOFF_DURATION_IN_MS;
     }
     return undefined;
 }
 
 export function getExponentialBackoffDuration(failedAttempts: number): number {
     if (failedAttempts <= 1) {
-        return MIN_BACKOFF_DURATION;
+        return MIN_BACKOFF_DURATION_IN_MS;
     }
 
     // exponential: minBackoff * 2 ^ (failedAttempts - 1)
     // The right shift operator is not used in order to avoid potential overflow. Bitwise operations in JavaScript are limited to 32 bits.
-    let calculatedBackoffDuration = MIN_BACKOFF_DURATION * Math.pow(2, failedAttempts - 1);
-    if (calculatedBackoffDuration > MAX_BACKOFF_DURATION) {
-        calculatedBackoffDuration = MAX_BACKOFF_DURATION;
+    let calculatedBackoffDuration = MIN_BACKOFF_DURATION_IN_MS * Math.pow(2, failedAttempts - 1);
+    if (calculatedBackoffDuration > MAX_BACKOFF_DURATION_IN_MS) {
+        calculatedBackoffDuration = MAX_BACKOFF_DURATION_IN_MS;
     }
 
     // jitter: random value between [-1, 1) * jitterRatio * calculatedBackoffMs
