@@ -84,7 +84,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #ffRefreshTimer: RefreshTimer;
 
     // Key Vault references
-    #resolveSecretInParallel: boolean = false;
+    #resolveSecretsInParallel: boolean = false;
 
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
@@ -167,7 +167,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (options?.keyVaultOptions?.parallelSecretResolutionEnabled) {
-            this.#resolveSecretInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled;
+            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled;
         }
 
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
@@ -503,7 +503,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
-            if (this.#resolveSecretInParallel && isSecretReference(setting)) {
+            if (this.#resolveSecretsInParallel && isSecretReference(setting)) {
                 // secret references are resolved asynchronously to improve performance
                 const secretResolutionPromise = this.#processKeyValue(setting)
                     .then(([key, value]) => {
