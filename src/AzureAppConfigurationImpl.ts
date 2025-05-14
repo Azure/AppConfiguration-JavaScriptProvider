@@ -527,9 +527,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             keyValues.push([key, value]);
         }
 
-        await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
-            keyValues.push([key, value]);
-        });
+        if (this.#secretReferences.length > 0) {
+            await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
+                keyValues.push([key, value]);
+            });
+        }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
@@ -771,10 +773,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
-        if (secretReferences.length === 0) {
-            return;
-        }
-
         if (this.#resolveSecretsInParallel) {
             const secretResolutionPromises: Promise<void>[] = [];
             for (const setting of secretReferences) {
