@@ -515,7 +515,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
-        } 
+        }
         if (secretResolutionPromises.length > 0) {
             // wait for all secret resolution promises to be resolved
             await Promise.all(secretResolutionPromises);
