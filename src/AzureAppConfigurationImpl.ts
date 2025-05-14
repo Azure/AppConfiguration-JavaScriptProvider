@@ -517,19 +517,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
-        const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
             if (isSecretReference(setting)) {
-                if (this.#secretRefreshEnabled) {
-                    this.#secretReferences.push(setting);
-                }
+                this.#secretReferences.push(setting); // cache secret references for resolve/refresh secret separately
                 if (this.#resolveSecretInParallel) {
-                    // secret references are resolved asynchronously to improve performance
-                    const secretResolutionPromise = this.#processKeyValue(setting)
-                        .then(([key, value]) => {
-                            keyValues.push([key, value]);
-                        });
-                    secretResolutionPromises.push(secretResolutionPromise);
                     continue;
                 }
             }
@@ -537,9 +528,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
-        if (secretResolutionPromises.length > 0) {
-            // wait for all secret resolution promises to be resolved
-            await Promise.all(secretResolutionPromises);
+        
+        if (this.#resolveSecretInParallel) {
+            await this.#resolveSecretsInParallel(this.#secretReferences, (key, value) => {
+                keyValues.push([key, value]);
+            });
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -666,9 +659,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        for (const setting of this.#secretReferences) {
-            const [key, value] = await this.#processKeyValue(setting);
-            this.#configMap.set(key, value);
+        // if no cached key vault references, return
+        if (this.#secretReferences.length === 0) {
+            return Promise.resolve(false);
+        }
+
+        if (this.#resolveSecretInParallel) {
+            await this.#resolveSecretsInParallel(this.#secretReferences, (key, value) => {
+                this.#configMap.set(key, value);
+            });
+        } else {
+            for (const setting of this.#secretReferences) {
+                const [key, value] = await this.#processKeyValue(setting);
+                this.#configMap.set(key, value);
+            }
         }
 
         this.#secretRefreshTimer.reset();
@@ -775,6 +779,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         this.#clientManager.refreshClients();
         throw new Error("All fallback clients failed to get configuration settings.");
+    }
+
+    async #resolveSecretsInParallel(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
+        if (secretReferences.length === 0) {
+            return;
+        }
+
+        const secretResolutionPromises: Promise<void>[] = [];
+        for (const setting of secretReferences) {
+            const secretResolutionPromise = this.#processKeyValue(setting)
+                .then(([key, value]) => {
+                    resultHandler(key, value);
+                });
+            secretResolutionPromises.push(secretResolutionPromise);
+        }
+
+        // Wait for all secret resolution promises to be resolved
+        await Promise.all(secretResolutionPromises);
     }
 
     async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
