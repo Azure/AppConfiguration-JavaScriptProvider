@@ -32,4 +32,12 @@ export interface KeyVaultOptions {
      * @returns The secret value.
      */
     secretResolver?: (keyVaultReference: URL) => string | Promise<string>;
+
+    /**
+     * Specifies whether to resolve the secret value in parallel.
+     *
+     * @remarks
+     * If not specified, the default value is false.
+     */
+    parallelSecretResolutionEnabled?: boolean;
 }

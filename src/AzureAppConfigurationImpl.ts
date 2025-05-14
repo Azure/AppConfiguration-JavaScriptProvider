@@ -83,6 +83,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
 
+    // Key Vault references
+    #resolveSecretInParallel: boolean = false;
+
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
@@ -161,6 +164,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 this.#ffRefreshTimer = new RefreshTimer(this.#ffRefreshInterval);
             }
+        }
+
+        if (options?.keyVaultOptions?.parallelSecretResolutionEnabled) {
+            this.#resolveSecretInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled;
         }
 
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
@@ -496,7 +503,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
-            if (isSecretReference(setting)) {
+            if (this.#resolveSecretInParallel && isSecretReference(setting)) {
                 // secret references are resolved asynchronously to improve performance
                 const secretResolutionPromise = this.#processKeyValue(setting)
                     .then(([key, value]) => {
@@ -508,9 +515,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
+        } 
+        if (secretResolutionPromises.length > 0) {
+            // wait for all secret resolution promises to be resolved
+            await Promise.all(secretResolutionPromises);
         }
-        // wait for all secret resolution promises to be resolved
-        await Promise.all(secretResolutionPromises);
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
         for (const [k, v] of keyValues) {
