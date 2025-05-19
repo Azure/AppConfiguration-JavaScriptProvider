@@ -75,7 +75,7 @@ export enum LabelFilter {
  */
 export enum TagFilter {
     /**
-     * Matches key-values without a label.
+     * Represents empty tag value.
      */
     Null = ""
 }
