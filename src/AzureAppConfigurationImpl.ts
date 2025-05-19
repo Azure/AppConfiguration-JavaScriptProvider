@@ -931,7 +931,9 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
     }
     selectors.forEach(selector => {
-        selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+        if (selector.keyFilter) {
+            selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+        }
     });
     return getValidSettingSelectors(selectors);
 }

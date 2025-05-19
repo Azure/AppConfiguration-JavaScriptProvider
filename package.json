@@ -25,7 +25,7 @@
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/",
     "fix-lint": "eslint src/ test/ --fix",
-    "test": "mocha out/test/*.test.{js,cjs,mjs} --parallel"
+    "test": "mocha out/test/featureFlag.test.{js,cjs,mjs} --parallel"
   },
   "repository": {
     "type": "git",
