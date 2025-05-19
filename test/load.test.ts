@@ -136,6 +136,25 @@ describe("load", function () {
         return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid URL");
     });
 
+    it("should throw error given invalid selector", async () => {
+        const connectionString = createMockedConnectionString();
+        return expect(load(connectionString, {
+            selectors: [{
+                labelFilter: "\0"
+            }]
+        })).eventually.rejectedWith("Key filter cannot be null or empty.");
+    });
+
+    it("should throw error given invalid snapshot selector", async () => {
+        const connectionString = createMockedConnectionString();
+        return expect(load(connectionString, {
+            selectors: [{
+                snapshotName: "Test",
+                labelFilter: "\0"
+            }]
+        })).eventually.rejectedWith("Key or label filter should not be used for a snapshot.");
+    });
+
     it("should not include feature flags directly in the settings", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
@@ -470,7 +489,7 @@ describe("load", function () {
         }).to.throw("Invalid separator '%'. Supported values: '.', ',', ';', '-', '_', '__', '/', ':'.");
     });
 
-    it("should load from snapshot", async () => {
+    it("should load key values from snapshot", async () => {
         const snapshotName = "Test";
         mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
         mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)]);

@@ -127,4 +127,16 @@ describe("key vault reference", function () {
         expect(settings.get("TestKey")).eq("SecretValue");
         expect(settings.get("TestKey2")).eq("SecretValue2");
     });
+
+    it("should resolve key vault reference in parallel", async () => {
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                credential: createMockedTokenCredential(),
+                parallelSecretResolutionEnabled: true
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("SecretValue");
+        expect(settings.get("TestKeyFixedVersion")).eq("OldSecretValue");
+    });
 });

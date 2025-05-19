@@ -10,6 +10,7 @@ import {
     ListConfigurationSettingsOptions,
     featureFlagPrefix,
     isFeatureFlag,
+    isSecretReference,
     GetSnapshotOptions,
     GetSnapshotResponse,
     KnownSnapshotComposition
@@ -104,6 +105,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
 
+    // Key Vault references
+    #resolveSecretsInParallel: boolean = false;
+
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
@@ -182,6 +186,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 this.#ffRefreshTimer = new RefreshTimer(this.#ffRefreshInterval);
             }
+        }
+
+        if (options?.keyVaultOptions?.parallelSecretResolutionEnabled) {
+            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled;
         }
 
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
@@ -529,7 +537,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadSelectedAndWatchedKeyValues() {
         const keyValues: [key: string, value: unknown][] = [];
-        const loadedSettings = await this.#loadConfigurationSettings();
+        const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
         if (this.#refreshEnabled && !this.#watchAll) {
             await this.#updateWatchedKeyValuesEtag(loadedSettings);
         }
@@ -539,10 +547,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
-        // adapt configuration settings to key-values
+        const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
+            if (this.#resolveSecretsInParallel && isSecretReference(setting)) {
+                // secret references are resolved asynchronously to improve performance
+                const secretResolutionPromise = this.#processKeyValue(setting)
+                    .then(([key, value]) => {
+                        keyValues.push([key, value]);
+                    });
+                secretResolutionPromises.push(secretResolutionPromise);
+                continue;
+            }
+            // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
+        }
+        if (secretResolutionPromises.length > 0) {
+            // wait for all secret resolution promises to be resolved
+            await Promise.all(secretResolutionPromises);
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -588,7 +610,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
-        const featureFlagSettings = await this.#loadConfigurationSettings(loadFeatureFlag);
+        const featureFlagSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings(loadFeatureFlag);
 
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
@@ -959,7 +981,9 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
         return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
     }
     selectors.forEach(selector => {
-        selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+        if (selector.keyFilter) {
+            selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
+        }
     });
     return getValidSettingSelectors(selectors);
 }
