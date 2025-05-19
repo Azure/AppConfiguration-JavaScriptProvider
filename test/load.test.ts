@@ -126,7 +126,7 @@ describe("load", function () {
         const connectionString = createMockedConnectionString();
         return expect(load(connectionString, {
             selectors: [{
-                labelFilter: "\0" 
+                labelFilter: "\0"
             }]
         })).eventually.rejectedWith("Key filter cannot be null or empty.");
     });
@@ -136,7 +136,7 @@ describe("load", function () {
         return expect(load(connectionString, {
             selectors: [{
                 snapshotName: "Test",
-                labelFilter: "\0" 
+                labelFilter: "\0"
             }]
         })).eventually.rejectedWith("Key or label filter should not be used for a snapshot.");
     });
