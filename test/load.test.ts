@@ -322,7 +322,6 @@ describe("load", function () {
         return expect(loadWithInvalidTagFilter).to.eventually.rejectedWith("Tag filter must follow the format \"tagName=tagValue\"");
     });
 
-
     it("should override config settings with same key but different label", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
