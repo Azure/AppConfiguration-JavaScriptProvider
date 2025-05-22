@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -114,12 +114,31 @@ describe("load", function () {
     });
 
     it("should throw error given invalid connection string", async () => {
-        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string.");
+        return expect(load("invalid-connection-string")).eventually.rejectedWith("Invalid connection string");
     });
 
     it("should throw error given invalid endpoint URL", async () => {
         const credential = createMockedTokenCredential();
-        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid endpoint URL.");
+        return expect(load("invalid-endpoint-url", credential)).eventually.rejectedWith("Invalid URL");
+    });
+
+    it("should throw error given invalid selector", async () => {
+        const connectionString = createMockedConnectionString();
+        return expect(load(connectionString, {
+            selectors: [{
+                labelFilter: "\0"
+            }]
+        })).eventually.rejectedWith("Key filter cannot be null or empty.");
+    });
+
+    it("should throw error given invalid snapshot selector", async () => {
+        const connectionString = createMockedConnectionString();
+        return expect(load(connectionString, {
+            selectors: [{
+                snapshotName: "Test",
+                labelFilter: "\0"
+            }]
+        })).eventually.rejectedWith("Key or label filter should not be used for a snapshot.");
     });
 
     it("should not include feature flags directly in the settings", async () => {
@@ -359,7 +378,7 @@ describe("load", function () {
      * When constructConfigurationObject() is called, it first constructs from key "app5.settings.fontColor" and then from key "app5.settings".
      * An error will be thrown when constructing from key "app5.settings" because there is ambiguity between the two keys.
      */
-    it("Edge case 1: Hierarchical key-value pairs with overlapped key prefix.", async () => {
+    it("Edge case 2: Hierarchical key-value pairs with overlapped key prefix.", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
@@ -417,5 +436,21 @@ describe("load", function () {
             // @ts-ignore
             settings.constructConfigurationObject({ separator: "%" });
         }).to.throw("Invalid separator '%'. Supported values: '.', ',', ';', '-', '_', '__', '/', ':'.");
+    });
+
+    it("should load key values from snapshot", async () => {
+        const snapshotName = "Test";
+        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
+        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)]);
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                snapshotName: snapshotName
+            }]
+        });
+        expect(settings).not.undefined;
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("TestValue");
+        restoreMocks();
     });
 });

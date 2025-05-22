@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import { TokenCredential } from "@azure/identity";
-import { SecretClient } from "@azure/keyvault-secrets";
+import { SecretClient, SecretClientOptions } from "@azure/keyvault-secrets";
 
 /**
  * Options used to resolve Key Vault references.
@@ -19,9 +19,25 @@ export interface KeyVaultOptions {
     credential?: TokenCredential;
 
     /**
+     * Configures the client options used when connecting to key vaults that have no registered SecretClient.
+     *
+     * @remarks
+     * The client options will not affect the registered SecretClient instances.
+     */
+    clientOptions?: SecretClientOptions;
+
+    /**
      * Specifies the callback used to resolve key vault references that have no applied SecretClient.
      * @param keyVaultReference The Key Vault reference to resolve.
      * @returns The secret value.
      */
     secretResolver?: (keyVaultReference: URL) => string | Promise<string>;
+
+    /**
+     * Specifies whether to resolve the secret value in parallel.
+     *
+     * @remarks
+     * If not specified, the default value is false.
+     */
+    parallelSecretResolutionEnabled?: boolean;
 }

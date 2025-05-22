@@ -26,6 +26,7 @@ function mockNewlyCreatedKeyVaultSecretClients() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     mockSecretClientGetSecret(mockedData.map(([_key, secretUri, value]) => [secretUri, value]));
 }
+
 describe("key vault reference", function () {
     this.timeout(MAX_TIME_OUT);
 
@@ -39,7 +40,15 @@ describe("key vault reference", function () {
     });
 
     it("require key vault options to resolve reference", async () => {
-        return expect(load(createMockedConnectionString())).eventually.rejectedWith("Configure keyVaultOptions to resolve Key Vault Reference(s).");
+        try {
+            await load(createMockedConnectionString());
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Failed to process the Key Vault reference because Key Vault options are not configured.");
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should resolve key vault reference with credential", async () => {
@@ -88,14 +97,21 @@ describe("key vault reference", function () {
     });
 
     it("should throw error when secret clients not provided for all key vault references", async () => {
-        const loadKeyVaultPromise = load(createMockedConnectionString(), {
-            keyVaultOptions: {
-                secretClients: [
-                    new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
-                ]
-            }
-        });
-        return expect(loadKeyVaultPromise).eventually.rejectedWith("No key vault credential or secret resolver callback configured, and no matching secret client could be found.");
+        try {
+            await load(createMockedConnectionString(), {
+                keyVaultOptions: {
+                    secretClients: [
+                        new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
+                    ]
+                }
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should fallback to use default credential when corresponding secret client not provided", async () => {
@@ -110,5 +126,17 @@ describe("key vault reference", function () {
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("SecretValue");
         expect(settings.get("TestKey2")).eq("SecretValue2");
+    });
+
+    it("should resolve key vault reference in parallel", async () => {
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                credential: createMockedTokenCredential(),
+                parallelSecretResolutionEnabled: true
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("SecretValue");
+        expect(settings.get("TestKeyFixedVersion")).eq("OldSecretValue");
     });
 });
