@@ -500,10 +500,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 } else { // snapshot selector
                     const snapshot = await this.#getSnapshot(selector.snapshotName);
                     if (snapshot === undefined) {
-                        throw new Error(`Could not find snapshot with name ${selector.snapshotName}.`);
+                        throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
                     }
                     if (snapshot.compositionType != KnownSnapshotComposition.Key) {
-                        throw new Error(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
+                        throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
                     }
                     const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
                         this.#requestTraceOptions,
