@@ -142,7 +142,7 @@ describe("load", function () {
             selectors: [{
                 labelFilter: "\0"
             }]
-        })).eventually.rejectedWith("Key filter cannot be null or empty.");
+        })).eventually.rejectedWith("Key filter and tag filter cannot both be null or empty.");
     });
 
     it("should throw error given invalid snapshot selector", async () => {
@@ -152,7 +152,7 @@ describe("load", function () {
                 snapshotName: "Test",
                 labelFilter: "\0"
             }]
-        })).eventually.rejectedWith("Key or label filter should not be used for a snapshot.");
+        })).eventually.rejectedWith("Key, label or tag filter should not be used for a snapshot.");
     });
 
     it("should not include feature flags directly in the settings", async () => {
