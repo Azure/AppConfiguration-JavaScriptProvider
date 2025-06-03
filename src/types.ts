@@ -17,7 +17,7 @@ export type SettingSelector = {
      * For all other cases the characters: asterisk `*`, comma `,`, and backslash `\` are reserved. Reserved characters must be escaped using a backslash (\).
      * e.g. the key filter `a\\b\,\*c*` returns all key-values whose key starts with `a\b,*c`.
      */
-    keyFilter: string,
+    keyFilter?: string,
 
     /**
      * The label filter to apply when querying Azure App Configuration for key-values.
@@ -29,6 +29,15 @@ export type SettingSelector = {
      * @defaultValue `LabelFilter.Null`, matching key-values without a label.
      */
     labelFilter?: string
+
+    /**
+     * The name of snapshot to load from App Configuration.
+     *
+     * @remarks
+     * Snapshot is a set of key-values selected from the App Configuration store based on the composition type and filters. Once created, it is stored as an immutable entity that can be referenced by name.
+     * If snapshot name is used in a selector, no key and label filter should be used for it. Otherwise, an exception will be thrown.
+     */
+    snapshotName?: string
 };
 
 /**
