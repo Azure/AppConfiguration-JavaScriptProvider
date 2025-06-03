@@ -80,8 +80,6 @@ export async function loadFromCdn(
 
     appConfigOptions.clientOptions = {
         ...appConfigOptions.clientOptions,
-        // Specify the api version that supports sas token authentication
-        apiVersion: "2024-09-01-preview",
         // Add etag url policy to append etag to the request url for breaking CDN cache
         additionalPolicies: [
             ...(appConfigOptions.clientOptions?.additionalPolicies || []),
