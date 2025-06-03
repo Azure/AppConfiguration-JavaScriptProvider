@@ -162,6 +162,35 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList, customCallbac
     });
 }
 
+function mockAppConfigurationClientGetSnapshot(snapshotName: string, mockedResponse: any, customCallback?: (options) => any) {
+    sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
+        if (customCallback) {
+            customCallback(options);
+        }
+
+        if (name === snapshotName) {
+            return mockedResponse;
+        } else {
+            throw new RestError("", { statusCode: 404 });
+        }
+    });
+}
+
+function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName: string, pages: ConfigurationSetting[][], customCallback?: (options) => any) {
+    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
+        if (name === snapshotName) {
+            const kvs = _filterKVs(pages.flat(), listOptions);
+            return getMockedIterator(pages, kvs, listOptions);
+        } else {
+            throw new RestError("", { statusCode: 404 });
+        }
+    });
+}
+
 // uriValueList: [["<secretUri>", "value"], ...]
 function mockSecretClientGetSecret(uriValueList: [string, string][]) {
     const dict = new Map();
@@ -265,6 +294,8 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientGetConfigurationSetting,
+    mockAppConfigurationClientGetSnapshot,
+    mockAppConfigurationClientListConfigurationSettingsForSnapshot,
     mockAppConfigurationClientLoadBalanceMode,
     mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
