@@ -5,7 +5,7 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -396,5 +396,26 @@ describe("feature flags", function () {
         const Complete = (featureFlags as any[]).find(item => item.id === "Complete");
         expect(Complete).not.undefined;
         expect(Complete?.telemetry.metadata.AllocationId).equals("DER2rF-ZYog95c4CBZoi");
+    });
+
+    it("should load feature flags from snapshot", async () => {
+        const snapshotName = "Test";
+        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
+        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[createMockedFeatureFlag("TestFeature", { enabled: true })]]);
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { snapshotName: snapshotName } ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect((featureFlags as []).length).equals(1);
+        const featureFlag = featureFlags[0];
+        expect(featureFlag.id).equals("TestFeature");
+        expect(featureFlag.enabled).equals(true);
+        restoreMocks();
     });
 });
