@@ -23,7 +23,7 @@ import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
 import { Disposable } from "./common/disposable.js";
-import { base64Helper, jsonSorter } from "./common/utils.js";
+import { base64Helper, jsonSorter, getCryptoModule } from "./common/utils.js";
 import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
@@ -77,9 +77,10 @@ type SettingSelectorCollection = {
 
     /**
      * This is used to append to the request url for breaking the CDN cache.
-     * It uses the etag which has changed after the last refresh. It can either be a page etag or etag of a watched setting.
+     * It is a hash value calculated from all page etags.
+     * When the refresh is based on watched settings, the hash value will be calculated from the etags of all watched settings.
      */
-    cdnCacheBreakString?: string;
+    version?: string;
 }
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -418,21 +419,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                             // use the first page etag of the first kv selector
                             const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
                             if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                                this.#kvSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                                this.#kvSelectorCollection.version = defaultSelector.pageEtags![0];
                             } else {
-                                this.#kvSelectorCollection.cdnCacheBreakString = undefined;
+                                this.#kvSelectorCollection.version = undefined;
                             }
                         } else if (this.#refreshEnabled) { // watched settings based refresh
                             // use the etag of the first watched setting (sentinel)
-                            this.#kvSelectorCollection.cdnCacheBreakString = this.#sentinels.find(s => s.etag !== undefined)?.etag;
+                            this.#kvSelectorCollection.version = this.#sentinels.find(s => s.etag !== undefined)?.etag;
                         }
 
                         if (this.#featureFlagRefreshEnabled) {
                             const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
                             if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                                this.#ffSelectorCollection.cdnCacheBreakString = defaultSelector.pageEtags![0];
+                                this.#ffSelectorCollection.version = defaultSelector.pageEtags![0];
                             } else {
-                                this.#ffSelectorCollection.cdnCacheBreakString = undefined;
+                                this.#ffSelectorCollection.version = undefined;
                             }
                         }
                     }
@@ -531,7 +532,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (this.#isCdnUsed) {
                         listOptions = {
                             ...listOptions,
-                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" }}
+                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.version ?? "" }}
                         };
                     }
 
@@ -641,7 +642,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 let getOptions: GetConfigurationSettingOptions = {};
                 if (this.#isCdnUsed) {
-                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } };
+                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.version ?? "" } } };
                 }
                 const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
@@ -703,7 +704,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (this.#isCdnUsed) {
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 getOptions = {
-                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } },
+                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.version ?? "" } },
                 };
             } else {
                 // if CDN is not used, send conditional request
@@ -717,7 +718,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 sentinel.etag = response?.etag;// update etag of the sentinel
-                this.#kvSelectorCollection.cdnCacheBreakString = sentinel.etag;
+                this.#kvSelectorCollection.version = sentinel.etag;
                 needRefresh = true;
                 break;
             }
@@ -770,7 +771,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" } }
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.version ?? "" } }
                     };
                 } else {
                     // if CDN is not used, add page etags to the listOptions to send conditional request
@@ -787,7 +788,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 ).byPage();
 
                 if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
-                    selectorCollection.cdnCacheBreakString = undefined;
+                    selectorCollection.version = undefined;
                     return true; // no etag is retrieved from previous request, always refresh
                 }
 
@@ -796,7 +797,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (i >= selector.pageEtags.length || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
                         if (this.#isCdnUsed) {
-                            selectorCollection.cdnCacheBreakString = page.etag;
+                            selectorCollection.version = page.etag;
                         }
                         return true;
                     }
@@ -804,7 +805,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 if (i !== selector.pageEtags.length) { // page removed
                     if (this.#isCdnUsed) {
-                        selectorCollection.cdnCacheBreakString = selector.pageEtags[i];
+                        selectorCollection.version = selector.pageEtags[i];
                     }
                     return true;
                 }
@@ -1070,55 +1071,48 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
 
-        let crypto;
-
-        // Check for browser environment
-        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
-            crypto = window.crypto;
-        }
-        // Check for Node.js environment
-        else if (typeof global !== "undefined" && global.crypto) {
-            crypto = global.crypto;
-        }
-        // Fallback to native Node.js crypto module
-        else {
-            try {
-                if (typeof module !== "undefined" && module.exports) {
-                    crypto = require("crypto");
-                }
-                else {
-                    crypto = await import("crypto");
-                }
-            } catch (error) {
-                console.error("Failed to load the crypto module:", error.message);
-                throw error;
-            }
-        }
-
+        const crypto = getCryptoModule();
         // Convert to UTF-8 encoded bytes
-        const data = new TextEncoder().encode(rawAllocationId);
-
-        // In the browser, use crypto.subtle.digest
+        const payload = new TextEncoder().encode(rawAllocationId);
+        // In the browser or Node.js 18+, use crypto.subtle.digest
         if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashBuffer = await crypto.subtle.digest("SHA-256", payload);
             const hashArray = new Uint8Array(hashBuffer);
 
             // Only use the first 15 bytes
             const first15Bytes = hashArray.slice(0, 15);
-
-            // btoa/atob is also available in Node.js 18+
             const base64String = btoa(String.fromCharCode(...first15Bytes));
             const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
             return base64urlString;
         }
-        // In Node.js, use the crypto module's hash function
+        // Use the crypto module's hash function
         else {
-            const hash = crypto.createHash("sha256").update(data).digest();
+            const hash = crypto.createHash("sha256").update(payload).digest();
 
             // Only use the first 15 bytes
             const first15Bytes = hash.slice(0, 15);
-
             return first15Bytes.toString("base64url");
+        }
+    }
+
+    async #calculteCacheConsistencyToken(etags: string[]): Promise<string> {
+        const crypto = getCryptoModule();
+        const sortedEtags = etags.sort();
+        const rawString = "CacheConsistency\n" + sortedEtags.join("\n");
+        // Convert to UTF-8 encoded bytes
+        const payload = new TextEncoder().encode(rawString);
+         // In the browser or Node.js 18+, use crypto.subtle.digest
+        if (crypto.subtle) {
+            const hashBuffer = await crypto.subtle.digest("SHA-256", payload);
+            const hashArray = new Uint8Array(hashBuffer);
+            const base64String = btoa(String.fromCharCode(...hashArray));
+            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            return base64urlString;
+        }
+        // Use the crypto module's hash function
+        else {
+            const hash = crypto.createHash("sha256").update(payload).digest();
+            return hash.toString("base64url");
         }
     }
 }
