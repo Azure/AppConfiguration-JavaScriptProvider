@@ -702,13 +702,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             let getOptions: GetConfigurationSettingOptions = {};
             if (this.#isCdnUsed) {
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                getOptions = { 
+                getOptions = {
                     requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } },
                 };
             } else {
                 // if CDN is not used, send conditional request
-                getOptions = { 
-                    onlyIfChanged: true 
+                getOptions = {
+                    onlyIfChanged: true
                 };
             }
             const response = await this.#getConfigurationSetting(sentinel, getOptions);
