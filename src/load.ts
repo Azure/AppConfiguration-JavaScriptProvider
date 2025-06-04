@@ -8,6 +8,7 @@ import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js"
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { EtagUrlPipelinePolicy } from "./EtagUrlPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
+import { ArgumentError } from "./common/error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5_000; // 5 seconds
 
@@ -75,7 +76,11 @@ export async function loadFromCdn(
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     if (appConfigOptions === undefined) {
-        appConfigOptions = { clientOptions: {}};
+        appConfigOptions = {
+            replicaDiscoveryEnabled: false // Disable replica discovery for CDN
+        };
+    } else if (appConfigOptions.replicaDiscoveryEnabled) {
+        throw new ArgumentError("Replica discovery is not supported when loading from CDN.");
     }
 
     appConfigOptions.clientOptions = {
