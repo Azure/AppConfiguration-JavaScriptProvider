@@ -527,7 +527,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         labelFilter: selector.labelFilter
                     };
 
-                    // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     if (this.#isCdnUsed) {
                         listOptions = {
                             ...listOptions,
@@ -631,18 +631,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
-    async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
+    async #updateWatchedKeyValuesEtag(loadedSettings: ConfigurationSetting[]): Promise<void> {
         for (const sentinel of this.#sentinels) {
-            const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
-            if (matchedSetting) {
-                sentinel.etag = matchedSetting.etag;
+            const loaded = loadedSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
+            if (loaded) {
+                sentinel.etag = loaded.etag;
             } else {
                 // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
-                // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                const getOptions = this.#isCdnUsed ?
-                    { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
-                    {};
-                const response = await this.#getConfigurationSetting(sentinel, {...getOptions, onlyIfChanged: false}); // always send non-conditional request
+                // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                let getOptions: GetConfigurationSettingOptions = {};
+                if (this.#isCdnUsed) {
+                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } };
+                }
+                const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
             }
         }
@@ -695,12 +696,22 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectorCollection);
         }
+        // if watchAll is true, there should be no sentinels
         for (const sentinel of this.#sentinels.values()) {
-            // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-            const getOptions = this.#isCdnUsed ?
-                { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } } } :
-                {};
-            const response = await this.#getConfigurationSetting(sentinel, { ...getOptions, onlyIfChanged: !this.#isCdnUsed }); // if CDN is used, do not send conditional request
+            // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+            let getOptions: GetConfigurationSettingOptions = {};
+            if (this.#isCdnUsed) {
+                // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                getOptions = { 
+                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheBreakString ?? "" } },
+                };
+            } else {
+                // if CDN is not used, send conditional request
+                getOptions = { 
+                    onlyIfChanged: true 
+                };
+            }
+            const response = await this.#getConfigurationSetting(sentinel, getOptions);
 
             if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
                 (response === undefined && sentinel.etag !== undefined) // deleted
@@ -756,13 +767,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 };
 
                 if (this.#isCdnUsed) {
-                    // If cdn is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" } }};
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheBreakString ?? "" } }
+                    };
                 } else {
-                    // send conditional request if cdn is not used
-                    listOptions = { ...listOptions, pageEtags: selector.pageEtags };
+                    // if CDN is not used, add page etags to the listOptions to send conditional request
+                    listOptions = {
+                        ...listOptions,
+                        pageEtags: selector.pageEtags
+                    };
                 }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
