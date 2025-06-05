@@ -77,10 +77,11 @@ type SettingSelectorCollection = {
 
     /**
      * This is used to append to the request url for breaking the CDN cache.
-     * It is a hash value calculated from all page etags.
-     * When the refresh is based on watched settings, the hash value will be calculated from the etags of all watched settings.
+     * It uses the etag which has changed after the last refresh.
+     * It can either be the page etag or etag of a watched setting depending on the refresh monitoring strategy.
+     * When a watched setting is deleted, the token value will be SHA-256 hash of `ResourceDeleted\n{previous-etag}`.
      */
-    version?: string;
+    cdnCacheConsistencyToken?: string;
 }
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -413,31 +414,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (this.#featureFlagEnabled) {
                         await this.#loadFeatureFlags();
                     }
-
-                    if (this.#isCdnUsed) {
-                        if (this.#watchAll) { // collection monitoring based refresh
-                            // use the first page etag of the first kv selector
-                            const defaultSelector = this.#kvSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
-                            if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                                this.#kvSelectorCollection.version = defaultSelector.pageEtags![0];
-                            } else {
-                                this.#kvSelectorCollection.version = undefined;
-                            }
-                        } else if (this.#refreshEnabled) { // watched settings based refresh
-                            // use the etag of the first watched setting (sentinel)
-                            this.#kvSelectorCollection.version = this.#sentinels.find(s => s.etag !== undefined)?.etag;
-                        }
-
-                        if (this.#featureFlagRefreshEnabled) {
-                            const defaultSelector = this.#ffSelectorCollection.selectors.find(s => s.pageEtags !== undefined);
-                            if (defaultSelector && defaultSelector.pageEtags!.length > 0) {
-                                this.#ffSelectorCollection.version = defaultSelector.pageEtags![0];
-                            } else {
-                                this.#ffSelectorCollection.version = undefined;
-                            }
-                        }
-                    }
-
                     this.#isInitialLoadCompleted = true;
                     break;
                 } catch (error) {
@@ -520,7 +496,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const selectorsToUpdate: PagedSettingSelector[] = JSON.parse(
                 JSON.stringify(selectorCollection.selectors)
             );
-
             for (const selector of selectorsToUpdate) {
                 if (selector.snapshotName === undefined) {
                     let listOptions: ListConfigurationSettingsOptions = {
@@ -529,13 +504,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     };
 
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                    if (this.#isCdnUsed) {
+                    if (this.#isCdnUsed && selectorCollection.cdnCacheConsistencyToken) {
                         listOptions = {
                             ...listOptions,
-                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.version ?? "" }}
+                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheConsistencyToken }}
                         };
                     }
-
                     const pageEtags: string[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
                         this.#requestTraceOptions,
@@ -630,7 +604,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
+     * Updates etag of watched settings from loaded data.
+     * If a watched setting is not covered by any selector, a request will be sent to retrieve it.
+     * If there is no watched setting(sentinel key), this method does nothing.
      */
     async #updateWatchedKeyValuesEtag(loadedSettings: ConfigurationSetting[]): Promise<void> {
         for (const sentinel of this.#sentinels) {
@@ -641,8 +617,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 let getOptions: GetConfigurationSettingOptions = {};
-                if (this.#isCdnUsed) {
-                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.version ?? "" } } };
+                if (this.#isCdnUsed && this.#kvSelectorCollection.cdnCacheConsistencyToken) {
+                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheConsistencyToken } } };
                 }
                 const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
@@ -699,26 +675,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         // if watchAll is true, there should be no sentinels
         for (const sentinel of this.#sentinels.values()) {
-            // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+            // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
             let getOptions: GetConfigurationSettingOptions = {};
-            if (this.#isCdnUsed) {
-                // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+            if (this.#isCdnUsed && this.#kvSelectorCollection.cdnCacheConsistencyToken) {
+                // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 getOptions = {
-                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.version ?? "" } },
-                };
-            } else {
-                // if CDN is not used, send conditional request
-                getOptions = {
-                    onlyIfChanged: true
+                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheConsistencyToken ?? "" } },
                 };
             }
-            const response = await this.#getConfigurationSetting(sentinel, getOptions);
+            // send conditional request only when CDN is not used
+            const response = await this.#getConfigurationSetting(sentinel, { ...getOptions, onlyIfChanged: !this.#isCdnUsed });
 
             if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
-                sentinel.etag = response?.etag;// update etag of the sentinel
-                this.#kvSelectorCollection.version = sentinel.etag;
+                if (response === undefined) {
+                    this.#kvSelectorCollection.cdnCacheConsistencyToken =
+                        await this.#calculateResourceDeletedCacheConsistencyToken(sentinel.etag!);
+                } else {
+                    this.#kvSelectorCollection.cdnCacheConsistencyToken = response.etag;
+                }
+                sentinel.etag = response?.etag; // update etag of the sentinel
                 needRefresh = true;
                 break;
             }
@@ -767,17 +744,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     labelFilter: selector.labelFilter
                 };
 
-                if (this.#isCdnUsed) {
-                    // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                    listOptions = {
-                        ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.version ?? "" } }
-                    };
-                } else {
+                if (!this.#isCdnUsed) {
                     // if CDN is not used, add page etags to the listOptions to send conditional request
                     listOptions = {
                         ...listOptions,
                         pageEtags: selector.pageEtags
+                    };
+                } else if (selectorCollection.cdnCacheConsistencyToken) {
+                    // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
+                    listOptions = {
+                        ...listOptions,
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheConsistencyToken } }
                     };
                 }
 
@@ -788,7 +765,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 ).byPage();
 
                 if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
-                    selectorCollection.version = undefined;
                     return true; // no etag is retrieved from previous request, always refresh
                 }
 
@@ -796,8 +772,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 for await (const page of pageIterator) {
                     if (i >= selector.pageEtags.length || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
+                        // 100 kvs will return two pages, one page with 100 items and another empty page
+                        // kv collection change will always be detected by page etag change
                         if (this.#isCdnUsed) {
-                            selectorCollection.version = page.etag;
+                            selectorCollection.cdnCacheConsistencyToken = page.etag;
                         }
                         return true;
                     }
@@ -805,7 +783,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 if (i !== selector.pageEtags.length) { // page removed
                     if (this.#isCdnUsed) {
-                        selectorCollection.version = selector.pageEtags[i];
+                        selectorCollection.cdnCacheConsistencyToken = selector.pageEtags[i];
                     }
                     return true;
                 }
@@ -1095,11 +1073,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
-    async #calculteCacheConsistencyToken(etags: string[]): Promise<string> {
+    async #calculateResourceDeletedCacheConsistencyToken(etag: string): Promise<string> {
         const crypto = getCryptoModule();
-        const sortedEtags = etags.sort();
-        const rawString = "CacheConsistency\n" + sortedEtags.join("\n");
-        // Convert to UTF-8 encoded bytes
+        const rawString = `ResourceDeleted\n${etag}`;
         const payload = new TextEncoder().encode(rawString);
          // In the browser or Node.js 18+, use crypto.subtle.digest
         if (crypto.subtle) {
