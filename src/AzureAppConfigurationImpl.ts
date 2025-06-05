@@ -60,9 +60,6 @@ import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
 type PagedSettingSelector = SettingSelector & {
-    /**
-     * Key: page eTag, Value: feature flag configurations
-     */
     pageEtags?: string[];
 };
 
