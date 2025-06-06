@@ -81,7 +81,7 @@ type SettingSelectorCollection = {
      * It can either be the page etag or etag of a watched setting depending on the refresh monitoring strategy.
      * When a watched setting is deleted, the token value will be SHA-256 hash of `ResourceDeleted\n{previous-etag}`.
      */
-    cdnCacheConsistencyToken?: string;
+    cdnToken?: string;
 }
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
@@ -504,10 +504,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     };
 
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                    if (this.#isCdnUsed && selectorCollection.cdnCacheConsistencyToken) {
+                    if (this.#isCdnUsed && selectorCollection.cdnToken) {
                         listOptions = {
                             ...listOptions,
-                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheConsistencyToken }}
+                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnToken }}
                         };
                     }
                     const pageEtags: string[] = [];
@@ -617,8 +617,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 let getOptions: GetConfigurationSettingOptions = {};
-                if (this.#isCdnUsed && this.#kvSelectorCollection.cdnCacheConsistencyToken) {
-                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheConsistencyToken } } };
+                if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
+                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken } } };
                 }
                 const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
@@ -677,10 +677,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         for (const sentinel of this.#sentinels.values()) {
             // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
             let getOptions: GetConfigurationSettingOptions = {};
-            if (this.#isCdnUsed && this.#kvSelectorCollection.cdnCacheConsistencyToken) {
+            if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
                 // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 getOptions = {
-                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnCacheConsistencyToken ?? "" } },
+                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken ?? "" } },
                 };
             }
             // send conditional request only when CDN is not used
@@ -690,10 +690,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 (response === undefined && sentinel.etag !== undefined) // deleted
             ) {
                 if (response === undefined) {
-                    this.#kvSelectorCollection.cdnCacheConsistencyToken =
+                    this.#kvSelectorCollection.cdnToken =
                         await this.#calculateResourceDeletedCacheConsistencyToken(sentinel.etag!);
                 } else {
-                    this.#kvSelectorCollection.cdnCacheConsistencyToken = response.etag;
+                    this.#kvSelectorCollection.cdnToken = response.etag;
                 }
                 sentinel.etag = response?.etag; // update etag of the sentinel
                 needRefresh = true;
@@ -750,11 +750,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         ...listOptions,
                         pageEtags: selector.pageEtags
                     };
-                } else if (selectorCollection.cdnCacheConsistencyToken) {
+                } else if (selectorCollection.cdnToken) {
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnCacheConsistencyToken } }
+                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnToken } }
                     };
                 }
 
@@ -775,7 +775,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         // 100 kvs will return two pages, one page with 100 items and another empty page
                         // kv collection change will always be detected by page etag change
                         if (this.#isCdnUsed) {
-                            selectorCollection.cdnCacheConsistencyToken = page.etag;
+                            selectorCollection.cdnToken = page.etag;
                         }
                         return true;
                     }
@@ -783,7 +783,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 }
                 if (i !== selector.pageEtags.length) { // page removed
                     if (this.#isCdnUsed) {
-                        selectorCollection.cdnCacheConsistencyToken = selector.pageEtags[i];
+                        selectorCollection.cdnToken = selector.pageEtags[i];
                     }
                     return true;
                 }

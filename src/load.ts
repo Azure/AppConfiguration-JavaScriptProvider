@@ -78,10 +78,14 @@ export async function loadFromCdn(
 ): Promise<AzureAppConfiguration> {
     if (appConfigOptions === undefined) {
         appConfigOptions = {
-            replicaDiscoveryEnabled: false // Disable replica discovery for CDN
+            replicaDiscoveryEnabled: false // replica discovery will be enabled by default, disable it for CDN manually
         };
-    } else if (appConfigOptions.replicaDiscoveryEnabled) {
+    }
+    if (appConfigOptions.replicaDiscoveryEnabled) {
         throw new ArgumentError("Replica discovery is not supported when loading from CDN.");
+    }
+    if (appConfigOptions.loadBalancingEnabled) {
+        throw new ArgumentError("Load balancing is not supported when loading from CDN.");
     }
 
     appConfigOptions.clientOptions = {
