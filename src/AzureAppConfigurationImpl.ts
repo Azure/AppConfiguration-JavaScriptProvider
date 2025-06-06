@@ -62,7 +62,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { ETAG_LOOKUP_HEADER } from "./EtagUrlPipelinePolicy.js";
+import { CDN_TOKEN_LOOKUP_HEADER } from "./CdnTokenPipelinePolicy.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 
@@ -507,7 +507,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (this.#isCdnUsed && selectorCollection.cdnToken) {
                         listOptions = {
                             ...listOptions,
-                            requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnToken }}
+                            requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: selectorCollection.cdnToken }}
                         };
                     }
                     const pageEtags: string[] = [];
@@ -618,7 +618,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 let getOptions: GetConfigurationSettingOptions = {};
                 if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
-                    getOptions = { requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken } } };
+                    getOptions = { requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken } } };
                 }
                 const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
@@ -680,7 +680,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
                 // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                 getOptions = {
-                    requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken ?? "" } },
+                    requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken ?? "" } },
                 };
             }
             // send conditional request only when CDN is not used
@@ -754,7 +754,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     listOptions = {
                         ...listOptions,
-                        requestOptions: { customHeaders: { [ETAG_LOOKUP_HEADER]: selectorCollection.cdnToken } }
+                        requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: selectorCollection.cdnToken } }
                     };
                 }
 

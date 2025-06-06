@@ -6,7 +6,7 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { EtagUrlPipelinePolicy } from "./EtagUrlPipelinePolicy.js";
+import { CdnTokenPipelinePolicy } from "./CdnTokenPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/error.js";
 
@@ -93,7 +93,7 @@ export async function loadFromCdn(
         // Add etag url policy to append etag to the request url for breaking CDN cache
         additionalPolicies: [
             ...(appConfigOptions.clientOptions?.additionalPolicies || []),
-            { policy: new EtagUrlPipelinePolicy(), position: "perCall" }
+            { policy: new CdnTokenPipelinePolicy(), position: "perCall" }
         ]
     };
 
