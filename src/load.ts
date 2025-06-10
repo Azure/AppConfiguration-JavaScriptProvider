@@ -6,7 +6,7 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { CdnTokenPipelinePolicy } from "./CdnTokenPipelinePolicy.js";
+import { CdnTokenPipelinePolicy } from "./cdnTokenPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/error.js";
 

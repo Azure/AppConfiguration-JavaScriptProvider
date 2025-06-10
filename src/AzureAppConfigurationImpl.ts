@@ -62,7 +62,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { CDN_TOKEN_LOOKUP_HEADER } from "./CdnTokenPipelinePolicy.js";
+import { CDN_TOKEN_LOOKUP_HEADER, calculateResourceDeletedCacheConsistencyToken } from "./cdnTokenPipelinePolicy.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 
@@ -691,7 +691,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             ) {
                 if (response === undefined) {
                     this.#kvSelectorCollection.cdnToken =
-                        await this.#calculateResourceDeletedCacheConsistencyToken(sentinel.etag!);
+                        await calculateResourceDeletedCacheConsistencyToken(sentinel.etag!);
                 } else {
                     this.#kvSelectorCollection.cdnToken = response.etag;
                 }
@@ -1070,25 +1070,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // Only use the first 15 bytes
             const first15Bytes = hash.slice(0, 15);
             return first15Bytes.toString("base64url");
-        }
-    }
-
-    async #calculateResourceDeletedCacheConsistencyToken(etag: string): Promise<string> {
-        const crypto = getCryptoModule();
-        const rawString = `ResourceDeleted\n${etag}`;
-        const payload = new TextEncoder().encode(rawString);
-         // In the browser or Node.js 18+, use crypto.subtle.digest
-        if (crypto.subtle) {
-            const hashBuffer = await crypto.subtle.digest("SHA-256", payload);
-            const hashArray = new Uint8Array(hashBuffer);
-            const base64String = btoa(String.fromCharCode(...hashArray));
-            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            return base64urlString;
-        }
-        // Use the crypto module's hash function
-        else {
-            const hash = crypto.createHash("sha256").update(payload).digest();
-            return hash.toString("base64url");
         }
     }
 }
