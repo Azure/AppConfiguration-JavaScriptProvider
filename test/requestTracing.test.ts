@@ -7,7 +7,7 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { MAX_TIME_OUT, HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
 import { ConfigurationClientManager } from "../src/ConfigurationClientManager.js";
-import { load, loadFromCdn } from "./exportedApi.js";
+import { load, loadFromAzureFrontDoor } from "./exportedApi.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
@@ -111,9 +111,9 @@ describe("request tracing", function () {
         sinon.restore();
     });
 
-    it("should have cdn tag in correlation-context header when loadFromCdn is used", async () => {
+    it("should have cdn tag in correlation-context header when loadFromAzureFrontDoor is used", async () => {
         try {
-            await loadFromCdn(fakeEndpoint, {
+            await loadFromAzureFrontDoor(fakeEndpoint, {
                 clientOptions,
                 startupOptions: {
                     timeoutInMs: 1

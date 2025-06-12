@@ -66,14 +66,14 @@ export async function load(
 }
 
 /**
- * Loads the data from a CDN and returns an instance of AzureAppConfiguration.
- * @param cdnEndpoint  The URL to the CDN.
+ * Loads the data from Azure Front Door (CDN) and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The URL to the Azure Front Door.
  * @param appConfigOptions  Optional parameters.
  */
-export async function loadFromCdn(cdnEndpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+export async function loadFromAzureFrontDoor(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
 
-export async function loadFromCdn(
-    cdnEndpoint: string | URL,
+export async function loadFromAzureFrontDoor(
+    endpoint: string | URL,
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
     if (appConfigOptions === undefined) {
@@ -97,5 +97,5 @@ export async function loadFromCdn(
         ]
     };
 
-    return await load(cdnEndpoint, emptyTokenCredential, appConfigOptions);
+    return await load(endpoint, emptyTokenCredential, appConfigOptions);
 }
