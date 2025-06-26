@@ -76,10 +76,8 @@ export async function loadFromAzureFrontDoor(
     endpoint: string | URL,
     appConfigOptions?: AzureAppConfigurationOptions
 ): Promise<AzureAppConfiguration> {
-    if (appConfigOptions === undefined) {
-        appConfigOptions = {
-            replicaDiscoveryEnabled: false // replica discovery will be enabled by default, disable it for CDN manually
-        };
+    if (!appConfigOptions) {
+        appConfigOptions = {};
     }
     if (appConfigOptions.replicaDiscoveryEnabled) {
         throw new ArgumentError("Replica discovery is not supported when loading from Azure Front Door.");
@@ -87,6 +85,7 @@ export async function loadFromAzureFrontDoor(
     if (appConfigOptions.loadBalancingEnabled) {
         throw new ArgumentError("Load balancing is not supported when loading from Azure Front Door.");
     }
+    appConfigOptions.replicaDiscoveryEnabled = false; // Disable replica discovery when loading from Azure Front Door
 
     appConfigOptions.clientOptions = {
         ...appConfigOptions.clientOptions,
