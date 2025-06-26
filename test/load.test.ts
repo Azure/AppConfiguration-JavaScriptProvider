@@ -5,7 +5,7 @@ import * as chai from "chai";
 import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load, loadFromAzureFrontDoor } from "./exportedApi.js";
+import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
 
 const mockedKVs = [{
@@ -108,14 +108,6 @@ describe("load", function () {
         const endpoint = createMockedEndpoint();
         const credential = createMockedTokenCredential();
         const settings = await load(endpoint, credential);
-        expect(settings).not.undefined;
-        expect(settings.get("app.settings.fontColor")).eq("red");
-        expect(settings.get("app.settings.fontSize")).eq("40");
-    });
-
-    it("should load data from Azure Front Door", async () => {
-        const endpoint = createMockedEndpoint();
-        const settings = await loadFromAzureFrontDoor(endpoint);
         expect(settings).not.undefined;
         expect(settings.get("app.settings.fontColor")).eq("red");
         expect(settings.get("app.settings.fontSize")).eq("40");

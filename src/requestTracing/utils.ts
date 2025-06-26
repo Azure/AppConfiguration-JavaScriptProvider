@@ -95,6 +95,7 @@ function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: 
         actualOptions.requestOptions = {
             ...actualOptions.requestOptions,
             customHeaders: {
+                ...actualOptions.requestOptions?.customHeaders,
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
