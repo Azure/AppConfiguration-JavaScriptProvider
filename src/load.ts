@@ -82,10 +82,10 @@ export async function loadFromAzureFrontDoor(
         };
     }
     if (appConfigOptions.replicaDiscoveryEnabled) {
-        throw new ArgumentError("Replica discovery is not supported when loading from CDN.");
+        throw new ArgumentError("Replica discovery is not supported when loading from Azure Front Door.");
     }
     if (appConfigOptions.loadBalancingEnabled) {
-        throw new ArgumentError("Load balancing is not supported when loading from CDN.");
+        throw new ArgumentError("Load balancing is not supported when loading from Azure Front Door.");
     }
 
     appConfigOptions.clientOptions = {
