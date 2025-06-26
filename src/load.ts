@@ -6,15 +6,15 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { CdnTokenPipelinePolicy } from "./cdnTokenPipelinePolicy.js";
+import { CdnTokenPipelinePolicy, AnonymousRequestPipelinePolicy } from "./azureFrontDoor/cdnRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5_000; // 5 seconds
 
-// Empty token credential to be used when loading from CDN
+// Empty token credential to be used when loading from Azure Front Door
 const emptyTokenCredential: TokenCredential = {
-    getToken: async () => ({ token: "", expiresOnTimestamp: 0 })
+    getToken: async () => ({ token: "", expiresOnTimestamp: Number.MAX_SAFE_INTEGER })
 };
 
 /**
@@ -93,7 +93,8 @@ export async function loadFromAzureFrontDoor(
         // Add etag url policy to append etag to the request url for breaking CDN cache
         additionalPolicies: [
             ...(appConfigOptions.clientOptions?.additionalPolicies || []),
-            { policy: new CdnTokenPipelinePolicy(), position: "perCall" }
+            { policy: new CdnTokenPipelinePolicy(), position: "perCall" },
+            { policy: new AnonymousRequestPipelinePolicy(), position: "perRetry" }
         ]
     };
 

@@ -62,7 +62,7 @@ import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOp
 import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
-import { CDN_TOKEN_LOOKUP_HEADER, calculateResourceDeletedCacheConsistencyToken } from "./cdnTokenPipelinePolicy.js";
+import { CDN_TOKEN_LOOKUP_HEADER, calculateResourceDeletedCacheConsistencyToken } from "./azureFrontDoor/cdnRequestPipelinePolicy.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 
