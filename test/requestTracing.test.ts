@@ -121,6 +121,7 @@ describe("request tracing", function () {
             });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("CDN")).eq(true);
