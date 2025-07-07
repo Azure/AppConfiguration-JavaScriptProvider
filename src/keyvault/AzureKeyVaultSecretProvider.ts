@@ -8,7 +8,8 @@ import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets"
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
-    #refreshTimer: RefreshTimer | undefined;
+    #secretRefreshTimer: RefreshTimer | undefined;
+    #cacheRefreshTimer: RefreshTimer = new RefreshTimer(24*60*60*1000); // Enforce cache expiration every 24 hours
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValue: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
@@ -22,7 +23,7 @@ export class AzureKeyVaultSecretProvider {
             }
         }
         this.#keyVaultOptions = keyVaultOptions;
-        this.#refreshTimer = refreshTimer;
+        this.#secretRefreshTimer = refreshTimer;
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
             const clientUrl = new URL(client.vaultUrl);
@@ -39,7 +40,7 @@ export class AzureKeyVaultSecretProvider {
             return this.#cachedSecretValue.get(identifierKey);
         }
 
-        if (this.#refreshTimer && !this.#refreshTimer.canRefresh()) {
+        if (this.#secretRefreshTimer && !this.#secretRefreshTimer.canRefresh()) {
             // If the refresh interval is not expired, return the cached value if available.
             if (this.#cachedSecretValue.has(identifierKey)) {
                 return this.#cachedSecretValue.get(identifierKey);
@@ -53,6 +54,12 @@ export class AzureKeyVaultSecretProvider {
     }
 
     clearCache(): void {
+        if (this.#cacheRefreshTimer.canRefresh()) {
+            // Clear the cache if the cache expiration timer has expired.
+            this.#cachedSecretValue.clear();
+            this.#cacheRefreshTimer.reset();
+            return;
+        }
         // If the secret identifier has specified a version, it is not removed from the cache.
         // If the secret identifier has not specified a version, it means that the latest version should be used. Remove the cached value to force a reload.
         for (const key of this.#cachedSecretValue.keys()) {

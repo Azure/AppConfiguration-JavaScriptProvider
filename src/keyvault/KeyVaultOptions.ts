@@ -44,7 +44,7 @@ export interface KeyVaultOptions {
     parallelSecretResolutionEnabled?: boolean;
 
     /**
-     * Specifies the refresh interval in milliseconds for periodically reloading secret from Key Vault.
+     * Specifies the refresh interval in milliseconds for periodically reloading all secrets from Key Vault.
      *
      * @remarks
      * If specified, the value must be greater than 60 seconds.
