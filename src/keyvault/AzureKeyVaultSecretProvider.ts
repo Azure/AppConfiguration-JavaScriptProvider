@@ -10,7 +10,7 @@ export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
     #secretRefreshTimer: RefreshTimer | undefined;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
-    #cachedSecretValue: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
+    #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
     constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
@@ -33,26 +33,20 @@ export class AzureKeyVaultSecretProvider {
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
 
-        // If the secret has a version, always use the cached value if available.
-        if (secretIdentifier.version && this.#cachedSecretValue.has(identifierKey)) {
-            return this.#cachedSecretValue.get(identifierKey);
-        }
-
-        if (this.#secretRefreshTimer && !this.#secretRefreshTimer.canRefresh()) {
-            // If the refresh interval is not expired, return the cached value if available.
-            if (this.#cachedSecretValue.has(identifierKey)) {
-                return this.#cachedSecretValue.get(identifierKey);
-            }
+        // If the refresh interval is not expired, return the cached value if available.
+        if (this.#cachedSecretValues.has(identifierKey) &&
+            (!this.#secretRefreshTimer || !this.#secretRefreshTimer.canRefresh())) {
+                return this.#cachedSecretValues.get(identifierKey);
         }
 
         // Fallback to fetching the secret value from Key Vault.
         const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-        this.#cachedSecretValue.set(identifierKey, secretValue);
+        this.#cachedSecretValues.set(identifierKey, secretValue);
         return secretValue;
     }
 
     clearCache(): void {
-        this.#cachedSecretValue.clear();
+        this.#cachedSecretValues.clear();
     }
 
     async #getSecretValueFromKeyVault(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
