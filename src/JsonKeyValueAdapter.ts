@@ -35,4 +35,8 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         }
         return [setting.key, parsedValue];
     }
+
+    async onChangeDetected(): Promise<void> {
+        return;
+    }
 }

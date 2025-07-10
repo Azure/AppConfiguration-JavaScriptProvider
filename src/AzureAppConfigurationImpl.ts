@@ -22,6 +22,7 @@ import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
 import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
+import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/KeyVaultOptions.js";
 import { Disposable } from "./common/disposable.js";
 import {
     FEATURE_FLAGS_KEY_NAME,
@@ -91,16 +92,22 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Aka watched settings.
      */
+    #refreshEnabled: boolean = false;
     #sentinels: ConfigurationSettingId[] = [];
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
 
     // Feature flags
+    #featureFlagEnabled: boolean = false;
+    #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
 
     // Key Vault references
+    #secretRefreshEnabled: boolean = false;
+    #secretReferences: ConfigurationSetting[] = []; // cached key vault references
+    #secretRefreshTimer: RefreshTimer;
     #resolveSecretsInParallel: boolean = false;
 
     /**
@@ -129,14 +136,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#featureFlagTracing = new FeatureFlagTracingOptions();
         }
 
-        if (options?.trimKeyPrefixes) {
+        if (options?.trimKeyPrefixes !== undefined) {
             this.#sortedTrimKeyPrefixes = [...options.trimKeyPrefixes].sort((a, b) => b.localeCompare(a));
         }
 
         // if no selector is specified, always load key values using the default selector: key="*" and label="\0"
         this.#kvSelectors = getValidKeyValueSelectors(options?.selectors);
 
-        if (options?.refreshOptions?.enabled) {
+        if (options?.refreshOptions?.enabled === true) {
+            this.#refreshEnabled = true;
             const { refreshIntervalInMs, watchedSettings } = options.refreshOptions;
             if (watchedSettings === undefined || watchedSettings.length === 0) {
                 this.#watchAll = true; // if no watched settings is specified, then watch all
@@ -156,51 +164,46 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
                     throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
-                } else {
-                    this.#kvRefreshInterval = refreshIntervalInMs;
                 }
+                this.#kvRefreshInterval = refreshIntervalInMs;
             }
             this.#kvRefreshTimer = new RefreshTimer(this.#kvRefreshInterval);
         }
 
         // feature flag options
-        if (options?.featureFlagOptions?.enabled) {
+        if (options?.featureFlagOptions?.enabled === true) {
+            this.#featureFlagEnabled = true;
             // validate feature flag selectors, only load feature flags when enabled
             this.#ffSelectors = getValidFeatureFlagSelectors(options.featureFlagOptions.selectors);
 
-            if (options.featureFlagOptions.refresh?.enabled) {
+            if (options.featureFlagOptions.refresh?.enabled === true) {
+                this.#featureFlagRefreshEnabled = true;
                 const { refreshIntervalInMs } = options.featureFlagOptions.refresh;
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
                         throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
-                    } else {
-                        this.#ffRefreshInterval = refreshIntervalInMs;
                     }
+                    this.#ffRefreshInterval = refreshIntervalInMs;
                 }
 
                 this.#ffRefreshTimer = new RefreshTimer(this.#ffRefreshInterval);
             }
         }
 
-        if (options?.keyVaultOptions?.parallelSecretResolutionEnabled) {
-            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled;
+        if (options?.keyVaultOptions !== undefined) {
+            const { secretRefreshIntervalInMs } = options.keyVaultOptions;
+            if (secretRefreshIntervalInMs !== undefined) {
+                if (secretRefreshIntervalInMs < MIN_SECRET_REFRESH_INTERVAL_IN_MS) {
+                    throw new RangeError(`The Key Vault secret refresh interval cannot be less than ${MIN_SECRET_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                }
+                this.#secretRefreshEnabled = true;
+                this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
+            }
+            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled ?? false;
         }
-
-        this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions));
+        this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
         this.#adapters.push(new JsonKeyValueAdapter());
-    }
-
-    get #refreshEnabled(): boolean {
-        return !!this.#options?.refreshOptions?.enabled;
-    }
-
-    get #featureFlagEnabled(): boolean {
-        return !!this.#options?.featureFlagOptions?.enabled;
-    }
-
-    get #featureFlagRefreshEnabled(): boolean {
-        return this.#featureFlagEnabled && !!this.#options?.featureFlagOptions?.refresh?.enabled;
     }
 
     get #requestTraceOptions(): RequestTracingOptions {
@@ -337,8 +340,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Refreshes the configuration.
      */
     async refresh(): Promise<void> {
-        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
+            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
         }
 
         if (this.#refreshInProgress) {
@@ -356,8 +359,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Registers a callback function to be called when the configuration is refreshed.
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
-        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values or feature flags.");
+        if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
+            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -425,8 +428,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #refreshTasks(): Promise<void> {
         const refreshTasks: Promise<boolean>[] = [];
-        if (this.#refreshEnabled) {
-            refreshTasks.push(this.#refreshKeyValues());
+        if (this.#refreshEnabled || this.#secretRefreshEnabled) {
+            refreshTasks.push(
+                this.#refreshKeyValues()
+                .then(keyValueRefreshed => {
+                    // Only refresh secrets if key values didn't change and secret refresh is enabled
+                    // If key values are refreshed, all secret references will be refreshed as well.
+                    if (!keyValueRefreshed && this.#secretRefreshEnabled) {
+                        // Returns the refreshSecrets promise directly.
+                        // in a Promise chain, this automatically flattens nested Promises without requiring await.
+                        return this.#refreshSecrets();
+                    }
+                    return keyValueRefreshed;
+                })
+            );
         }
         if (this.#featureFlagRefreshEnabled) {
             refreshTasks.push(this.#refreshFeatureFlags());
@@ -530,6 +545,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Loads selected key-values and watched settings (sentinels) for refresh from App Configuration to the local configuration.
      */
     async #loadSelectedAndWatchedKeyValues() {
+        this.#secretReferences = []; // clear all cached key vault reference configuration settings
         const keyValues: [key: string, value: unknown][] = [];
         const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
         if (this.#refreshEnabled && !this.#watchAll) {
@@ -537,28 +553,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
-            // Reset old AI configuration tracing in order to track the information present in the current response from server.
+            // reset old AI configuration tracing in order to track the information present in the current response from server
             this.#aiConfigurationTracing.reset();
         }
 
-        const secretResolutionPromises: Promise<void>[] = [];
         for (const setting of loadedSettings) {
-            if (this.#resolveSecretsInParallel && isSecretReference(setting)) {
-                // secret references are resolved asynchronously to improve performance
-                const secretResolutionPromise = this.#processKeyValue(setting)
-                    .then(([key, value]) => {
-                        keyValues.push([key, value]);
-                    });
-                secretResolutionPromises.push(secretResolutionPromise);
+            if (isSecretReference(setting)) {
+                this.#secretReferences.push(setting); // cache secret references for resolve/refresh secret separately
                 continue;
             }
             // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
         }
-        if (secretResolutionPromises.length > 0) {
-            // wait for all secret resolution promises to be resolved
-            await Promise.all(secretResolutionPromises);
+
+        if (this.#secretReferences.length > 0) {
+            await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
+                keyValues.push([key, value]);
+            });
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -626,7 +638,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshKeyValues(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#kvRefreshTimer.canRefresh()) {
+        if (this.#kvRefreshTimer === undefined || !this.#kvRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -650,6 +662,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         if (needRefresh) {
+            for (const adapter of this.#adapters) {
+                await adapter.onChangeDetected();
+            }
             await this.#loadSelectedAndWatchedKeyValues();
         }
 
@@ -663,7 +678,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (!this.#ffRefreshTimer.canRefresh()) {
+        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -674,6 +689,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         this.#ffRefreshTimer.reset();
         return Promise.resolve(needRefresh);
+    }
+
+    async #refreshSecrets(): Promise<boolean> {
+        // if still within refresh interval/backoff, return
+        if (this.#secretRefreshTimer === undefined || !this.#secretRefreshTimer.canRefresh()) {
+            return Promise.resolve(false);
+        }
+
+        // if no cached key vault references, return
+        if (this.#secretReferences.length === 0) {
+            return Promise.resolve(false);
+        }
+
+        await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
+            this.#configMap.set(key, value);
+        });
+
+        this.#secretRefreshTimer.reset();
+        return Promise.resolve(true);
     }
 
     /**
@@ -802,6 +836,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         this.#clientManager.refreshClients();
         throw new Error("All fallback clients failed to get configuration settings.");
+    }
+
+    async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
+        if (this.#resolveSecretsInParallel) {
+            const secretResolutionPromises: Promise<void>[] = [];
+            for (const setting of secretReferences) {
+                const secretResolutionPromise = this.#processKeyValue(setting)
+                    .then(([key, value]) => {
+                        resultHandler(key, value);
+                    });
+                secretResolutionPromises.push(secretResolutionPromise);
+            }
+
+            // Wait for all secret resolution promises to be resolved
+            await Promise.all(secretResolutionPromises);
+        } else {
+            for (const setting of secretReferences) {
+                const [key, value] = await this.#processKeyValue(setting);
+                resultHandler(key, value);
+            }
+        }
     }
 
     async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {
