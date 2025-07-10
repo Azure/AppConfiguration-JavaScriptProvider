@@ -74,11 +74,8 @@ export async function loadFromAzureFrontDoor(endpoint: URL | string, options?: A
 
 export async function loadFromAzureFrontDoor(
     endpoint: string | URL,
-    appConfigOptions?: AzureAppConfigurationOptions
+    appConfigOptions: AzureAppConfigurationOptions = {}
 ): Promise<AzureAppConfiguration> {
-    if (!appConfigOptions) {
-        appConfigOptions = {};
-    }
     if (appConfigOptions.replicaDiscoveryEnabled) {
         throw new ArgumentError("Replica discovery is not supported when loading from Azure Front Door.");
     }
