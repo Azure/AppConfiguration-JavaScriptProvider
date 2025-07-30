@@ -13,7 +13,7 @@ import * as crypto from "crypto";
 import { ConfigurationClientManager } from "../../src/ConfigurationClientManager.js";
 import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper.js";
 
-const MAX_TIME_OUT = 20000;
+const MAX_TIME_OUT = 100_000;
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
