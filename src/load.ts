@@ -10,7 +10,7 @@ import { CdnTokenPipelinePolicy, AnonymousRequestPipelinePolicy } from "./azureF
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/error.js";
 
-const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5_000; // 5 seconds
+const MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS: number = 5_000;
 
 // Empty token credential to be used when loading from Azure Front Door
 const emptyTokenCredential: TokenCredential = {
@@ -57,7 +57,7 @@ export async function load(
         // load() method is called in the application's startup code path.
         // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
         // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
-        const delay = MIN_DELAY_FOR_UNHANDLED_ERROR - (Date.now() - startTimestamp);
+        const delay = MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS - (Date.now() - startTimestamp);
         if (delay > 0) {
             await new Promise((resolve) => setTimeout(resolve, delay));
         }

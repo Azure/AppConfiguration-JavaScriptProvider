@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference } from "./utils/testHelper.js";
+import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference, sleepInMs } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 
 const mockedData = [
@@ -138,5 +138,64 @@ describe("key vault reference", function () {
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("SecretValue");
         expect(settings.get("TestKeyFixedVersion")).eq("OldSecretValue");
+    });
+});
+
+describe("key vault secret refresh", function () {
+    this.timeout(MAX_TIME_OUT);
+
+    beforeEach(() => {
+        const data = [
+            ["TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName", "SecretValue"]
+        ];
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const kvs = data.map(([key, vaultUri, _value]) => createMockedKeyVaultReference(key, vaultUri));
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+    });
+
+    afterEach(() => {
+        restoreMocks();
+    });
+
+    it("should not allow secret refresh interval less than 1 minute", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithInvalidSecretRefreshInterval = load(connectionString, {
+            keyVaultOptions: {
+                secretClients: [
+                    new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential()),
+                ],
+                secretRefreshIntervalInMs: 59999 // less than 60_000 milliseconds
+            }
+        });
+        return expect(loadWithInvalidSecretRefreshInterval).eventually.rejectedWith("The Key Vault secret refresh interval cannot be less than 60000 milliseconds.");
+    });
+
+    it("should reload key vault secret when there is no change to key-values", async () => {
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const stub = sinon.stub(client, "getSecret");
+        stub.onCall(0).resolves({ value: "SecretValue" } as KeyVaultSecret);
+        stub.onCall(1).resolves({ value: "SecretValue - Updated" } as KeyVaultSecret);
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [
+                    client
+                ],
+                credential: createMockedTokenCredential(),
+                secretRefreshIntervalInMs: 60_000
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("TestKey")).eq("SecretValue");
+
+        await sleepInMs(30_000);
+        await settings.refresh();
+        // use cached value
+        expect(settings.get("TestKey")).eq("SecretValue");
+
+        await sleepInMs(30_000);
+        await settings.refresh();
+        // secret refresh interval expires, reload secret value
+        expect(settings.get("TestKey")).eq("SecretValue - Updated");
     });
 });
