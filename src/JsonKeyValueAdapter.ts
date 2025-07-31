@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 import { ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
+import { stripComments } from "jsonc-parser";
 import { parseContentType, isJsonContentType } from "./common/contentType.js";
 import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
 
@@ -26,9 +27,18 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         let parsedValue: unknown;
         if (setting.value !== undefined) {
             try {
-                parsedValue = JSON.parse(setting.value);
+                let cleanJsonValue = setting.value;
+                if (setting.value) {
+                    cleanJsonValue = stripComments(setting.value);
+                }
+                parsedValue = JSON.parse(cleanJsonValue);
             } catch (error) {
-                parsedValue = setting.value;
+                if (error instanceof SyntaxError) {
+                    parsedValue = setting.value;
+                } else {
+                    // If the error is not a SyntaxError, rethrow it
+                    throw error;
+                }
             }
         } else {
             parsedValue = setting.value;
