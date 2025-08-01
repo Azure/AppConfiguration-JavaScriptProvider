@@ -60,8 +60,6 @@ import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
-const MAX_TAG_FILTER_COUNT = 5;
-
 type PagedSettingSelector = SettingSelector & {
     pageEtags?: string[];
 };
@@ -982,11 +980,11 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
         const selector = { ...selectorCandidate };
         if (selector.snapshotName) {
             if (selector.keyFilter || selector.labelFilter || selector.tagFilters) {
-                throw new ArgumentError("Key, label or tag filter should not be used for a snapshot.");
+                throw new ArgumentError("Key, label or tag filters should not be specified while selecting a snapshot.");
             }
         } else {
-            if (!selector.keyFilter && (!selector.tagFilters || selector.tagFilters.length === 0)) {
-                throw new ArgumentError("Key filter and tag filter cannot both be null or empty.");
+            if (!selector.keyFilter) {
+                throw new ArgumentError("Key filter cannot be null or empty.");
             }
             if (!selector.labelFilter) {
                 selector.labelFilter = LabelFilter.Null;
@@ -1041,9 +1039,6 @@ function getValidFeatureFlagSelectors(selectors?: SettingSelector[]): SettingSel
 }
 
 function validateTagFilters(tagFilters: string[]): void {
-    if (tagFilters.length > MAX_TAG_FILTER_COUNT) {
-        throw new Error(`The number of tag filters cannot exceed ${MAX_TAG_FILTER_COUNT}.`);
-    }
     for (const tagFilter of tagFilters) {
         const res = tagFilter.split("=");
         if (res[0] === "" || res.length !== 2) {

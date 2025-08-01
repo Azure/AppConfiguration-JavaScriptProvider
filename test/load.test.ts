@@ -142,7 +142,7 @@ describe("load", function () {
             selectors: [{
                 labelFilter: "\0"
             }]
-        })).eventually.rejectedWith("Key filter and tag filter cannot both be null or empty.");
+        })).eventually.rejectedWith("Key filter cannot be null or empty.");
     });
 
     it("should throw error given invalid snapshot selector", async () => {
@@ -152,7 +152,7 @@ describe("load", function () {
                 snapshotName: "Test",
                 labelFilter: "\0"
             }]
-        })).eventually.rejectedWith("Key, label or tag filter should not be used for a snapshot.");
+        })).eventually.rejectedWith("Key, label or tag filters should not be specified while selecting a snapshot.");
     });
 
     it("should not include feature flags directly in the settings", async () => {
@@ -183,6 +183,7 @@ describe("load", function () {
         const connectionString = createMockedConnectionString();
         const loadWithTag1 = await load(connectionString, {
             selectors: [{
+                keyFilter: "*",
                 tagFilters: ["tag1=someValue"]
             }]
         });
@@ -194,6 +195,7 @@ describe("load", function () {
 
         const loadWithMultipleTags = await load(connectionString, {
             selectors: [{
+                keyFilter: "*",
                 tagFilters: ["tag1=someValue", "tag2=someValue"]
             }]
         });
@@ -316,6 +318,7 @@ describe("load", function () {
         const connectionString = createMockedConnectionString();
         const loadWithInvalidTagFilter = load(connectionString, {
             selectors: [{
+                keyFilter: "*",
                 tagFilters: ["testTag"]
             }]
         });
