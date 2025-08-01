@@ -55,7 +55,7 @@ describe("dynamic refresh", function () {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         const refreshCall = settings.refresh();
-        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values or feature flags.");
+        return expect(refreshCall).eventually.rejectedWith("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
     });
 
     it("should not allow refresh interval less than 1 second", async () => {
@@ -117,7 +117,7 @@ describe("dynamic refresh", function () {
     it("should throw error when calling onRefresh when refresh is not enabled", async () => {
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
-        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values or feature flags.");
+        expect(() => settings.onRefresh(() => { })).throws("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
     });
 
     it("should only update values after refreshInterval", async () => {
@@ -438,7 +438,7 @@ describe("dynamic refresh", function () {
 });
 
 describe("dynamic refresh feature flags", function () {
-    this.timeout(10000);
+    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
     });
