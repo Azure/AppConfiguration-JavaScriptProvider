@@ -27,11 +27,11 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         let parsedValue: unknown;
         if (setting.value !== undefined) {
             try {
-                let cleanJsonValue = setting.value;
+                let rawJsonValue = setting.value;
                 if (setting.value) {
-                    cleanJsonValue = stripComments(setting.value);
+                    rawJsonValue = stripComments(setting.value);
                 }
-                parsedValue = JSON.parse(cleanJsonValue);
+                parsedValue = JSON.parse(rawJsonValue);
             } catch (error) {
                 if (error instanceof SyntaxError) {
                     parsedValue = setting.value;

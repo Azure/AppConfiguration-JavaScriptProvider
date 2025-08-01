@@ -89,129 +89,86 @@ describe("json", function () {
         expect(settings.get("json.settings.illegalString")).eq("[unclosed", "is illegal string");
     });
 
-    it("should parse json with single-line comments", async () => {
-        const jsoncValue = `{
-            // This is a single-line comment
-            "database": {
-                "host": "localhost", // Another comment
-                "port": 5432
+    it("should load json values with comments", async () => {
+        // Test various comment styles and positions
+        const mixedCommentStylesValue = `{
+            // Single line comment at start
+            "ApiSettings": {
+                "BaseUrl": "https://api.example.com", // Inline single line
+                /* Multi-line comment
+                   spanning multiple lines */
+                "ApiKey": "secret-key",
+                "Endpoints": [
+                    // Comment before array element
+                    "/users",
+                    /* Comment between elements */
+                    "/orders",
+                    "/products" // Comment after element
+                ]
             },
-            "debug": true
+            // Test edge cases
+            "StringWithSlashes": "This is not a // comment",
+            "StringWithStars": "This is not a /* comment */",
+            "UrlValue": "https://example.com/path", // This is a real comment
+            "EmptyComment": "value", //
+            /**/
+            "AfterEmptyComment": "value2"
+            /* Final multi-line comment */
         }`;
-        const jsoncKeyValue = createMockedJsonKeyValue("jsonc.settings.withComments", jsoncValue);
-        mockAppConfigurationClientListConfigurationSettings([[jsoncKeyValue]]);
+
+        // Test invalid JSON with comments
+        const invalidJsonWithCommentsValue = `// This is a comment
+                { invalid json structure
+                // Another comment
+                missing quotes and braces`;
+
+        // Test only comments (should be invalid JSON)
+        const onlyCommentsValue = `
+                // Just comments
+                /* No actual content */
+            `;
+
+        const keyValues = [
+            createMockedJsonKeyValue("MixedCommentStyles", mixedCommentStylesValue),
+            createMockedJsonKeyValue("InvalidJsonWithComments", invalidJsonWithCommentsValue),
+            createMockedJsonKeyValue("OnlyComments", onlyCommentsValue)
+        ];
+
+        mockAppConfigurationClientListConfigurationSettings([keyValues]);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString);
         expect(settings).not.undefined;
-        const config = settings.get<any>("jsonc.settings.withComments");
-        expect(config).not.undefined;
-        expect(config.database).not.undefined;
-        expect(config.database.host).eq("localhost");
-        expect(config.database.port).eq(5432);
-        expect(config.debug).eq(true);
-    });
 
-    it("should parse json with multi-line comments", async () => {
-        const jsoncValue = `{
-            /*
-            * This is a multi-line comment
-            * describing the configuration
-            */
-            "app": {
-                "name": "TestApp",
-                /* inline multi-line comment */ "version": "1.0.0"
-            },
-            /*
-            "disabled": "this entire section is commented out"
-            */
-            "enabled": true
-        }`;
-        const jsoncKeyValue = createMockedJsonKeyValue("jsonc.settings.multilineComments", jsoncValue);
-        mockAppConfigurationClientListConfigurationSettings([[jsoncKeyValue]]);
+        // Verify mixed comment styles are properly parsed
+        const mixedConfig = settings.get<any>("MixedCommentStyles");
+        expect(mixedConfig).not.undefined;
+        expect(mixedConfig.ApiSettings).not.undefined;
+        expect(mixedConfig.ApiSettings.BaseUrl).eq("https://api.example.com");
+        expect(mixedConfig.ApiSettings.ApiKey).eq("secret-key");
+        expect(mixedConfig.ApiSettings.Endpoints).not.undefined;
+        expect(Array.isArray(mixedConfig.ApiSettings.Endpoints)).eq(true);
+        expect(mixedConfig.ApiSettings.Endpoints[0]).eq("/users");
+        expect(mixedConfig.ApiSettings.Endpoints[1]).eq("/orders");
+        expect(mixedConfig.ApiSettings.Endpoints[2]).eq("/products");
 
-        const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
-        expect(settings).not.undefined;
-        const config = settings.get<any>("jsonc.settings.multilineComments");
-        expect(config).not.undefined;
-        expect(config.app).not.undefined;
-        expect(config.app.name).eq("TestApp");
-        expect(config.app.version).eq("1.0.0");
-        expect(config.enabled).eq(true);
-        expect(config.disabled).undefined; // Should be undefined as it's commented out
-    });
+        // Verify edge cases where comment-like text appears in strings
+        expect(mixedConfig.StringWithSlashes).eq("This is not a // comment");
+        expect(mixedConfig.StringWithStars).eq("This is not a /* comment */");
+        expect(mixedConfig.UrlValue).eq("https://example.com/path");
+        expect(mixedConfig.EmptyComment).eq("value");
+        expect(mixedConfig.AfterEmptyComment).eq("value2");
 
-    it("should parse json with mixed comment types", async () => {
-        const jsoncValue = `{
-            // Configuration for the application
-            "application": {
-                "name": "Azure App Config Test", // Application name
-                "version": "2.0.0",
-                /*
-                * Environment settings
-                * These can be overridden per environment
-                */
-                "environment": {
-                    "development": {
-                        "debug": true,
-                        "logLevel": "debug"
-                    },
-                    "production": {
-                        "debug": false,
-                        "logLevel": "error"
-                    }
-                }
-            },
-            // Features configuration
-            "features": [
-                "authentication",
-                "logging",
-                /* "experimental-feature", */ // Commented out feature
-                "monitoring"
-            ]
-        }`;
-        const jsoncKeyValue = createMockedJsonKeyValue("jsonc.settings.complex", jsoncValue);
-        mockAppConfigurationClientListConfigurationSettings([[jsoncKeyValue]]);
+        // Invalid JSON should fall back to string value
+        const invalidConfig = settings.get("InvalidJsonWithComments");
+        expect(invalidConfig).not.undefined;
+        expect(typeof invalidConfig).eq("string");
+        expect(invalidConfig).eq(invalidJsonWithCommentsValue);
 
-        const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
-        expect(settings).not.undefined;
-        const config = settings.get<any>("jsonc.settings.complex");
-        expect(config).not.undefined;
-        expect(config.application).not.undefined;
-        expect(config.application.name).eq("Azure App Config Test");
-        expect(config.application.version).eq("2.0.0");
-        expect(config.application.environment).not.undefined;
-        expect(config.application.environment.development).not.undefined;
-        expect(config.application.environment.development.debug).eq(true);
-        expect(config.application.environment.development.logLevel).eq("debug");
-        expect(config.application.environment.production).not.undefined;
-        expect(config.application.environment.production.debug).eq(false);
-        expect(config.application.environment.production.logLevel).eq("error");
-        expect(config.features).not.undefined;
-        expect(Array.isArray(config.features)).eq(true);
-        expect(config.features.length).eq(3);
-        expect(config.features[0]).eq("authentication");
-        expect(config.features[1]).eq("logging");
-        expect(config.features[2]).eq("monitoring");
-        // Should not contain the commented out "experimental-feature"
-        expect(config.features.includes("experimental-feature")).eq(false);
-    });
-
-    it("should fallback to string value if json with comments parsing fails", async () => {
-        const invalidJsoncValue = `{
-            // This is invalid JSON with unclosed bracket
-            "test": "value"`;
-        const jsoncKeyValue = createMockedJsonKeyValue("jsonc.settings.invalid", invalidJsoncValue);
-        mockAppConfigurationClientListConfigurationSettings([[jsoncKeyValue]]);
-
-        const connectionString = createMockedConnectionString();
-        const settings = await load(connectionString);
-        expect(settings).not.undefined;
-        const config = settings.get("jsonc.settings.invalid");
-        expect(config).not.undefined;
-        expect(typeof config).eq("string", "should fallback to string value");
-        expect(config).eq(invalidJsoncValue);
+        // Only comments should be treated as string value (invalid JSON)
+        const onlyCommentsConfig = settings.get("OnlyComments");
+        expect(onlyCommentsConfig).not.undefined;
+        expect(typeof onlyCommentsConfig).eq("string");
+        expect(onlyCommentsConfig).eq(onlyCommentsValue);
     });
 });
