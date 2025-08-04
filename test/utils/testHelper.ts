@@ -27,6 +27,11 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     const keyFilter = listOptions?.keyFilter ?? "*";
     const labelFilter = listOptions?.labelFilter ?? "*";
     const tagsFilter = listOptions?.tagsFilter ?? [];
+
+    if (tagsFilter.length > 5) {
+        throw new RestError("Invalid request parameter 'tags'. Maximum number of tag filters is 5.", { statusCode: 400 });
+    }
+
     return unfilteredKvs.filter(kv => {
         const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, -1)) : kv.key === keyFilter;
         let labelMatched = false;

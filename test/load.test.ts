@@ -81,12 +81,24 @@ const mockedKVs = [{
     tags: {"tag1": "someValue", "tag2": "someValue"}
 }, {
     key: "keyWithTag1",
-    value: "someValue",
+    value: "someValue1",
     tags: {"tag1": "someValue"}
 }, {
     key: "keyWithTag2",
-    value: "someValue",
+    value: "someValue2",
     tags: {"tag2": "someValue"}
+}, {
+    key: "keyWithNullTag",
+    value: "valueWithNullTag",
+    tags: {"nullTag": "\0"}
+}, {
+    key: "keyWithEscapedComma",
+    value: "valueWithEscapedComma",
+    tags: {"tag": "value\\,with\\,commas"}
+}, {
+    key: "keyWithEmptyTag",
+    value: "valueWithEmptyTag",
+    tags: {"emptyTag": ""}
 }
 ].map(createMockedKeyValue);
 
@@ -188,7 +200,7 @@ describe("load", function () {
             }]
         });
         expect(loadWithTag1.has("keyWithTag1")).true;
-        expect(loadWithTag1.get("keyWithTag1")).eq("someValue");
+        expect(loadWithTag1.get("keyWithTag1")).eq("someValue1");
         expect(loadWithTag1.has("keyWithTag2")).false;
         expect(loadWithTag1.has("keyWithMultipleTags")).true;
         expect(loadWithTag1.get("keyWithMultipleTags")).eq("someValue");
@@ -203,6 +215,53 @@ describe("load", function () {
         expect(loadWithMultipleTags.has("keyWithTag2")).false;
         expect(loadWithMultipleTags.has("keyWithMultipleTags")).true;
         expect(loadWithMultipleTags.get("keyWithMultipleTags")).eq("someValue");
+    });
+
+    it("should filter by nullTag to load key values with null tag", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithNullTag = await load(connectionString, {
+            selectors: [{
+                keyFilter: "*",
+                tagFilters: ["nullTag=\0"]
+            }]
+        });
+
+        // Should include only key values with nullTag=\0
+        expect(loadWithNullTag.has("keyWithNullTag")).true;
+        expect(loadWithNullTag.get("keyWithNullTag")).eq("valueWithNullTag");
+
+        // Should exclude key values with other tags
+        expect(loadWithNullTag.has("keyWithEmptyTag")).false;
+    });
+
+    it("should filter by tags with escaped comma characters", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithEscapedComma = await load(connectionString, {
+            selectors: [{
+                keyFilter: "*",
+                tagFilters: ["tag=value\\,with\\,commas"]
+            }]
+        });
+
+        expect(loadWithEscapedComma.has("keyWithEscapedComma")).true;
+        expect(loadWithEscapedComma.get("keyWithEscapedComma")).eq("valueWithEscapedComma");
+    });
+
+    it("should filter by empty tag value to load key values with empty tag", async () => {
+        const connectionString = createMockedConnectionString();
+        const loadWithEmptyTag = await load(connectionString, {
+            selectors: [{
+                keyFilter: "*",
+                tagFilters: ["emptyTag="]
+            }]
+        });
+
+        // Should include key values with emptyTag=""
+        expect(loadWithEmptyTag.has("keyWithEmptyTag")).true;
+        expect(loadWithEmptyTag.get("keyWithEmptyTag")).eq("valueWithEmptyTag");
+
+        // Should exclude key values with other tags
+        expect(loadWithEmptyTag.has("keyWithNullTag")).false;
     });
 
     it("should also work with other ReadonlyMap APIs", async () => {
@@ -319,10 +378,38 @@ describe("load", function () {
         const loadWithInvalidTagFilter = load(connectionString, {
             selectors: [{
                 keyFilter: "*",
-                tagFilters: ["testTag"]
+                tagFilters: ["emptyTag"]
             }]
         });
         return expect(loadWithInvalidTagFilter).to.eventually.rejectedWith("Tag filter must follow the format \"tagName=tagValue\"");
+    });
+
+    it("should throw exception when too many tag filters are provided", async () => {
+        const connectionString = createMockedConnectionString();
+
+        // Create a list with more than the maximum allowed tag filters (assuming max is 5)
+        const tooManyTagFilters = [
+            "Environment=Development",
+            "Team=Backend",
+            "Priority=High",
+            "Version=1.0",
+            "Stage=Testing",
+            "Region=EastUS" // This should exceed the limit
+        ];
+        try {
+            await load(connectionString, {
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: tooManyTagFilters
+                }]
+            });
+        } catch (error) {
+            expect(error.message).eq("Failed to load.");
+            expect(error.cause.message).eq("Invalid request parameter 'tags'. Maximum number of tag filters is 5.");
+            return;
+        }
+        // we should never reach here, load should throw an error
+        throw new Error("Expected load to throw.");
     });
 
     it("should override config settings with same key but different label", async () => {

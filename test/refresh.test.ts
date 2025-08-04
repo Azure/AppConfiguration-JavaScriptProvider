@@ -39,7 +39,8 @@ describe("dynamic refresh", function () {
         mockedKVs = [
             { value: "red", key: "app.settings.fontColor" },
             { value: "40", key: "app.settings.fontSize" },
-            { value: "30", key: "app.settings.fontSize", label: "prod" }
+            { value: "30", key: "app.settings.fontSize", label: "prod" },
+            { value: "someValue", key: "TestTagKey", tags: { "env": "dev" } }
         ].map(createMockedKeyValue);
         mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
         mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
@@ -435,6 +436,34 @@ describe("dynamic refresh", function () {
         expect(getKvRequestCount).eq(1);
         expect(settings.get("app.settings.fontColor")).eq("blue");
     });
+
+    it("should refresh key values using tag filters", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "*",
+                tagFilters: ["env=dev"]
+            }],
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000
+            }
+        });
+
+        expect(settings).not.undefined;
+
+        // Verify only dev-tagged items are loaded
+        expect(settings.get("TestTagKey")).eq("someValue");
+
+        // Change the dev-tagged key value
+        updateSetting("TestTagKey", "newValue");
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+
+        // Verify changes are reflected
+        expect(settings.get("TestTagKey")).eq("newValue");
+    });
 });
 
 describe("dynamic refresh feature flags", function () {
@@ -548,5 +577,51 @@ describe("dynamic refresh feature flags", function () {
         expect(listKvRequestCount).eq(5); // 3 + 2 more requests: one conditional request to detect change and one request to reload all feature flags
         expect(getKvRequestCount).eq(0);
         expect(refreshSuccessfulCount).eq(1); // change in feature flags, because page etags are different.
+    });
+
+    it("should refresh feature flags using tag filters", async () => {
+        mockedKVs = [
+            createMockedFeatureFlag("DevFeature", { enabled: true }, { tags: { "env": "dev" } }),
+            createMockedFeatureFlag("ProdFeature", { enabled: false }, { tags: { "env": "prod" } })
+        ];
+        mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
+
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: ["env=dev"]
+                }],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 2000
+                }
+            }
+        });
+
+        expect(settings).not.undefined;
+
+        const featureManagement = settings.get<any>("feature_management");
+        expect(featureManagement).not.undefined;
+        expect(featureManagement.feature_flags).not.undefined;
+        expect(featureManagement.feature_flags.length).eq(1);
+        expect(featureManagement.feature_flags[0].id).eq("DevFeature");
+        expect(featureManagement.feature_flags[0].enabled).eq(true);
+
+        // Change the dev-tagged feature flag
+        updateSetting(".appconfig.featureflag/DevFeature", JSON.stringify({
+            "id": "DevFeature",
+            "enabled": false
+        }));
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+
+        const updatedFeatureManagement = settings.get<any>("feature_management");
+        expect(updatedFeatureManagement.feature_flags[0].id).eq("DevFeature");
+        expect(updatedFeatureManagement.feature_flags[0].enabled).eq(false);
     });
 });
