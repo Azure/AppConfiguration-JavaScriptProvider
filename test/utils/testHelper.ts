@@ -48,6 +48,9 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
         if (tagsFilter.length > 0) {
             tagsMatched = tagsFilter.every(tag => {
                 const [tagName, tagValue] = tag.split("=");
+                if (tagValue === "\0") {
+                    return kv.tags && kv.tags[tagName] === null;
+                }
                 return kv.tags && kv.tags[tagName] === tagValue;
             });
         }

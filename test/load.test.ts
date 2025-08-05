@@ -90,7 +90,7 @@ const mockedKVs = [{
 }, {
     key: "keyWithNullTag",
     value: "valueWithNullTag",
-    tags: {"nullTag": "\0"}
+    tags: {"nullTag": null}
 }, {
     key: "keyWithEscapedComma",
     value: "valueWithEscapedComma",
