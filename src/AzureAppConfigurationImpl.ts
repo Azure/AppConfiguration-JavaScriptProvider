@@ -395,6 +395,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (isInputError(error)) {
                         throw error;
                     }
+                    if (isRestError(error) && !isFailoverableError(error)) {
+                        throw error;
+                    }
                     if (abortSignal.aborted) {
                         return;
                     }
