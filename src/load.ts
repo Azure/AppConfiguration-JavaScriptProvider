@@ -8,7 +8,7 @@ import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js"
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 
-const MIN_DELAY_FOR_UNHANDLED_ERROR: number = 5_000; // 5 seconds
+const MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS: number = 5_000;
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
@@ -49,7 +49,7 @@ export async function load(
         // load() method is called in the application's startup code path.
         // Unhandled exceptions cause application crash which can result in crash loops as orchestrators attempt to restart the application.
         // Knowing the intended usage of the provider in startup code path, we mitigate back-to-back crash loops from overloading the server with requests by waiting a minimum time to propagate fatal errors.
-        const delay = MIN_DELAY_FOR_UNHANDLED_ERROR - (Date.now() - startTimestamp);
+        const delay = MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS - (Date.now() - startTimestamp);
         if (delay > 0) {
             await new Promise((resolve) => setTimeout(resolve, delay));
         }

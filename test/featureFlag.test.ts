@@ -55,6 +55,9 @@ const mockedKVs = [{
     createMockedFeatureFlag("FlagWithTestLabel", { enabled: true }, {label: "Test"}),
     createMockedFeatureFlag("Alpha_1", { enabled: true }),
     createMockedFeatureFlag("Alpha_2", { enabled: false }),
+    createMockedFeatureFlag("DevFeatureFlag", { enabled: true }, { tags: { "environment": "dev" } }),
+    createMockedFeatureFlag("ProdFeatureFlag", { enabled: false }, { tags: { "environment": "prod" } }),
+    createMockedFeatureFlag("TaggedFeature", { enabled: true }, { tags: { "team": "backend", "priority": "high" } }),
     createMockedFeatureFlag("Telemetry_1", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag"}),
     createMockedFeatureFlag("Telemetry_2", { enabled: true, telemetry: { enabled: true } }, { etag: "ETag", label: "Test"}),
     createMockedFeatureFlag("NoPercentileAndSeed", {
@@ -336,6 +339,78 @@ describe("feature flags", function () {
         expect(featureFlag.telemetry.enabled).equals(true);
         expect(featureFlag.telemetry.metadata.ETag).equals("ETag");
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_2?label=Test`);
+    });
+
+    it("should load feature flags using tag filters", async () => {
+        const connectionString = createMockedConnectionString();
+
+        // Test filtering by environment=dev tag
+        const settingsWithDevTag = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: ["environment=dev"]
+                }]
+            }
+        });
+
+        expect(settingsWithDevTag).not.undefined;
+        expect(settingsWithDevTag.get("feature_management")).not.undefined;
+        let featureFlags = settingsWithDevTag.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(1);
+        expect(featureFlags[0].id).equals("DevFeatureFlag");
+        expect(featureFlags[0].enabled).equals(true);
+
+        // Test filtering by environment=prod tag
+        const settingsWithProdTag = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: ["environment=prod"]
+                }]
+            }
+        });
+
+        featureFlags = settingsWithProdTag.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(1);
+        expect(featureFlags[0].id).equals("ProdFeatureFlag");
+        expect(featureFlags[0].enabled).equals(false);
+
+        // Test filtering by multiple tags (team=backend AND priority=high)
+        const settingsWithMultipleTags = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: ["team=backend", "priority=high"]
+                }]
+            }
+        });
+
+        featureFlags = settingsWithMultipleTags.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(1);
+        expect(featureFlags[0].id).equals("TaggedFeature");
+        expect(featureFlags[0].enabled).equals(true);
+
+        // Test filtering by non-existent tag
+        const settingsWithNonExistentTag = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*",
+                    tagFilters: ["nonexistent=tag"]
+                }]
+            }
+        });
+
+        featureFlags = settingsWithNonExistentTag.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(0);
     });
 
     it("should load feature flags from snapshot", async () => {

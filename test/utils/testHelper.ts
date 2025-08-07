@@ -13,7 +13,7 @@ import * as crypto from "crypto";
 import { ConfigurationClientManager } from "../../src/ConfigurationClientManager.js";
 import { ConfigurationClientWrapper } from "../../src/ConfigurationClientWrapper.js";
 
-const MAX_TIME_OUT = 20000;
+const MAX_TIME_OUT = 100_000;
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
@@ -26,6 +26,12 @@ function _sha256(input) {
 function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     const keyFilter = listOptions?.keyFilter ?? "*";
     const labelFilter = listOptions?.labelFilter ?? "*";
+    const tagsFilter = listOptions?.tagsFilter ?? [];
+
+    if (tagsFilter.length > 5) {
+        throw new RestError("Invalid request parameter 'tags'. Maximum number of tag filters is 5.", { statusCode: 400 });
+    }
+
     return unfilteredKvs.filter(kv => {
         const keyMatched = keyFilter.endsWith("*") ? kv.key.startsWith(keyFilter.slice(0, -1)) : kv.key === keyFilter;
         let labelMatched = false;
@@ -38,7 +44,17 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
         } else {
             labelMatched = kv.label === labelFilter;
         }
-        return keyMatched && labelMatched;
+        let tagsMatched = true;
+        if (tagsFilter.length > 0) {
+            tagsMatched = tagsFilter.every(tag => {
+                const [tagName, tagValue] = tag.split("=");
+                if (tagValue === "\0") {
+                    return kv.tags && kv.tags[tagName] === null;
+                }
+                return kv.tags && kv.tags[tagName] === tagValue;
+            });
+        }
+        return keyMatched && labelMatched && tagsMatched;
     });
 }
 
@@ -233,8 +249,7 @@ const createMockedKeyVaultReference = (key: string, vaultUri: string): Configura
     key,
     contentType: "application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8",
     lastModified: new Date(),
-    tags: {
-    },
+    tags: {},
     etag: uuid.v4(),
     isReadOnly: false,
 });
