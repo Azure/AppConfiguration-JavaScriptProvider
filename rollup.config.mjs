@@ -11,6 +11,7 @@ export default [
       "@azure/identity",
       "crypto",
       "dns/promises",
+      "jsonc-parser",
       "@microsoft/feature-management"
     ],
     input: "src/index.ts",
