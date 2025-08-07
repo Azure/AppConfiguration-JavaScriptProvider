@@ -6,9 +6,16 @@ import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
 import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
 import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { CdnTokenPipelinePolicy, AnonymousRequestPipelinePolicy } from "./azureFrontDoor/cdnRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
+import { ArgumentError } from "./common/error.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS: number = 5_000;
+
+// Empty token credential to be used when loading from Azure Front Door
+const emptyTokenCredential: TokenCredential = {
+    getToken: async () => ({ token: "", expiresOnTimestamp: Number.MAX_SAFE_INTEGER })
+};
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
@@ -42,7 +49,8 @@ export async function load(
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options);
+        const isCdnUsed: boolean = credentialOrOptions === emptyTokenCredential;
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, isCdnUsed);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -55,4 +63,36 @@ export async function load(
         }
         throw error;
     }
+}
+
+/**
+ * Loads the data from Azure Front Door (CDN) and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The URL to the Azure Front Door.
+ * @param appConfigOptions  Optional parameters.
+ */
+export async function loadFromAzureFrontDoor(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
+export async function loadFromAzureFrontDoor(
+    endpoint: string | URL,
+    appConfigOptions: AzureAppConfigurationOptions = {}
+): Promise<AzureAppConfiguration> {
+    if (appConfigOptions.replicaDiscoveryEnabled) {
+        throw new ArgumentError("Replica discovery is not supported when loading from Azure Front Door.");
+    }
+    if (appConfigOptions.loadBalancingEnabled) {
+        throw new ArgumentError("Load balancing is not supported when loading from Azure Front Door.");
+    }
+    appConfigOptions.replicaDiscoveryEnabled = false; // Disable replica discovery when loading from Azure Front Door
+
+    appConfigOptions.clientOptions = {
+        ...appConfigOptions.clientOptions,
+        // Add etag url policy to append etag to the request url for breaking CDN cache
+        additionalPolicies: [
+            ...(appConfigOptions.clientOptions?.additionalPolicies || []),
+            { policy: new CdnTokenPipelinePolicy(), position: "perCall" },
+            { policy: new AnonymousRequestPipelinePolicy(), position: "perRetry" }
+        ]
+    };
+
+    return await load(endpoint, emptyTokenCredential, appConfigOptions);
 }

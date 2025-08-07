@@ -1,6 +1,29 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+export function getCryptoModule(): any {
+    let crypto;
+
+    // Check for browser environment
+    if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+        crypto = window.crypto;
+    }
+    // Check for Node.js environment
+    else if (typeof global !== "undefined" && global.crypto) {
+        crypto = global.crypto;
+    }
+    // Fallback to native Node.js crypto module
+    else {
+        try {
+            crypto = require("crypto");
+        } catch (error) {
+            console.error("Failed to load the crypto module:", error.message);
+            throw error;
+        }
+    }
+    return crypto;
+}
+
 export function base64Helper(str: string): string {
     const bytes = new TextEncoder().encode(str); // UTF-8 encoding
     let chars = "";
