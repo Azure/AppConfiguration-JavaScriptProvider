@@ -527,7 +527,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (this.#isCdnUsed && selectorCollection.cdnToken) {
                         this.#addCdnTokenLookupHeader(listOptions, selectorCollection.cdnToken);
                     }
-                    
+
                     const pageEtags: string[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
                         this.#requestTraceOptions,
