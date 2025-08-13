@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "@azure/app-configuration-provider": "latest",
+    "@azure/app-configuration-provider": "../../",
     "@azure/identity": "^4.1.0",
     "dotenv": "^16.3.1",
     "express": "^4.21.2"

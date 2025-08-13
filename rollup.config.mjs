@@ -7,6 +7,7 @@ export default [
     external: [
       "@azure/app-configuration",
       "@azure/keyvault-secrets",
+      "@azure/core-client",
       "@azure/core-rest-pipeline",
       "@azure/identity",
       "crypto",

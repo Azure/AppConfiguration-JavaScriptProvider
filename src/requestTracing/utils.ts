@@ -19,6 +19,7 @@ import {
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
+    CDN_USED_TAG,
     KEY_VAULT_REFRESH_CONFIGURED_TAG,
     KUBERNETES_ENV_VAR,
     NODEJS_DEV_ENV_VAL,
@@ -43,6 +44,7 @@ export interface RequestTracingOptions {
     initialLoadCompleted: boolean;
     replicaCount: number;
     isFailoverRequest: boolean;
+    isCdnUsed: boolean;
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
@@ -92,7 +94,9 @@ function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: 
     const actualOptions = { ...operationOptions };
     if (requestTracingOptions.enabled) {
         actualOptions.requestOptions = {
+            ...actualOptions.requestOptions,
             customHeaders: {
+                ...actualOptions.requestOptions?.customHeaders,
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
@@ -112,6 +116,7 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     FFFeatures: Seed+Telemetry
     UsersKeyVault
     Failover
+    CDN
     */
     const keyValues = new Map<string, string | undefined>();
     const tags: string[] = [];
@@ -142,6 +147,9 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
 
     if (requestTracingOptions.isFailoverRequest) {
         tags.push(FAILOVER_REQUEST_TAG);
+    }
+    if (requestTracingOptions.isCdnUsed) {
+        tags.push(CDN_USED_TAG);
     }
     if (requestTracingOptions.replicaCount > 0) {
         keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
