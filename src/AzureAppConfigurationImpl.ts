@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { OperationOptions } from "@azure/core-client";
 import {
     AppConfigurationClient,
     ConfigurationSetting,
@@ -516,7 +517,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
             for (const selector of selectorsToUpdate) {
                 if (selector.snapshotName === undefined) {
-                    let listOptions: ListConfigurationSettingsOptions = {
+                    const listOptions: ListConfigurationSettingsOptions = {
                         keyFilter: selector.keyFilter,
                         labelFilter: selector.labelFilter,
                         tagsFilter: selector.tagFilters
@@ -524,11 +525,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                     // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
                     if (this.#isCdnUsed && selectorCollection.cdnToken) {
-                        listOptions = {
-                            ...listOptions,
-                            requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: selectorCollection.cdnToken }}
-                        };
+                        this.#addCdnTokenLookupHeader(listOptions, selectorCollection.cdnToken);
                     }
+                    
                     const pageEtags: string[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
                         this.#requestTraceOptions,
@@ -631,10 +630,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 sentinel.etag = loaded.etag;
             } else {
                 // Send a request to retrieve watched key-value since it may be either not loaded or loaded with a different selector
-                // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                let getOptions: GetConfigurationSettingOptions = {};
+                const getOptions: GetConfigurationSettingOptions = {};
                 if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
-                    getOptions = { requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken } } };
+                    this.#addCdnTokenLookupHeader(getOptions, this.#kvSelectorCollection.cdnToken);
                 }
                 const response = await this.#getConfigurationSetting(sentinel, getOptions);
                 sentinel.etag = response?.etag;
@@ -691,16 +689,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
         // if watchAll is true, there should be no sentinels
         for (const sentinel of this.#sentinels.values()) {
-            // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-            let getOptions: GetConfigurationSettingOptions = {};
+            const getOptions: GetConfigurationSettingOptions = {
+                // send conditional request only when CDN is not used
+                onlyIfChanged: !this.#isCdnUsed
+            };
             if (this.#isCdnUsed && this.#kvSelectorCollection.cdnToken) {
-                // if CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                getOptions = {
-                    requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: this.#kvSelectorCollection.cdnToken ?? "" } },
-                };
+                this.#addCdnTokenLookupHeader(getOptions, this.#kvSelectorCollection.cdnToken);
             }
-            // send conditional request only when CDN is not used
-            const response = await this.#getConfigurationSetting(sentinel, { ...getOptions, onlyIfChanged: !this.#isCdnUsed });
+            const response = await this.#getConfigurationSetting(sentinel, getOptions);
 
             if ((response?.statusCode === 200 && sentinel.etag !== response?.etag) ||
                 (response === undefined && sentinel.etag !== undefined) // deleted
@@ -777,7 +773,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
                 }
-                let listOptions: ListConfigurationSettingsOptions = {
+                const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
                     tagsFilter: selector.tagFilters
@@ -785,16 +781,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 if (!this.#isCdnUsed) {
                     // if CDN is not used, add page etags to the listOptions to send conditional request
-                    listOptions = {
-                        ...listOptions,
-                        pageEtags: selector.pageEtags
-                    };
+                    listOptions.pageEtags = selector.pageEtags;
                 } else if (selectorCollection.cdnToken) {
-                    // If CDN is used, add etag to request header so that the pipeline policy can retrieve and append it to the request URL
-                    listOptions = {
-                        ...listOptions,
-                        requestOptions: { customHeaders: { [CDN_TOKEN_LOOKUP_HEADER]: selectorCollection.cdnToken } }
-                    };
+                    this.#addCdnTokenLookupHeader(listOptions, selectorCollection.cdnToken);
                 }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -1131,6 +1120,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const first15Bytes = hash.slice(0, 15);
             return first15Bytes.toString("base64url");
         }
+    }
+
+    #addCdnTokenLookupHeader(operationOptions: OperationOptions, cdnToken: string): void {
+        if (!operationOptions.requestOptions) {
+            operationOptions.requestOptions = {};
+        }
+        if (!operationOptions.requestOptions.customHeaders) {
+            operationOptions.requestOptions.customHeaders = {};
+        }
+        operationOptions.requestOptions.customHeaders[CDN_TOKEN_LOOKUP_HEADER] = cdnToken;
     }
 }
 
