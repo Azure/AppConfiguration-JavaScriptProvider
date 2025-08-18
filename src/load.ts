@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfiguration } from "./AzureAppConfiguration.js";
-import { AzureAppConfigurationImpl } from "./AzureAppConfigurationImpl.js";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
-import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { AzureAppConfiguration } from "./appConfiguration.js";
+import { AzureAppConfigurationImpl } from "./appConfigurationImpl.js";
+import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
+import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS: number = 5_000;
