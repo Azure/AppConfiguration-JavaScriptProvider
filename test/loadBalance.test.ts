@@ -8,7 +8,7 @@ const expect = chai.expect;
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, restoreMocks, createMockedConnectionString, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "../src/ConfigurationClientWrapper.js";
+import { ConfigurationClientWrapper } from "../src/configurationClientWrapper.js";
 
 const fakeEndpoint_1 = createMockedEndpoint("fake_1");
 const fakeEndpoint_2 = createMockedEndpoint("fake_2");

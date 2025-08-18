@@ -6,7 +6,7 @@ import * as chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { MAX_TIME_OUT, HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
-import { ConfigurationClientManager } from "../src/ConfigurationClientManager.js";
+import { ConfigurationClientManager } from "../src/configurationClientManager.js";
 import { load } from "./exportedApi.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";

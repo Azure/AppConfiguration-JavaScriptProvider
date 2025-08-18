@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { RefreshTimer } from "../refresh/RefreshTimer.js";
+import { KeyVaultOptions } from "./keyVaultOptions.js";
+import { RefreshTimer } from "../refresh/refreshTimer.js";
 import { ArgumentError } from "../common/error.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 
