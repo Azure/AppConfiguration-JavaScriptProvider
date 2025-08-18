@@ -4,7 +4,7 @@
 import { ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { stripComments } from "jsonc-parser";
 import { parseContentType, isJsonContentType } from "./common/contentType.js";
-import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
+import { IKeyValueAdapter } from "./keyValueAdapter.js";
 
 export class JsonKeyValueAdapter implements IKeyValueAdapter {
     static readonly #ExcludedJsonContentTypes: string[] = [
