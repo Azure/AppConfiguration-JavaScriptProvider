@@ -2,9 +2,9 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "./ConfigurationClientWrapper.js";
+import { ConfigurationClientWrapper } from "./configurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
+import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList, instanceOfTokenCredential } from "./common/utils.js";

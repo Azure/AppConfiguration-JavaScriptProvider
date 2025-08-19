@@ -16,13 +16,13 @@ import {
     KnownSnapshotComposition
 } from "@azure/app-configuration";
 import { isRestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
-import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
-import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
-import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./appConfiguration.js";
+import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
+import { IKeyValueAdapter } from "./keyValueAdapter.js";
+import { JsonKeyValueAdapter } from "./jsonKeyValueAdapter.js";
+import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./startupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
-import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/KeyVaultOptions.js";
+import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/keyVaultOptions.js";
 import { Disposable } from "./common/disposable.js";
 import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
@@ -49,8 +49,8 @@ import {
 } from "./featureManagement/constants.js";
 import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
 import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
-import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
-import { RefreshTimer } from "./refresh/RefreshTimer.js";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter.js";
+import { RefreshTimer } from "./refresh/refreshTimer.js";
 import {
     RequestTracingOptions,
     getConfigurationSettingWithTrace,
@@ -59,10 +59,10 @@ import {
     listConfigurationSettingsForSnapshotWithTrace,
     requestTracingEnabled
 } from "./requestTracing/utils.js";
-import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
-import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
+import { FeatureFlagTracingOptions } from "./requestTracing/featureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
-import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
 

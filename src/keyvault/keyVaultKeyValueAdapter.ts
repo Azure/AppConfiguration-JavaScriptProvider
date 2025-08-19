@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 import { ConfigurationSetting, isSecretReference, parseSecretReference } from "@azure/app-configuration";
-import { IKeyValueAdapter } from "../IKeyValueAdapter.js";
-import { AzureKeyVaultSecretProvider } from "./AzureKeyVaultSecretProvider.js";
-import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { RefreshTimer } from "../refresh/RefreshTimer.js";
+import { IKeyValueAdapter } from "../keyValueAdapter.js";
+import { AzureKeyVaultSecretProvider } from "./keyVaultSecretProvider.js";
+import { KeyVaultOptions } from "./keyVaultOptions.js";
+import { RefreshTimer } from "../refresh/refreshTimer.js";
 import { ArgumentError, KeyVaultReferenceError } from "../common/error.js";
 import { KeyVaultSecretIdentifier, parseKeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
 import { isRestError } from "@azure/core-rest-pipeline";

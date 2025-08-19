@@ -2,11 +2,11 @@
 // Licensed under the MIT license.
 
 import { AppConfigurationClientOptions } from "@azure/app-configuration";
-import { KeyVaultOptions } from "./keyvault/KeyVaultOptions.js";
+import { KeyVaultOptions } from "./keyvault/keyVaultOptions.js";
 import { RefreshOptions } from "./refresh/refreshOptions.js";
 import { SettingSelector } from "./types.js";
 import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions.js";
-import { StartupOptions } from "./StartupOptions.js";
+import { StartupOptions } from "./startupOptions.js";
 
 export interface AzureAppConfigurationOptions {
     /**

@@ -2,10 +2,17 @@
 // Licensed under the MIT license.
 
 import { OperationOptions } from "@azure/core-client";
-import { AppConfigurationClient, ConfigurationSettingId, GetConfigurationSettingOptions, ListConfigurationSettingsOptions, GetSnapshotOptions, ListConfigurationSettingsForSnapshotOptions } from "@azure/app-configuration";
-import { AzureAppConfigurationOptions } from "../AzureAppConfigurationOptions.js";
-import { FeatureFlagTracingOptions } from "./FeatureFlagTracingOptions.js";
-import { AIConfigurationTracingOptions } from "./AIConfigurationTracingOptions.js";
+import {
+    AppConfigurationClient,
+    ConfigurationSettingId,
+    GetConfigurationSettingOptions,
+    ListConfigurationSettingsOptions,
+    GetSnapshotOptions,
+    ListConfigurationSettingsForSnapshotOptions
+} from "@azure/app-configuration";
+import { AzureAppConfigurationOptions } from "../appConfigurationOptions.js";
+import { FeatureFlagTracingOptions } from "./featureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./aiConfigurationTracingOptions.js";
 import {
     AZURE_FUNCTION_ENV_VAR,
     AZURE_WEB_APP_ENV_VAR,
