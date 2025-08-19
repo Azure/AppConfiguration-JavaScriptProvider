@@ -8,6 +8,7 @@ const expect = chai.expect;
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference, sleepInMs } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
+import { ErrorMessages, KeyVaultReferenceErrorMessages } from "../src/common/errorMessages.js";
 
 const mockedData = [
     // key, secretUri, value
@@ -43,8 +44,8 @@ describe("key vault reference", function () {
         try {
             await load(createMockedConnectionString());
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
-            expect(error.cause.message).eq("Failed to process the Key Vault reference because Key Vault options are not configured.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
+            expect(error.cause.message).eq(KeyVaultReferenceErrorMessages.KEY_VAULT_OPTIONS_UNDEFINED);
             return;
         }
         // we should never reach here, load should throw an error
@@ -106,8 +107,8 @@ describe("key vault reference", function () {
                 }
             });
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
-            expect(error.cause.message).eq("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
+            expect(error.cause.message).eq(KeyVaultReferenceErrorMessages.KEY_VAULT_REFERENCE_UNRESOLVABLE);
             return;
         }
         // we should never reach here, load should throw an error
@@ -167,7 +168,7 @@ describe("key vault secret refresh", function () {
                 secretRefreshIntervalInMs: 59999 // less than 60_000 milliseconds
             }
         });
-        return expect(loadWithInvalidSecretRefreshInterval).eventually.rejectedWith("The Key Vault secret refresh interval cannot be less than 60000 milliseconds.");
+        return expect(loadWithInvalidSecretRefreshInterval).eventually.rejectedWith(ErrorMessages.INVALID_SECRET_REFRESH_INTERVAL);
     });
 
     it("should reload key vault secret when there is no change to key-values", async () => {

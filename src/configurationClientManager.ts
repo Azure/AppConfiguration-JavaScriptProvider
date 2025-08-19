@@ -8,7 +8,8 @@ import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
 import * as RequestTracing from "./requestTracing/constants.js";
 import { shuffleList, instanceOfTokenCredential } from "./common/utils.js";
-import { ArgumentError } from "./common/error.js";
+import { ArgumentError } from "./common/errors.js";
+import { ErrorMessages } from "./common/errorMessages.js";
 
 // Configuration client retry options
 const CLIENT_MAX_RETRIES = 2;
@@ -80,7 +81,7 @@ export class ConfigurationClientManager {
             this.#credential = credential;
             staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
-            throw new ArgumentError("A connection string or an endpoint with credential must be specified to create a client.");
+            throw new ArgumentError(ErrorMessages.CONNECTION_STRING_OR_ENDPOINT_MISSED);
         }
 
         this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
