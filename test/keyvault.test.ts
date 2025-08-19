@@ -8,7 +8,7 @@ const expect = chai.expect;
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference, sleepInMs } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
-import { ErrorMessages, KeyVaultReferenceErrorMessages } from "../src/common/errorMessages.js"; 
+import { ErrorMessages, KeyVaultReferenceErrorMessages } from "../src/common/errorMessages.js";
 
 const mockedData = [
     // key, secretUri, value

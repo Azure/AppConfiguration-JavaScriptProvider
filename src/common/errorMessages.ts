@@ -4,7 +4,6 @@
 import { MIN_REFRESH_INTERVAL_IN_MS } from "../refresh/refreshOptions.js";
 import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "../keyvault/keyVaultOptions.js";
 
-
 export const enum ErrorMessages {
     INVALID_WATCHED_SETTINGS_KEY = "The characters '*' and ',' are not supported in key of watched settings.",
     INVALID_WATCHED_SETTINGS_LABEL = "The characters '*' and ',' are not supported in label of watched settings.",
