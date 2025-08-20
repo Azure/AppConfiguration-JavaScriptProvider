@@ -64,7 +64,8 @@ import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationT
 import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
+import { ErrorMessages } from "./common/errorMessages.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -159,10 +160,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 for (const setting of watchedSettings) {
                     if (setting.key.includes("*") || setting.key.includes(",")) {
-                        throw new ArgumentError("The characters '*' and ',' are not supported in key of watched settings.");
+                        throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_KEY);
                     }
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                        throw new ArgumentError("The characters '*' and ',' are not supported in label of watched settings.");
+                        throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_LABEL);
                     }
                     this.#sentinels.push(setting);
                 }
@@ -171,7 +172,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(ErrorMessages.INVALID_REFRESH_INTERVAL);
                 }
                 this.#kvRefreshInterval = refreshIntervalInMs;
             }
@@ -190,7 +191,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new RangeError(ErrorMessages.INVALID_FEATURE_FLAG_REFRESH_INTERVAL);
                     }
                     this.#ffRefreshInterval = refreshIntervalInMs;
                 }
@@ -203,7 +204,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const { secretRefreshIntervalInMs } = options.keyVaultOptions;
             if (secretRefreshIntervalInMs !== undefined) {
                 if (secretRefreshIntervalInMs < MIN_SECRET_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The Key Vault secret refresh interval cannot be less than ${MIN_SECRET_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(ErrorMessages.INVALID_SECRET_REFRESH_INTERVAL);
                 }
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
@@ -280,7 +281,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 new Promise((_, reject) => {
                     timeoutId = setTimeout(() => {
                         abortController.abort(); // abort the initialization promise
-                        reject(new Error("Load operation timed out."));
+                        reject(new Error(ErrorMessages.LOAD_OPERATION_TIMEOUT));
                     },
                     startupTimeout);
                 })
@@ -295,7 +296,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
             }
-            throw new Error("Failed to load.", { cause: error });
+            throw new Error(ErrorMessages.LOAD_OPERATION_FAILED, { cause: error });
         } finally {
             clearTimeout(timeoutId); // cancel the timeout promise
         }
@@ -349,7 +350,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
+            throw new InvalidOperationError(ErrorMessages.REFRESH_NOT_ENABLED);
         }
 
         if (this.#refreshInProgress) {
@@ -368,7 +369,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
+            throw new InvalidOperationError(ErrorMessages.REFRESH_NOT_ENABLED);
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -848,7 +849,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("All fallback clients failed to get configuration settings.");
+        throw new Error(ErrorMessages.ALL_FALLBACK_CLIENTS_FAILED);
     }
 
     async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
@@ -924,7 +925,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
-            throw new ArgumentError("The value of configuration setting cannot be undefined.");
+            throw new ArgumentError(ErrorMessages.CONFIGURATION_SETTING_VALUE_UNDEFINED);
         }
         const featureFlag = JSON.parse(rawFlag);
 
@@ -1106,17 +1107,17 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
         const selector = { ...selectorCandidate };
         if (selector.snapshotName) {
             if (selector.keyFilter || selector.labelFilter || selector.tagFilters) {
-                throw new ArgumentError("Key, label or tag filters should not be specified while selecting a snapshot.");
+                throw new ArgumentError(ErrorMessages.INVALID_SNAPSHOT_SELECTOR);
             }
         } else {
             if (!selector.keyFilter) {
-                throw new ArgumentError("Key filter cannot be null or empty.");
+                throw new ArgumentError(ErrorMessages.INVALID_KEY_FILTER);
             }
             if (!selector.labelFilter) {
                 selector.labelFilter = LabelFilter.Null;
             }
             if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-                throw new ArgumentError("The characters '*' and ',' are not supported in label filters.");
+                throw new ArgumentError(ErrorMessages.INVALID_LABEL_FILTER);
             }
             if (selector.tagFilters) {
                 validateTagFilters(selector.tagFilters);
@@ -1168,7 +1169,7 @@ function validateTagFilters(tagFilters: string[]): void {
     for (const tagFilter of tagFilters) {
         const res = tagFilter.split("=");
         if (res[0] === "" || res.length !== 2) {
-            throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
+            throw new Error(`Invalid tag filter: ${tagFilter}. ${ErrorMessages.INVALID_TAG_FILTER}.`);
         }
     }
 }
