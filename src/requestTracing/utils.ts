@@ -23,6 +23,7 @@ import {
     FEATURE_FILTER_TYPE_KEY,
     FF_MAX_VARIANTS_KEY,
     FF_FEATURES_KEY,
+    NODE_VERSION_KEY,
     HOST_TYPE_KEY,
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
@@ -126,6 +127,7 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     keyValues.set(REQUEST_TYPE_KEY, requestTracingOptions.initialLoadCompleted ? RequestType.WATCH : RequestType.STARTUP);
     keyValues.set(HOST_TYPE_KEY, getHostType());
     keyValues.set(ENV_KEY, isDevEnvironment() ? DEV_ENV_VAL : undefined);
+    keyValues.set(NODE_VERSION_KEY, getNodeVersion());
 
     const appConfigOptions = requestTracingOptions.appConfigOptions;
     if (appConfigOptions?.keyVaultOptions) {
@@ -198,10 +200,20 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     return tags.join(DELIMITER);
 }
 
-function getEnvironmentVariable(name: string) {
+function getEnvironmentVariable(name: string): string | undefined {
     // Make it compatible with non-Node.js runtime
     if (typeof process !== "undefined" && typeof process?.env === "object") {
         return process.env[name];
+    } else {
+        return undefined;
+    }
+}
+
+function getNodeVersion(): string | undefined {
+    // Make it compatible with non-Node.js runtime
+    if (typeof process !== "undefined" && typeof process?.versions === "object") {
+        const version = process.versions.node;
+        return version ? version.split('.')[0] : undefined;
     } else {
         return undefined;
     }
@@ -235,7 +247,7 @@ function isDevEnvironment(): boolean {
     return false;
 }
 
-export function isBrowser() {
+export function isBrowser(): boolean {
     // https://developer.mozilla.org/en-US/docs/Web/API/Window
     const isWindowDefinedAsExpected = typeof window === "object" && typeof Window === "function" && window instanceof Window;
     // https://developer.mozilla.org/en-US/docs/Web/API/Document
@@ -244,7 +256,7 @@ export function isBrowser() {
     return isWindowDefinedAsExpected && isDocumentDefinedAsExpected;
 }
 
-export function isWebWorker() {
+export function isWebWorker(): boolean {
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerGlobalScope
     const workerGlobalScopeDefined = typeof WorkerGlobalScope !== "undefined";
     // https://developer.mozilla.org/en-US/docs/Web/API/WorkerNavigator
