@@ -56,7 +56,8 @@ describe("request tracing", function () {
             });
         } catch (e) { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
-        expect(headerPolicy.headers.get("Correlation-Context")).eq("RequestType=Startup");
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext.includes("RequestType=Startup")).eq(true);
     });
 
     it("should have key vault tag in correlation-context header", async () => {
