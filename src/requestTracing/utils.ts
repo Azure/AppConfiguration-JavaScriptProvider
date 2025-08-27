@@ -213,7 +213,7 @@ function getNodeVersion(): string | undefined {
     // Make it compatible with non-Node.js runtime
     if (typeof process !== "undefined" && typeof process?.versions === "object") {
         const version = process.versions.node;
-        return version ? version.split('.')[0] : undefined;
+        return version ? version.split(".")[0] : undefined;
     } else {
         return undefined;
     }
