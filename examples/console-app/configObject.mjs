@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as dotenv from "dotenv";
-dotenv.config()
+dotenv.config();
 
 /**
  * This example demonstrates how to construct a configuration object from settings loaded from Azure App Configuration.

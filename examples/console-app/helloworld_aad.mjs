@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as dotenv from "dotenv";
-dotenv.config()
+dotenv.config();
 
 /**
  * This example retrives all settings with key following pattern "app.settings.*", i.e. starting with "app.settings.".

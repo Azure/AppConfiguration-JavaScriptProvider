@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as dotenv from "dotenv";
-dotenv.config()
+dotenv.config();
 
 /**
  * Before you run it, please add a Key Vault reference with key "app.secret" in your App Configuration store.
