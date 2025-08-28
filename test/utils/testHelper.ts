@@ -121,12 +121,11 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
     });
 }
 
-function mockAppConfigurationClientLoadBalanceMode(clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
-    const emptyPages: ConfigurationSetting[][] = [];
+function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
     sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
         countObject.count += 1;
-        const kvs = _filterKVs(emptyPages.flat(), listOptions);
-        return getMockedIterator(emptyPages, kvs, listOptions);
+        const kvs = _filterKVs(pages.flat(), listOptions);
+        return getMockedIterator(pages, kvs, listOptions);
     });
 }
 
@@ -159,7 +158,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
     });
 }
 
-function mockAppConfigurationClientGetConfigurationSetting(kvList, customCallback?: (options) => any) {
+function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         if (customCallback) {
             customCallback(options);
