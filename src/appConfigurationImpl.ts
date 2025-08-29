@@ -106,12 +106,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
+    #kvRefreshIncompleted: boolean = false;
 
     // Feature flags
     #featureFlagEnabled: boolean = false;
     #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
+    #ffRefreshIncompleted: boolean = false;
 
     // Key Vault references
     #secretRefreshEnabled: boolean = false;
@@ -131,11 +133,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // CDN
+    #isCdnUsed: boolean;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isCdnUsed: boolean
     ) {
         this.#options = options;
+        this.#isCdnUsed = isCdnUsed;
         this.#clientManager = clientManager;
 
         // enable request tracing if not opt-out
@@ -224,7 +231,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            isCdnUsed: this.#isCdnUsed
         };
     }
 
