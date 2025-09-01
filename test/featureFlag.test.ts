@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "./exportedApi.js";
 import { MAX_TIME_OUT, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";

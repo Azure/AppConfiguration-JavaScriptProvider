@@ -12,7 +12,9 @@
         "strictNullChecks": true,
         "strictFunctionTypes": true,
         "sourceMap": true,
-        "inlineSources": true
+        "inlineSources": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true
     },
     "include": [
         "src/**/*"
