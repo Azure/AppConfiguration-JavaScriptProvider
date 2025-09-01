@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as dotenv from "dotenv";
-dotenv.config()
+dotenv.config();
 
 import { load } from "@azure/app-configuration-provider";
 import { DefaultAzureCredential } from "@azure/identity";
