@@ -23,8 +23,8 @@
     "build-test": "tsc -p ./tsconfig.test.json",
     "clean": "rimraf dist dist-esm out types",
     "dev": "rollup --config --watch",
-    "lint": "eslint src/ test/",
-    "fix-lint": "eslint src/ test/ --fix",
+    "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs,.cjs",
+    "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs,.cjs",
     "test": "mocha out/test/*.test.{js,cjs,mjs} --parallel"
   },
   "repository": {
