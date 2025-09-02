@@ -18,15 +18,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "npm run clean && npm run build-cjs && npm run build-esm && npm run build-test",
-    "build-cjs": "rollup --config",
-    "build-esm": "tsc -p ./tsconfig.json",
-    "build-test": "tsc -p ./tsconfig.test.json",
+    "build": "npm run clean && rollup --config && npm run build-test",
+    "build-test": "npm run build-test-esm && npm run build-test-cjs",
+    "build-test-esm": "tsc -p ./tsconfig.test.esm.json",
+    "build-test-cjs": "tsc -p ./tsconfig.test.cjs.json && cpy cjs-package.json out/commonjs --rename=package.json",
     "clean": "rimraf dist dist-esm out types",
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
-    "test": "mocha out/test/*.test.js --parallel"
+    "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel"
   },
   "repository": {
     "type": "git",
@@ -43,8 +43,9 @@
     "@types/uuid": "^9.0.8",
     "@typescript-eslint/eslint-plugin": "^8.41.0",
     "@typescript-eslint/parser": "^8.41.0",
-    "chai": "^6.0.1",
-    "chai-as-promised": "^8.0.2",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^7.1.2",
+    "cpy-cli": "^6.0.0",
     "dotenv": "^17.2.1",
     "eslint": "^9.34.0",
     "mocha": "^11.7.1",

@@ -1,10 +1,24 @@
 {
-    "extends": "./tsconfig.base.json",
     "compilerOptions": {
+        "lib": [
+            "DOM",
+            "WebWorker",
+            "ESNext",
+            "ES2022"
+        ],
+        "skipDefaultLibCheck": true,
         "module": "ESNext",
-        "outDir": "./dist-esm"
+        "moduleResolution": "Node",
+        "target": "ES2022",
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+        "sourceMap": true,
+        "inlineSources": true,
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true
     },
-    "include": [
-        "src/**/*"
+    "exclude": [
+        "node_modules",
+        "**/node_modules/*"
     ]
 }
