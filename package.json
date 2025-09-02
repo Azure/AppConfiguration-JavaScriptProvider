@@ -4,6 +4,7 @@
   "description": "The JavaScript configuration provider for Azure App Configuration",
   "main": "dist/index.js",
   "module": "./dist-esm/index.js",
+  "type": "module",
   "types": "types/index.d.ts",
   "files": [
     "dist/**/*.js",
@@ -23,9 +24,9 @@
     "build-test": "tsc -p ./tsconfig.test.json",
     "clean": "rimraf dist dist-esm out types",
     "dev": "rollup --config --watch",
-    "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs,.cjs",
-    "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs,.cjs",
-    "test": "mocha out/test/*.test.{js,cjs,mjs} --parallel"
+    "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
+    "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
+    "test": "mocha out/test/*.test.js --parallel"
   },
   "repository": {
     "type": "git",
@@ -34,6 +35,8 @@
   "license": "MIT",
   "devDependencies": {
     "@rollup/plugin-typescript": "^11.1.6",
+    "@types/chai": "^5.2.2",
+    "@types/chai-as-promised": "8.0.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.18.0",
     "@types/sinon": "^17.0.4",

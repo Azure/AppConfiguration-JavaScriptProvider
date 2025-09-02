@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
@@ -200,3 +201,4 @@ describe("key vault secret refresh", function () {
         expect(settings.get("TestKey")).eq("SecretValue - Updated");
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
@@ -434,3 +435,4 @@ describe("feature flags", function () {
         restoreMocks();
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

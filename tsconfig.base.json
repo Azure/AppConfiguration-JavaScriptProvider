@@ -3,7 +3,8 @@
         "lib": [
             "DOM",
             "WebWorker",
-            "ESNext"
+            "ESNext",
+            "ES2022"
         ],
         "skipDefaultLibCheck": true,
         "module": "ESNext",

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
@@ -595,3 +596,4 @@ describe("load", function () {
         restoreMocks();
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */
