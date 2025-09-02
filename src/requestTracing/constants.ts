@@ -18,7 +18,7 @@ export const ENV_KEY = "Env";
 export const DEV_ENV_VAL = "Dev";
 
 // Node.js Version
-export const NODE_VERSION_KEY = "NODE";
+export const NODE_VERSION_KEY = "Node";
 
 // Host Type
 export const HOST_TYPE_KEY = "Host";
