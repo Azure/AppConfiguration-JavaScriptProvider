@@ -17,10 +17,17 @@ export default [
     input: "src/index.ts",
     output: [
       {
-        file: "dist/index.js",
+        dir: "dist/commonjs/",
         format: "cjs",
-        sourcemap: true
+        sourcemap: true,
+        preserveModules: true,
       },
+      {
+        dir: "dist/esm/",
+        format: "esm",
+        sourcemap: true,
+        preserveModules: true,
+      }
     ],
     plugins: [
       typescript({
@@ -44,7 +51,7 @@ export default [
   },
   {
     input: "src/index.ts",
-    output: [{ file: "types/index.d.ts", format: "es" }],
+    output: [{ file: "types/index.d.ts", format: "esm" }],
     plugins: [dts()],
   },
 ];

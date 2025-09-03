@@ -2,10 +2,10 @@
 // Licensed under the MIT license.
 
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi";
+import { load } from "../src/index.js";
 import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 
@@ -30,6 +30,7 @@ describe("startup", function () {
 
         const settings = await load(createMockedConnectionString());
         expect(attempt).eq(2);
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("TestValue");
     });
