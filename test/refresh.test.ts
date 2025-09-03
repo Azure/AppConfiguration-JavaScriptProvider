@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -34,7 +34,7 @@ const getKvCallback = () => {
 };
 
 describe("dynamic refresh", function () {
-    this.timeout(MAX_TIME_OUT);
+    
 
     beforeEach(() => {
         mockedKVs = [
@@ -468,7 +468,7 @@ describe("dynamic refresh", function () {
 });
 
 describe("dynamic refresh feature flags", function () {
-    this.timeout(MAX_TIME_OUT);
+    
 
     beforeEach(() => {
     });
