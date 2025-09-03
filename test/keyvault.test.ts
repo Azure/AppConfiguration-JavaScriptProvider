@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { MAX_TIME_OUT, sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference, sleepInMs } from "./utils/testHelper.js";
+import { sinon, createMockedConnectionString, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockSecretClientGetSecret, restoreMocks, createMockedKeyVaultReference, sleepInMs } from "./utils/testHelper.js";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import { ErrorMessages, KeyVaultReferenceErrorMessages } from "../src/common/errorMessages.js";
 
@@ -30,7 +30,6 @@ function mockNewlyCreatedKeyVaultSecretClients() {
 }
 
 describe("key vault reference", function () {
-    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
         mockAppConfigurationClient();
@@ -144,7 +143,6 @@ describe("key vault reference", function () {
 });
 
 describe("key vault secret refresh", function () {
-    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
         const data = [

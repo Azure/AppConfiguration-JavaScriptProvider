@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 
 const mockedKVs = [{
@@ -105,7 +105,6 @@ const mockedKVs = [{
 ].map(createMockedKeyValue);
 
 describe("load", function () {
-    this.timeout(MAX_TIME_OUT);
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
