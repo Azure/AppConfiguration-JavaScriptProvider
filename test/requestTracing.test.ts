@@ -13,7 +13,6 @@ import { load } from "../src/index.js";
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
 describe("request tracing", function () {
-    
 
     const fakeEndpoint = "https://127.0.0.1"; // sufficient to test the request it sends out
     const headerPolicy = new HttpRequestHeadersPolicy();

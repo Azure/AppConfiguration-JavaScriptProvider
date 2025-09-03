@@ -204,7 +204,6 @@ const mockedKVs = [{
 ]);
 
 describe("feature flags", function () {
-    
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);

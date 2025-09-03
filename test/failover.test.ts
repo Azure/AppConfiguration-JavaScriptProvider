@@ -28,7 +28,6 @@ const mockedFeatureFlags = [{
 ]);
 
 describe("failover", function () {
-    
 
     afterEach(() => {
         restoreMocks();

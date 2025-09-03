@@ -105,7 +105,6 @@ const mockedKVs = [{
 ].map(createMockedKeyValue);
 
 describe("load", function () {
-    
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);

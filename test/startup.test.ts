@@ -10,7 +10,6 @@ import { createMockedConnectionString, createMockedKeyValue, mockAppConfiguratio
 import { ErrorMessages } from "../src/common/errorMessages.js";
 
 describe("startup", function () {
-    
 
     afterEach(() => {
         restoreMocks();

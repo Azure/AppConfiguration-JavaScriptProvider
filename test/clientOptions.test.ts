@@ -28,7 +28,6 @@ class HttpRequestCountPolicy {
 }
 
 describe("custom client options", function () {
-    
 
     const fakeEndpoint = "https://azure.azconfig.io";
     beforeEach(() => {

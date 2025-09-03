@@ -30,7 +30,6 @@ function mockNewlyCreatedKeyVaultSecretClients() {
 }
 
 describe("key vault reference", function () {
-    
 
     beforeEach(() => {
         mockAppConfigurationClient();
@@ -144,7 +143,6 @@ describe("key vault reference", function () {
 });
 
 describe("key vault secret refresh", function () {
-    
 
     beforeEach(() => {
         const data = [

@@ -34,7 +34,6 @@ const getKvCallback = () => {
 };
 
 describe("dynamic refresh", function () {
-    
 
     beforeEach(() => {
         mockedKVs = [
@@ -468,7 +467,6 @@ describe("dynamic refresh", function () {
 });
 
 describe("dynamic refresh feature flags", function () {
-    
 
     beforeEach(() => {
     });

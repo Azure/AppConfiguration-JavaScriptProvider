@@ -23,7 +23,6 @@ const clientRequestCounter_1 = {count: 0};
 const clientRequestCounter_2 = {count: 0};
 
 describe("load balance", function () {
-    
 
     beforeEach(() => {
     });

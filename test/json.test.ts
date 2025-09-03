@@ -13,7 +13,6 @@ const jsonKeyValue = createMockedJsonKeyValue("json.settings.logging", '{"Test":
 const keyVaultKeyValue = createMockedKeyVaultReference("TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName");
 
 describe("json", function () {
-    
 
     beforeEach(() => {
     });
