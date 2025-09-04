@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { MAX_TIME_OUT, HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
 import { ConfigurationClientManager } from "../src/configurationClientManager.js";
-import { load } from "./exportedApi.js";
+import { load } from "../src/index.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
@@ -41,7 +42,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
     });
@@ -54,7 +55,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext.includes("RequestType=Startup")).eq(true);
@@ -71,7 +72,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -87,7 +88,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -104,7 +105,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -121,7 +122,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -138,7 +139,7 @@ describe("request tracing", function () {
                     timeoutInMs: 1
                 }
             });
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -156,7 +157,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).undefined;
@@ -185,7 +186,7 @@ describe("request tracing", function () {
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
@@ -223,7 +224,7 @@ describe("request tracing", function () {
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("RequestType=Watch")).eq(true);
@@ -261,7 +262,7 @@ describe("request tracing", function () {
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("RequestType=Watch")).eq(true);
@@ -297,7 +298,7 @@ describe("request tracing", function () {
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("RequestType=Watch")).eq(true);
@@ -334,7 +335,7 @@ describe("request tracing", function () {
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("RequestType=Watch")).eq(true);
@@ -366,7 +367,7 @@ describe("request tracing", function () {
         await sleepInMs(1000 + 1);
         try {
             await settings.refresh();
-        } catch (e) { /* empty */ }
+        } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
         expect(correlationContext).not.undefined;
         expect(correlationContext?.includes("Features=AI+AICC")).eq(true);
@@ -417,7 +418,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -440,7 +441,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -463,7 +464,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -486,7 +487,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -509,7 +510,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -552,7 +553,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -572,7 +573,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -592,7 +593,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -612,7 +613,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -632,7 +633,7 @@ describe("request tracing", function () {
                         timeoutInMs: 1
                     }
                 });
-            } catch (e) { /* empty */ }
+            } catch { /* empty */ }
             expect(headerPolicy.headers).not.undefined;
             const correlationContext = headerPolicy.headers.get("Correlation-Context");
             expect(correlationContext).not.undefined;
@@ -640,3 +641,4 @@ describe("request tracing", function () {
         });
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

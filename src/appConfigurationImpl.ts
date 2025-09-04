@@ -424,7 +424,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // get feature management package version
                 const fmPackage = await import(FM_PACKAGE_NAME);
                 this.#fmVersion = fmPackage?.VERSION;
-            } catch (error) {
+            } catch {
                 // ignore the error
             }
         }
