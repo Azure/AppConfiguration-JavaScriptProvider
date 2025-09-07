@@ -42,7 +42,7 @@ import {
     DELIMITER,
     AI_CONFIGURATION_TAG,
     AI_CHAT_COMPLETION_CONFIGURATION_TAG
-} from "./constants";
+} from "./constants.js";
 
 export interface RequestTracingOptions {
     enabled: boolean;
