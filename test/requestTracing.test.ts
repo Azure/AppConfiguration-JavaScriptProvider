@@ -8,7 +8,7 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { MAX_TIME_OUT, HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
 import { ConfigurationClientManager } from "../src/configurationClientManager.js";
-import { load } from "../src/index.js";
+import { load, loadFromAzureFrontDoor } from "../src/index.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
@@ -110,6 +110,37 @@ describe("request tracing", function () {
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes(`ReplicaCount=${replicaCount}`)).eq(true);
         sinon.restore();
+    });
+
+    it("should have cdn tag in correlation-context header when loadFromAzureFrontDoor is used", async () => {
+        try {
+            await loadFromAzureFrontDoor(fakeEndpoint, {
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
+            });
+        } catch { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("CDN")).eq(true);
+    });
+
+    it("should not have cdn tag in correlation-context header when load is used", async () => {
+        try {
+            await load(createMockedConnectionString(fakeEndpoint), {
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
+            });
+        } catch { /* empty */ }
+        expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get("Correlation-Context");
+        expect(correlationContext).not.undefined;
+        expect(correlationContext.includes("CDN")).eq(false);
     });
 
     it("should detect env in correlation-context header", async () => {

@@ -13,9 +13,10 @@ import {
     isSecretReference,
     GetSnapshotOptions,
     GetSnapshotResponse,
-    KnownSnapshotComposition
+    KnownSnapshotComposition,
+    ListConfigurationSettingPage
 } from "@azure/app-configuration";
-import { isRestError } from "@azure/core-rest-pipeline";
+import { isRestError, RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./appConfiguration.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { IKeyValueAdapter } from "./keyValueAdapter.js";
@@ -66,6 +67,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
+import { TIMESTAMP_HEADER }  from "./cdn/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -106,12 +108,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
+    #lastKvChangeDetected: Date = new Date(0);
+    #kvRefreshIncompleted: boolean = false;
 
     // Feature flags
     #featureFlagEnabled: boolean = false;
     #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #ffRefreshTimer: RefreshTimer;
+    #lastFfChangeDetected: Date = new Date(0);
+    #ffRefreshIncompleted: boolean = false;
 
     // Key Vault references
     #secretRefreshEnabled: boolean = false;
@@ -131,12 +137,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // CDN
+    #isCdnUsed: boolean = false;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isCdnUsed: boolean
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
+        this.#isCdnUsed = isCdnUsed;
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -224,7 +235,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            isCdnUsed: this.#isCdnUsed
         };
     }
 
@@ -498,6 +510,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 JSON.stringify(selectors)
             );
 
+            let upToDate: boolean = true;
             for (const selector of selectorsToUpdate) {
                 if (selector.snapshotName === undefined) {
                     const listOptions: ListConfigurationSettingsOptions = {
@@ -519,6 +532,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                                 loadedSettings.set(setting.key, setting);
                             }
                         }
+                        const timestamp = this.#getResponseTimestamp(page);
+                        // all pages must be later than last change detected to be considered up-to-date
+                        upToDate &&= (timestamp > (loadFeatureFlag ? this.#lastFfChangeDetected : this.#lastKvChangeDetected));
                     }
                     selector.pageEtags = pageEtags;
                 } else { // snapshot selector
@@ -547,8 +563,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             if (loadFeatureFlag) {
                 this.#ffSelectors = selectorsToUpdate;
+                this.#ffRefreshIncompleted = !upToDate;
             } else {
                 this.#kvSelectors = selectorsToUpdate;
+                this.#kvRefreshIncompleted = !upToDate;
             }
             return Array.from(loadedSettings.values());
         };
@@ -605,11 +623,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
                 const { key, label } = sentinel;
-                const response = await this.#getConfigurationSetting({ key, label });
-                if (response) {
-                    sentinel.etag = response.etag;
-                } else {
+                const response = await this.#getConfigurationSetting({ key, label }, { onlyIfChanged: false });
+                if (isRestError(response)) { // watched key not found
                     sentinel.etag = undefined;
+                } else {
+                    sentinel.etag = response.etag;
                 }
             }
         }
@@ -661,22 +679,36 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         let needRefresh = false;
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
-        }
-        for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
-            });
+        } else {
+            const getOptions: GetConfigurationSettingOptions = {
+                // send conditional request only when CDN is not used
+                onlyIfChanged: !this.#isCdnUsed
+            };
+            for (const sentinel of this.#sentinels.values()) {
+                const response: GetConfigurationSettingResponse | RestError =
+                    await this.#getConfigurationSetting(sentinel, getOptions);
 
-            if (response?.statusCode === 200 // created or changed
-                || (response === undefined && sentinel.etag !== undefined) // deleted
-            ) {
-                sentinel.etag = response?.etag;// update etag of the sentinel
-                needRefresh = true;
-                break;
+                if (isRestError(response)) { // sentinel key not found
+                    if (sentinel.etag !== undefined) {
+                        // previously existed, now deleted
+                        sentinel.etag = undefined;
+                        const timestamp = this.#getResponseTimestamp(response);
+                        if (timestamp > this.#lastKvChangeDetected) {
+                            this.#lastKvChangeDetected = timestamp;
+                        }
+                        needRefresh = true;
+                        break;
+                    }
+                } else if (response.statusCode === 200 && sentinel.etag !== response?.etag) {
+                    // change detected
+                    sentinel.etag = response?.etag;// update etag of the sentinel
+                    needRefresh = true;
+                    break;
+                }
             }
         }
 
-        if (needRefresh) {
+        if (needRefresh || this.#kvRefreshIncompleted) {
             for (const adapter of this.#adapters) {
                 await adapter.onChangeDetected();
             }
@@ -697,8 +729,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
-        if (needRefresh) {
+        const refreshFeatureFlag = true;
+        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors, refreshFeatureFlag);
+        if (needRefresh || this.#ffRefreshIncompleted) {
             await this.#loadFeatureFlags();
         }
 
@@ -730,7 +763,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @param selectors - The @see PagedSettingSelector of the kev-value collection.
      * @returns true if key-value collection has changed, false otherwise.
      */
-    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
+    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[], refreshFeatureFlag: boolean = false): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
@@ -739,9 +772,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    tagsFilter: selector.tagFilters,
-                    pageEtags: selector.pageEtags
+                    tagsFilter: selector.tagFilters
                 };
+
+                if (!this.#isCdnUsed) {
+                    // if CDN is not used, add page etags to the listOptions to send conditional request
+                    listOptions.pageEtags = selector.pageEtags;
+                }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
@@ -749,10 +786,27 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
 
+                if (selector.pageEtags === undefined || selector.pageEtags.length === 0) {
+                    return true; // no etag is retrieved from previous request, always refresh
+                }
+
+                let i = 0;
                 for await (const page of pageIterator) {
-                    if (page._response.status === 200) { // created or changed
+                    if (i >= selector.pageEtags.length || // new page
+                        (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
+                        const timestamp = this.#getResponseTimestamp(page);
+                        if (refreshFeatureFlag) {
+                            if (timestamp > this.#lastFfChangeDetected) {
+                                this.#lastFfChangeDetected = timestamp;
+                            }
+                        } else {
+                            if (timestamp > this.#lastKvChangeDetected) {
+                                this.#lastKvChangeDetected = timestamp;
+                            }
+                        }
                         return true;
                     }
+                    i++;
                 }
             }
             return false;
@@ -763,9 +817,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
+     * Gets a configuration setting by key and label. If the setting is not found, return the error instead of throwing it.
      */
-    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | RestError> {
         const funcToExecute = async (client) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
@@ -775,12 +829,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
         };
 
-        let response: GetConfigurationSettingResponse | undefined;
+        let response: GetConfigurationSettingResponse | RestError;
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
             if (isRestError(error) && error.statusCode === 404) {
-                response = undefined;
+                // configuration setting not found, return the error
+                return error;
             } else {
                 throw error;
             }
@@ -1087,6 +1142,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             return first15Bytes.toString("base64url");
         }
+    }
+
+    #getResponseTimestamp(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
+        let header: string | undefined;
+        if (isRestError(response)) {
+            header = response.response?.headers.get(TIMESTAMP_HEADER) ?? undefined;
+        } else {
+            header = response._response.headers.get(TIMESTAMP_HEADER) ?? undefined;
+        }
+        return header ? new Date(header) : new Date();
     }
 }
 

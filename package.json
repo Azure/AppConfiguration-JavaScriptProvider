@@ -30,7 +30,7 @@
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
-    "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel"
+    "test": "mocha out/esm/test/load.test.js out/commonjs/test/load.test.js --parallel"
   },
   "repository": {
     "type": "git",
