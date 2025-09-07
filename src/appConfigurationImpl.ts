@@ -432,7 +432,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // get feature management package version
                 const fmPackage = await import(FM_PACKAGE_NAME);
                 this.#fmVersion = fmPackage?.VERSION;
-            } catch (error) {
+            } catch {
                 // ignore the error
             }
         }
@@ -490,7 +490,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
         const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
         const funcToExecute = async (client) => {
-            const loadedSettings: ConfigurationSetting[] = [];
+            // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
+            // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
+            const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
             // deep copy selectors to avoid modification if current client fails
             const selectorsToUpdate = JSON.parse(
                 JSON.stringify(selectors)
@@ -514,7 +516,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         pageEtags.push(page.etag ?? "");
                         for (const setting of page.items) {
                             if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.push(setting);
+                                loadedSettings.set(setting.key, setting);
                             }
                         }
                     }
@@ -536,7 +538,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     for await (const page of pageIterator) {
                         for (const setting of page.items) {
                             if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.push(setting);
+                                loadedSettings.set(setting.key, setting);
                             }
                         }
                     }
@@ -548,7 +550,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 this.#kvSelectors = selectorsToUpdate;
             }
-            return loadedSettings;
+            return Array.from(loadedSettings.values());
         };
 
         return await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
