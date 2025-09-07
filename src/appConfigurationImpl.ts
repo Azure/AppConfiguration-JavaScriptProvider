@@ -67,7 +67,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
-import { TIMESTAMP_HEADER }  from "./cdn/constants.js";
+import { TIMESTAMP_HEADER } from "./cdn/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -534,7 +534,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         }
                         const timestamp = this.#getResponseTimestamp(page);
                         // all pages must be later than last change detected to be considered up-to-date
-                        upToDate &&= (timestamp > (loadFeatureFlag ? this.#lastFfChangeDetected : this.#lastKvChangeDetected));
+                        if (loadFeatureFlag) {
+                            upToDate &&= (timestamp > this.#lastFfChangeDetected);
+                        } else {
+                            const temp = this.#lastKvChangeDetected;
+                            upToDate &&= (timestamp > temp);
+                        }
                     }
                     selector.pageEtags = pageEtags;
                 } else { // snapshot selector
@@ -688,20 +693,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const response: GetConfigurationSettingResponse | RestError =
                     await this.#getConfigurationSetting(sentinel, getOptions);
 
-                if (isRestError(response)) { // sentinel key not found
-                    if (sentinel.etag !== undefined) {
-                        // previously existed, now deleted
-                        sentinel.etag = undefined;
-                        const timestamp = this.#getResponseTimestamp(response);
-                        if (timestamp > this.#lastKvChangeDetected) {
-                            this.#lastKvChangeDetected = timestamp;
-                        }
-                        needRefresh = true;
-                        break;
+                const isDeleted = isRestError(response) && sentinel.etag !== undefined; // previously existed, now deleted
+                const isChanged =
+                    !isRestError(response) &&
+                    response.statusCode === 200 &&
+                    sentinel.etag !== response.etag; // etag changed
+
+                if (isDeleted || isChanged) {
+                    sentinel.etag = isChanged ? (response as GetConfigurationSettingResponse).etag : undefined;
+                    const timestamp = this.#getResponseTimestamp(response);
+                    if (timestamp > this.#lastKvChangeDetected) {
+                        this.#lastKvChangeDetected = timestamp;
                     }
-                } else if (response.statusCode === 200 && sentinel.etag !== response?.etag) {
-                    // change detected
-                    sentinel.etag = response?.etag;// update etag of the sentinel
                     needRefresh = true;
                     break;
                 }
@@ -1147,9 +1150,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #getResponseTimestamp(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
         let header: string | undefined;
         if (isRestError(response)) {
-            header = response.response?.headers.get(TIMESTAMP_HEADER) ?? undefined;
+            header = response.response?.headers?.get(TIMESTAMP_HEADER) ?? undefined;
         } else {
-            header = response._response.headers.get(TIMESTAMP_HEADER) ?? undefined;
+            header = response._response.headers?.get(TIMESTAMP_HEADER) ?? undefined;
         }
         return header ? new Date(header) : new Date();
     }
