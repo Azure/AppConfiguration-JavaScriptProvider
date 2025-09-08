@@ -442,7 +442,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (this.#requestTracingEnabled && !this.#fmVersion) {
             try {
                 // get feature management package version
-                const fmPackage = await import(FM_PACKAGE_NAME);
+                const fmPackage = await import(/* @vite-ignore */FM_PACKAGE_NAME);
                 this.#fmVersion = fmPackage?.VERSION;
             } catch {
                 // ignore the error

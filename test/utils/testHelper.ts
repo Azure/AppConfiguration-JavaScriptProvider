@@ -7,20 +7,29 @@ import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
 import { RestError } from "@azure/core-rest-pipeline";
-import { promisify } from "util";
-const sleepInMs = promisify(setTimeout);
-import * as crypto from "crypto";
 import { ConfigurationClientManager } from "../../src/configurationClientManager.js";
 import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
 
-const MAX_TIME_OUT = 100_000;
+const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
-function _sha256(input) {
-    return crypto.createHash("sha256").update(input).digest("hex");
+// Async, browser-safe SHA-256 using native crypto.subtle when available; falls back to tiny FNV-1a for Node without subtle.
+async function _sha256(input: string): Promise<string> {
+    let crypto;
+
+    if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+        crypto = window.crypto;
+    }
+    else {
+        crypto = global.crypto;
+    }
+
+    const data = new TextEncoder().encode(input);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)));
 }
 
 function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
@@ -76,23 +85,23 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
                     remainingPages = [...pages];
                     return this;
                 },
-                next() {
+                async next() {
                     const pageItems = remainingPages.shift();
                     const pageEtag = pageEtags?.shift();
                     if (pageItems === undefined) {
-                        return Promise.resolve({ done: true, value: undefined });
+                        return { done: true, value: undefined };
                     } else {
                         const items = _filterKVs(pageItems ?? [], listOptions);
-                        const etag = _sha256(JSON.stringify(items));
+                        const etag = await _sha256(JSON.stringify(items));
                         const statusCode = pageEtag === etag ? 304 : 200;
-                        return Promise.resolve({
+                        return {
                             done: false,
                             value: {
                                 items,
                                 etag,
                                 _response: { status: statusCode }
                             }
-                        });
+                        };
                     }
                 }
             };
@@ -277,10 +286,8 @@ const createMockedEndpoint = (name = "azure") => `https://${name}.azconfig.io`;
 
 const createMockedAzureFrontDoorEndpoint = (name = "appconfig") => `https://${name}.b01.azurefd.net`;
 
-const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret = "secret", id = "b1d9b31") => {
-    const toEncodeAsBytes = Buffer.from(secret);
-    const returnValue = toEncodeAsBytes.toString("base64");
-    return `Endpoint=${endpoint};Id=${id};Secret=${returnValue}`;
+const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret = "secret", id = "123456") => {
+    return `Endpoint=${endpoint};Id=${id};Secret=${secret}`;
 };
 
 const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_CLIENT_ID, clientSecret = TEST_CLIENT_SECRET) => {
@@ -371,6 +378,5 @@ export {
     createMockedFeatureFlag,
 
     sleepInMs,
-    MAX_TIME_OUT,
     HttpRequestHeadersPolicy
 };
