@@ -1152,7 +1152,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (isRestError(response)) {
             header = response.response?.headers?.get(TIMESTAMP_HEADER) ?? undefined;
         } else {
-            header = response._response.headers?.get(TIMESTAMP_HEADER) ?? undefined;
+            header = response._response?.headers?.get(TIMESTAMP_HEADER) ?? undefined;
         }
         return header ? new Date(header) : new Date();
     }
