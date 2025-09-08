@@ -94,24 +94,24 @@ describe("loadFromAzureFrontDoor", function() {
         ]));
 
         stub.onCall(1).returns(getCachedIterator([
-            { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
         ]));
         stub.onCall(2).returns(getCachedIterator([
-            { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
         ]));
 
         stub.onCall(3).returns(getCachedIterator([
-            { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
         stub.onCall(4).returns(getCachedIterator([
-            { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
 
         stub.onCall(5).returns(getCachedIterator([
-            { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:05Z") } }
         ]));
         stub.onCall(6).returns(getCachedIterator([
-            { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:05Z") } }
         ]));
 
         const endpoint = createMockedAzureFrontDoorEndpoint();
@@ -121,23 +121,23 @@ describe("loadFromAzureFrontDoor", function() {
                 enabled: true,
                 refreshIntervalInMs: 1000
             }
-        });
+        }); // 1 call listConfigurationSettings
 
         expect(appConfig.get("app.key1")).to.equal("value1");
         expect(appConfig.get("app.key2")).to.equal("value2");
 
-        await sleepInMs(1000);
-        await appConfig.refresh();
+        await sleepInMs(1500); // key2 updated
+        await appConfig.refresh(); // 1 call listConfigurationSettings for watching changes and 1 call for reloading
 
         expect(appConfig.get("app.key2")).to.equal("value2-updated");
 
-        await sleepInMs(1000);
-        await appConfig.refresh();
+        await sleepInMs(1500); // key2 deleted
+        await appConfig.refresh(); // 1 call listConfigurationSettings for watching changes and 1 call for reloading
 
         expect(appConfig.get("app.key2")).to.be.undefined;
 
-        await sleepInMs(1000);
-        await appConfig.refresh();
+        await sleepInMs(1500); // key3 added
+        await appConfig.refresh(); // 1 call listConfigurationSettings for watching changes and 1 call for reloading
 
         expect(appConfig.get("app.key3")).to.equal("value3");
     });
@@ -177,7 +177,7 @@ describe("loadFromAzureFrontDoor", function() {
         expect(featureFlags[0].id).to.equal("Beta");
         expect(featureFlags[0].enabled).to.equal(true);
 
-        await sleepInMs(1000);
+        await sleepInMs(1500);
         await appConfig.refresh();
 
         featureFlags = appConfig.get<any>("feature_management").feature_flags;
@@ -226,13 +226,13 @@ describe("loadFromAzureFrontDoor", function() {
 
         expect(appConfig.get("app.key2")).to.equal("value2");
 
-        await sleepInMs(1000);
+        await sleepInMs(1500);
         await appConfig.refresh();
 
         // cdn cache hasn't expired, even if the sentinel key changed, key2 should still return the old value
         expect(appConfig.get("app.key2")).to.equal("value2");
 
-        await sleepInMs(1000);
+        await sleepInMs(1500);
         await appConfig.refresh();
 
         // cdn cache has expired, key2 should return the updated value even if sentinel remains the same
