@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
-import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { load } from "../src/index.js";
+import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -203,7 +204,6 @@ const mockedKVs = [{
 ]);
 
 describe("feature flags", function () {
-    this.timeout(MAX_TIME_OUT);
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
@@ -494,3 +494,4 @@ describe("feature flags", function () {
         restoreMocks();
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

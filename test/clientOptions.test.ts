@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, createMockedConnectionString } from "./utils/testHelper.js";
-import * as nock from "nock";
+import { load } from "../src/index.js";
+import { createMockedConnectionString } from "./utils/testHelper.js";
+import nock from "nock";
 
 class HttpRequestCountPolicy {
     count: number;
@@ -27,7 +28,6 @@ class HttpRequestCountPolicy {
 }
 
 describe("custom client options", function () {
-    this.timeout(MAX_TIME_OUT);
 
     const fakeEndpoint = "https://azure.azconfig.io";
     beforeEach(() => {
@@ -130,3 +130,4 @@ describe("custom client options", function () {
         expect(countPolicy.count).eq(3);
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

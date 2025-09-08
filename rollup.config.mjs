@@ -17,10 +17,17 @@ export default [
     input: "src/index.ts",
     output: [
       {
-        file: "dist/index.js",
+        dir: "dist/commonjs/",
         format: "cjs",
-        sourcemap: true
+        sourcemap: true,
+        preserveModules: true,
       },
+      {
+        dir: "dist/esm/",
+        format: "esm",
+        sourcemap: true,
+        preserveModules: true,
+      }
     ],
     plugins: [
       typescript({
@@ -31,8 +38,8 @@ export default [
             "ESNext"
           ],
           "skipDefaultLibCheck": true,
-          "module": "ESNext",
-          "moduleResolution": "Node",
+          "module": "NodeNext",
+          "moduleResolution": "NodeNext",
           "target": "ES2022",
           "strictNullChecks": true,
           "strictFunctionTypes": true,
@@ -44,7 +51,7 @@ export default [
   },
   {
     input: "src/index.ts",
-    output: [{ file: "types/index.d.ts", format: "es" }],
+    output: [{ file: "types/index.d.ts", format: "esm" }],
     plugins: [dts()],
   },
 ];

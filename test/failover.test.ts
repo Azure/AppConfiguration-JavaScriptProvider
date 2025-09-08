@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi";
-import { MAX_TIME_OUT, createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper";
-import { getValidDomain, isValidEndpoint } from "../src/ConfigurationClientManager";
+import { load } from "../src/index.js";
+import { createMockedConnectionString, createMockedFeatureFlag, createMockedKeyValue, mockConfigurationManagerGetClients, restoreMocks } from "./utils/testHelper.js";
+import { getValidDomain, isValidEndpoint } from "../src/configurationClientManager.js";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -27,7 +28,6 @@ const mockedFeatureFlags = [{
 ]);
 
 describe("failover", function () {
-    this.timeout(MAX_TIME_OUT);
 
     afterEach(() => {
         restoreMocks();
@@ -102,3 +102,4 @@ describe("failover", function () {
         expect(isValidEndpoint("foobar.appconfig.azure.com", validDomain4)).to.be.false;
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

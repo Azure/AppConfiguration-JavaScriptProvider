@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-export { AzureAppConfiguration } from "./AzureAppConfiguration.js";
+export { AzureAppConfiguration } from "./appConfiguration.js";
 export { Disposable } from "./common/disposable.js";
 export { load } from "./load.js";
 export { KeyFilter, LabelFilter } from "./types.js";
