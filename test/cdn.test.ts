@@ -9,7 +9,7 @@ const expect = chai.expect;
 
 import { AppConfigurationClient } from "@azure/app-configuration";
 import { loadFromAzureFrontDoor } from "../src/index.js";
-import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs, MAX_TIME_OUT } from "./utils/testHelper.js";
+import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
 import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
 
 function createTimestampHeaders(timestamp: string | Date) {
@@ -20,7 +20,6 @@ function createTimestampHeaders(timestamp: string | Date) {
 }
 
 describe("loadFromAzureFrontDoor", function() {
-    this.timeout(MAX_TIME_OUT);
 
     afterEach(() => {
         restoreMocks();
