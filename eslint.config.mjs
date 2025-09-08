@@ -53,6 +53,7 @@ export default defineConfig([globalIgnores([
         }],
 
         "@typescript-eslint/no-explicit-any": "off",
+        "@typescript-eslint/no-require-imports": "off",
         "eol-last": ["error", "always"],
         "no-trailing-spaces": "error",
         "space-before-blocks": ["error", "always"],
