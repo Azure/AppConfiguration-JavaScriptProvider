@@ -9,6 +9,7 @@ const expect = chai.expect;
 import { HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
 import { ConfigurationClientManager } from "../src/configurationClientManager.js";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
+import { isBrowser } from "../src/requestTracing/utils.js";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
@@ -43,7 +44,15 @@ describe("request tracing", function () {
             });
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
-        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        let userAgent;
+        // https://github.com/Azure/azure-sdk-for-js/pull/6528
+        if (isBrowser()) {
+            userAgent = headerPolicy.headers.get("x-ms-useragent");
+        } else {
+            userAgent = headerPolicy.headers.get("User-Agent");
+        }
+
+        expect(userAgent).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
     });
 
     it("should have request type in correlation-context header", async () => {

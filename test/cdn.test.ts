@@ -11,6 +11,7 @@ import { AppConfigurationClient } from "@azure/app-configuration";
 import { loadFromAzureFrontDoor } from "../src/index.js";
 import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
 import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
+import { isBrowser } from "../src/requestTracing/utils.js";
 
 function createTimestampHeaders(timestamp: string | Date) {
     const value = timestamp instanceof Date ? timestamp.toUTCString() : new Date(timestamp).toUTCString();
@@ -49,7 +50,15 @@ describe("loadFromAzureFrontDoor", function() {
         } catch { /* empty */ }
 
         expect(headerPolicy.headers).not.undefined;
-        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        let userAgent;
+        // https://github.com/Azure/azure-sdk-for-js/pull/6528
+        if (isBrowser()) {
+            userAgent = headerPolicy.headers.get("x-ms-useragent");
+        } else {
+            userAgent = headerPolicy.headers.get("User-Agent");
+        }
+
+        expect(userAgent).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
         expect(headerPolicy.headers.get("authorization")).to.be.undefined;
         expect(headerPolicy.headers.get("Authorization")).to.be.undefined;
     });
