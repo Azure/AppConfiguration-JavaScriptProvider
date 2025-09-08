@@ -38,8 +38,8 @@ export default [
             "ESNext"
           ],
           "skipDefaultLibCheck": true,
-          "module": "ESNext",
-          "moduleResolution": "Node",
+          "module": "NodeNext",
+          "moduleResolution": "NodeNext",
           "target": "ES2022",
           "strictNullChecks": true,
           "strictFunctionTypes": true,

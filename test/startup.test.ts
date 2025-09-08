@@ -6,11 +6,10 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 
 describe("startup", function () {
-    this.timeout(MAX_TIME_OUT);
 
     afterEach(() => {
         restoreMocks();

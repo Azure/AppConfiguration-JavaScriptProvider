@@ -30,7 +30,8 @@
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
-    "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel"
+    "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel --timeout 100000",
+    "test-browser": "npx playwright install chromium && vitest --config vitest.browser.config.ts run"
   },
   "repository": {
     "type": "git",
@@ -60,7 +61,10 @@
     "sinon": "^21.0.0",
     "tslib": "^2.8.1",
     "typescript": "^5.9.2",
-    "uuid": "^11.1.0"
+    "uuid": "^11.1.0",
+    "vitest": "^3.2.4",
+    "@vitest/browser": "^3.2.4",
+    "playwright": "^1.55.0"
   },
   "dependencies": {
     "@azure/app-configuration": "^1.9.0",
