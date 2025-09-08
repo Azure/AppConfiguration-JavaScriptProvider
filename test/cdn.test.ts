@@ -9,7 +9,7 @@ const expect = chai.expect;
 
 import { AppConfigurationClient } from "@azure/app-configuration";
 import { loadFromAzureFrontDoor } from "../src/index.js";
-import { createMockedKeyValue, createMockedFeatureFlag, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs, MAX_TIME_OUT } from "./utils/testHelper.js";
+import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs, MAX_TIME_OUT } from "./utils/testHelper.js";
 import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
 
 function createTimestampHeaders(timestamp: string | Date) {
@@ -24,6 +24,35 @@ describe("loadFromAzureFrontDoor", function() {
 
     afterEach(() => {
         restoreMocks();
+    });
+
+    it("should not include authorization headers", async () => {
+        const headerPolicy = new HttpRequestHeadersPolicy();
+        const position: "perCall" | "perRetry" = "perCall";
+        const clientOptions = {
+            retryOptions: {
+                maxRetries: 0 // save time
+            },
+            additionalPolicies: [{
+                policy: headerPolicy,
+                position
+            }]
+        };
+
+        const endpoint = createMockedAzureFrontDoorEndpoint();
+        try {
+            await loadFromAzureFrontDoor(endpoint, {
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
+            });
+        } catch { /* empty */ }
+
+        expect(headerPolicy.headers).not.undefined;
+        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        expect(headerPolicy.headers.get("authorization")).to.be.undefined;
+        expect(headerPolicy.headers.get("Authorization")).to.be.undefined;
     });
 
     it("should load key-values and feature flags", async () => {
@@ -211,4 +240,4 @@ describe("loadFromAzureFrontDoor", function() {
         expect(appConfig.get("app.key2")).to.equal("value2-updated");
     });
 });
-/* eslint-enable @typescript-eslint/no-unused-expressions */
+/* eslint-ensable @typescript-eslint/no-unused-expressions */
