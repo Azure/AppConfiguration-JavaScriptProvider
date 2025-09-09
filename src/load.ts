@@ -6,7 +6,7 @@ import { AzureAppConfiguration } from "./appConfiguration.js";
 import { AzureAppConfigurationImpl } from "./appConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
-import { AnonymousRequestPipelinePolicy } from "./cdn/cdnRequestPipelinePolicy.js";
+import { AnonymousRequestPipelinePolicy, RemoveSyncTokenPipelinePolicy } from "./cdn/cdnRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
@@ -87,10 +87,10 @@ export async function loadFromAzureFrontDoor(
 
     appConfigOptions.clientOptions = {
         ...appConfigOptions.clientOptions,
-        // Add etag url policy to append etag to the request url for breaking CDN cache
         additionalPolicies: [
             ...(appConfigOptions.clientOptions?.additionalPolicies || []),
-            { policy: new AnonymousRequestPipelinePolicy(), position: "perRetry" }
+            { policy: new AnonymousRequestPipelinePolicy(), position: "perRetry" },
+            { policy: new RemoveSyncTokenPipelinePolicy(), position: "perRetry" }
         ]
     };
 

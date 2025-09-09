@@ -8,8 +8,8 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { loadFromAzureFrontDoor } from "../src/index.js";
-import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
+import { load, loadFromAzureFrontDoor } from "../src/index.js";
+import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
 import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
@@ -26,22 +26,39 @@ describe("loadFromAzureFrontDoor", function() {
         restoreMocks();
     });
 
-    it("should not include authorization headers", async () => {
+    it("should not include authorization and sync-token header when loading from Azure Front Door", async () => {
         const headerPolicy = new HttpRequestHeadersPolicy();
         const position: "perCall" | "perRetry" = "perCall";
         const clientOptions = {
             retryOptions: {
-                maxRetries: 0 // save time
+                maxRetries: 0
             },
             additionalPolicies: [{
                 policy: headerPolicy,
                 position
-            }]
+            }],
+            syncTokens: {
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                addSyncTokenFromHeaderValue: (syncTokenHeaderValue) => {},
+                getSyncTokenHeaderValue: () => { return "mockedSyncToken"; }
+            }
         };
 
-        const endpoint = createMockedAzureFrontDoorEndpoint();
         try {
-            await loadFromAzureFrontDoor(endpoint, {
+            await load(createMockedConnectionString(), {
+                clientOptions,
+                startupOptions: {
+                    timeoutInMs: 1
+                }
+            });
+        } catch { /* empty */ }
+
+        expect(headerPolicy.headers).not.undefined;
+        expect(headerPolicy.headers.get("Authorization")).not.undefined;
+        expect(headerPolicy.headers.get("Sync-Token")).to.equal("mockedSyncToken");
+
+        try {
+            await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
                 clientOptions,
                 startupOptions: {
                     timeoutInMs: 1
@@ -59,8 +76,8 @@ describe("loadFromAzureFrontDoor", function() {
         }
 
         expect(userAgent).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
-        expect(headerPolicy.headers.get("authorization")).to.be.undefined;
         expect(headerPolicy.headers.get("Authorization")).to.be.undefined;
+        expect(headerPolicy.headers.get("Sync-Token")).to.be.undefined;
     });
 
     it("should load key-values and feature flags", async () => {
@@ -77,8 +94,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [ff], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
 
-        const endpoint = createMockedAzureFrontDoorEndpoint();
-        const appConfig = await loadFromAzureFrontDoor(endpoint, {
+        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             selectors: [{ keyFilter: "app.*" }],
             featureFlagOptions: {
                 enabled: true
@@ -123,8 +139,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:05Z") } }
         ]));
 
-        const endpoint = createMockedAzureFrontDoorEndpoint();
-        const appConfig = await loadFromAzureFrontDoor(endpoint, {
+        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             selectors: [{ keyFilter: "app.*" }],
             refreshOptions: {
                 enabled: true,
@@ -171,8 +186,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
 
-        const endpoint = createMockedAzureFrontDoorEndpoint();
-        const appConfig = await loadFromAzureFrontDoor(endpoint, {
+        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             featureFlagOptions: {
                 enabled: true,
                 refresh: {
@@ -221,8 +235,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } } // cache has expired
         ]));
 
-        const endpoint = createMockedAzureFrontDoorEndpoint();
-        const appConfig = await loadFromAzureFrontDoor(endpoint, {
+        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             selectors: [{ keyFilter: "app.*" }],
             refreshOptions: {
                 enabled: true,

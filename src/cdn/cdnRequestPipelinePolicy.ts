@@ -18,3 +18,18 @@ export class AnonymousRequestPipelinePolicy implements PipelinePolicy {
         return next(request);
     }
 }
+
+/**
+ * The pipeline policy that remove the "sync-token" header from the request.
+ * The policy position should be perRetry. It should be executed after the SyncTokenPolicy in @azure/app-configuration, which is executed after retry phase: https://github.com/Azure/azure-sdk-for-js/blob/main/sdk/appconfiguration/app-configuration/src/appConfigurationClient.ts#L198
+ */
+export class RemoveSyncTokenPipelinePolicy implements PipelinePolicy {
+    name: string = "AppConfigurationRemoveSyncTokenPolicy";
+
+    async sendRequest(request, next) {
+        if (request.headers.has("sync-token")) {
+            request.headers.delete("sync-token");
+        }
+        return next(request);
+    }
+}
