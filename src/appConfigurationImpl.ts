@@ -795,6 +795,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 let i = 0;
                 for await (const page of pageIterator) {
+                    // when conditional request is sent, the response will be 304 if not changed
                     if (i >= selector.pageEtags.length || // new page
                         (page._response.status === 200 && page.etag !== selector.pageEtags[i])) { // page changed
                         const timestamp = this.#getResponseTimestamp(page);
