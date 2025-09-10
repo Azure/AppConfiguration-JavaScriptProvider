@@ -6,10 +6,12 @@ import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
+import { AppConfigurationClient } from "@azure/app-configuration";
 import { HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
 import { ConfigurationClientManager } from "../src/configurationClientManager.js";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
+import { get } from "http";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
@@ -211,16 +213,25 @@ describe("request tracing", function () {
             value: "red"
         }].map(createMockedKeyValue)]);
 
+        const sentinel = createMockedKeyValue({ key: "sentinel", value: "initial value" });
+        const getStub = sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting");
+        getStub.onCall(0).returns(Promise.resolve({ statusCode: 200, ...sentinel } as any));
+
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 1_000,
                 watchedSettings: [{
-                    key: "app.settings.fontColor"
+                    key: "sentinel"
                 }]
             }
         });
+
+        expect(settings.get("app.settings.fontColor")).eq("red"); // initial load should succeed
+         // we only mocked getConfigurationSetting for initial load, so the watch request during refresh will still use the SDK's pipeline, then the headerPolicy can capture the headers
+        getStub.restore();
+
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();

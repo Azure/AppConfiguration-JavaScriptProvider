@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import { ConfigurationSettingId } from "@azure/app-configuration";
+
 /**
  * SettingSelector is used to select key-values from Azure App Configuration based on keys and labels.
  */
@@ -58,7 +60,7 @@ export enum KeyFilter {
      * Matches all key-values.
      */
     Any = "*"
-}
+};
 
 /**
  * LabelFilter is used to filter key-values based on labels.
@@ -68,7 +70,7 @@ export enum LabelFilter {
      * Matches key-values without a label.
      */
     Null = "\0"
-}
+};
 
 /**
  * TagFilter is used to filter key-values based on tags.
@@ -78,4 +80,26 @@ export enum TagFilter {
      * Represents empty tag value.
      */
     Null = ""
+};
+
+export type WatchedSetting = {
+    /**
+     * The key for this setting.
+     */
+    key: string;
+
+    /**
+     * The label for this setting.
+     * Leaving this undefined means this setting does not have a label.
+     */
+    label?: string;
 }
+
+export type SettingWatcher = {
+    etag?: string;
+    timestamp: Date;
+}
+
+export type PagedSettingsWatcher = SettingSelector & {
+    pageWatchers?: SettingWatcher[]
+};

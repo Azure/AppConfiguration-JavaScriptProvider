@@ -180,10 +180,10 @@ describe("loadFromAzureFrontDoor", function() {
         ]));
 
         stub.onCall(2).returns(getCachedIterator([
-            { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
         stub.onCall(3).returns(getCachedIterator([
-            { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
+            { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
 
         const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
@@ -209,6 +209,7 @@ describe("loadFromAzureFrontDoor", function() {
     });
 
     it("should keep refreshing key value until cache expires", async () => {
+        let refreshSuccessfulCount = 0;
         const sentinel = createMockedKeyValue({ key: "sentinel", value: "initial value" });
         const sentinel_updated = createMockedKeyValue({ key: "sentinel", value: "updated value" });
         const kv1 = createMockedKeyValue({ key: "app.key1", value: "value1" });
@@ -221,9 +222,7 @@ describe("loadFromAzureFrontDoor", function() {
         getStub.onCall(0).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:00Z") }, ...sentinel } as any));
         getStub.onCall(1).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
         getStub.onCall(2).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
-
-        getStub.onCall(3).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
-        getStub.onCall(4).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
+        getStub.onCall(4).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:00Z") }, ...sentinel } as any)); // server old value from another cache server
 
         listStub.onCall(0).returns(getCachedIterator([
             { items: [kv1, kv2], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
@@ -246,6 +245,10 @@ describe("loadFromAzureFrontDoor", function() {
             }
         });
 
+        appConfig.onRefresh(() => {
+            refreshSuccessfulCount++;
+        });
+
         expect(appConfig.get("app.key2")).to.equal("value2");
 
         await sleepInMs(1500);
@@ -253,12 +256,19 @@ describe("loadFromAzureFrontDoor", function() {
 
         // cdn cache hasn't expired, even if the sentinel key changed, key2 should still return the old value
         expect(appConfig.get("app.key2")).to.equal("value2");
+        expect(refreshSuccessfulCount).to.equal(0);
 
         await sleepInMs(1500);
         await appConfig.refresh();
+        expect(refreshSuccessfulCount).to.equal(1);
 
         // cdn cache has expired, key2 should return the updated value even if sentinel remains the same
         expect(appConfig.get("app.key2")).to.equal("value2-updated");
+
+        await sleepInMs(1500);
+        // even if the sentinel is different from previous value, but the timestamp is older, it should not trigger refresh
+        await appConfig.refresh();
+        expect(refreshSuccessfulCount).to.equal(1);
     });
 });
 /* eslint-ensable @typescript-eslint/no-unused-expressions */
