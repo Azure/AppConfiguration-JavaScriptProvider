@@ -58,7 +58,7 @@ export enum KeyFilter {
      * Matches all key-values.
      */
     Any = "*"
-}
+};
 
 /**
  * LabelFilter is used to filter key-values based on labels.
@@ -68,7 +68,7 @@ export enum LabelFilter {
      * Matches key-values without a label.
      */
     Null = "\0"
-}
+};
 
 /**
  * TagFilter is used to filter key-values based on tags.
@@ -78,4 +78,25 @@ export enum TagFilter {
      * Represents empty tag value.
      */
     Null = ""
+};
+
+export type WatchedSetting = {
+    /**
+     * The key for this setting.
+     */
+    key: string;
+
+    /**
+     * The label for this setting.
+     * Leaving this undefined means this setting does not have a label.
+     */
+    label?: string;
 }
+
+export type SettingWatcher = {
+    etag?: string;
+}
+
+export type PagedSettingsWatcher = SettingSelector & {
+    pageWatchers?: SettingWatcher[]
+};
