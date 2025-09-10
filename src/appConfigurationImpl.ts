@@ -53,17 +53,13 @@ import {
 } from "./requestTracing/utils.js";
 import { FeatureFlagTracingOptions } from "./requestTracing/featureFlagTracingOptions.js";
 import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationTracingOptions.js";
-import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
+import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
-
-type PagedSettingSelector = SettingSelector & {
-    pageEtags?: string[];
-};
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -94,7 +90,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Aka watched settings.
      */
     #refreshEnabled: boolean = false;
-    #sentinels: ConfigurationSettingId[] = [];
+    #sentinels: Map<WatchedSetting, SettingWatcher> = new Map();
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
@@ -114,11 +110,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
-    #kvSelectors: PagedSettingSelector[] = [];
+    #kvSelectors: PagedSettingsWatcher[] = [];
     /**
      * Selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
      */
-    #ffSelectors: PagedSettingSelector[] = [];
+    #ffSelectors: PagedSettingsWatcher[] = [];
 
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
@@ -157,7 +153,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
                         throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_LABEL);
                     }
-                    this.#sentinels.push(setting);
+                    this.#sentinels.set(setting, { etag: undefined });
                 }
             }
 
@@ -386,7 +382,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             let postAttempts = 0;
             do { // at least try to load once
                 try {
-                    await this.#loadSelectedAndWatchedKeyValues();
+                    if (this.#refreshEnabled && !this.#watchAll) {
+                        await this.#loadWatchedSettings();
+                    }
+
+                    await this.#loadSelectedKeyValues();
+
                     if (this.#featureFlagEnabled) {
                         await this.#loadFeatureFlags();
                     }
@@ -486,7 +487,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
             const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
             // deep copy selectors to avoid modification if current client fails
-            const selectorsToUpdate = JSON.parse(
+            const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
                 JSON.stringify(selectors)
             );
 
@@ -497,7 +498,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         labelFilter: selector.labelFilter,
                         tagsFilter: selector.tagFilters
                     };
-                    const pageEtags: string[] = [];
+                    const pageWatchers: SettingWatcher[] = [];
                     const pageIterator = listConfigurationSettingsWithTrace(
                         this.#requestTraceOptions,
                         client,
@@ -505,14 +506,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     ).byPage();
 
                     for await (const page of pageIterator) {
-                        pageEtags.push(page.etag ?? "");
+                        pageWatchers.push({ etag: page.etag });
                         for (const setting of page.items) {
                             if (loadFeatureFlag === isFeatureFlag(setting)) {
                                 loadedSettings.set(setting.key, setting);
                             }
                         }
                     }
-                    selector.pageEtags = pageEtags;
+                    selector.pageWatchers = pageWatchers;
                 } else { // snapshot selector
                     const snapshot = await this.#getSnapshot(selector.snapshotName);
                     if (snapshot === undefined) {
@@ -549,15 +550,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Loads selected key-values and watched settings (sentinels) for refresh from App Configuration to the local configuration.
+     * Loads selected key-values from App Configuration to the local configuration.
      */
-    async #loadSelectedAndWatchedKeyValues() {
+    async #loadSelectedKeyValues() {
         this.#secretReferences = []; // clear all cached key vault reference configuration settings
         const keyValues: [key: string, value: unknown][] = [];
         const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
-        if (this.#refreshEnabled && !this.#watchAll) {
-            await this.#updateWatchedKeyValuesEtag(loadedSettings);
-        }
 
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             // reset old AI configuration tracing in order to track the information present in the current response from server
@@ -587,22 +585,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
+     * Loads watched settings (sentinels) for refresh from App Configuration to the local configuration.
      */
-    async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
-        const updatedSentinels: ConfigurationSettingId[] = [];
-        for (const sentinel of this.#sentinels) {
-            const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
-            if (matchedSetting) {
-                updatedSentinels.push( {...sentinel, etag: matchedSetting.etag} );
-            } else {
-                // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
-                const { key, label } = sentinel;
-                const response = await this.#getConfigurationSetting({ key, label });
-                updatedSentinels.push( {...sentinel, etag: response?.etag} );
-            }
+    async #loadWatchedSettings(): Promise<void> {
+        for (const watchedSetting of this.#sentinels.keys()) {
+            const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label };
+            const response = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: false });
+            this.#sentinels.set(watchedSetting, { etag: response?.etag });
         }
-        this.#sentinels = updatedSentinels;
     }
 
     /**
@@ -649,19 +639,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
+        let changedSentinel;
+        let changedSentinelWatcher;
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
-        }
-        for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
-            });
+        } else {
+            for (const watchedSetting of this.#sentinels.keys()) {
+                const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label, etag: this.#sentinels.get(watchedSetting)?.etag };
+                const response = await this.#getConfigurationSetting(configurationSettingId, {
+                    onlyIfChanged: true
+                });
 
-            if (response?.statusCode === 200 // created or changed
-                || (response === undefined && sentinel.etag !== undefined) // deleted
-            ) {
-                needRefresh = true;
-                break;
+                const watcher = this.#sentinels.get(watchedSetting);
+                if (response?.statusCode === 200 // created or changed
+                    || (response === undefined && watcher?.etag !== undefined) // deleted
+                ) {
+                    changedSentinel = watchedSetting;
+                    changedSentinelWatcher = watcher;
+                    needRefresh = true;
+                    break;
+                }
             }
         }
 
@@ -669,7 +666,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             for (const adapter of this.#adapters) {
                 await adapter.onChangeDetected();
             }
-            await this.#loadSelectedAndWatchedKeyValues();
+            await this.#loadSelectedKeyValues();
+            this.#sentinels.set(changedSentinel, changedSentinelWatcher); // update the changed sentinel's watcher
         }
 
         this.#kvRefreshTimer.reset();
@@ -719,17 +717,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @param selectors - The @see PagedSettingSelector of the kev-value collection.
      * @returns true if key-value collection has changed, false otherwise.
      */
-    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
+    async #checkConfigurationSettingsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
                 }
+                const pageWatchers: SettingWatcher[] = selector.pageWatchers ?? [];
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
                     tagsFilter: selector.tagFilters,
-                    pageEtags: selector.pageEtags
+                    pageEtags: pageWatchers.map(w => w.etag ?? "")
                 };
 
                 const pageIterator = listConfigurationSettingsWithTrace(
@@ -739,6 +738,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 ).byPage();
 
                 for await (const page of pageIterator) {
+                    // when conditional request is sent, the response will be 304 if not changed
                     if (page._response.status === 200) { // created or changed
                         return true;
                     }
