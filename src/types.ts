@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { ConfigurationSettingId } from "@azure/app-configuration";
-
 /**
  * SettingSelector is used to select key-values from Azure App Configuration based on keys and labels.
  */

@@ -11,7 +11,6 @@ import { HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKey
 import { ConfigurationClientManager } from "../src/configurationClientManager.js";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
-import { get } from "http";
 
 const CORRELATION_CONTEXT_HEADER_NAME = "Correlation-Context";
 
