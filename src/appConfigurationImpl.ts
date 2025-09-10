@@ -786,13 +786,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
                 }
+                const pageWatchers: SettingWatcher[] = selector.pageWatchers ?? [];
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
                     tagsFilter: selector.tagFilters
                 };
-
-                const pageWatchers: SettingWatcher[] = selector.pageWatchers ?? [];
 
                 if (!this.#isCdnUsed) {
                     // if CDN is not used, add page etags to the listOptions to send conditional request

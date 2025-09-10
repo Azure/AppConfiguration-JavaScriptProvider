@@ -193,7 +193,7 @@ describe("dynamic refresh", function () {
         await settings.refresh();
         expect(listKvRequestCount).eq(2);
         expect(getKvRequestCount).eq(2); // one conditional request to detect change
-        expect(settings.get("app.settings.fontColor")).eq(undefined);
+        expect(settings.get("app.settings.fontColor")).to.be.undefined;
     });
 
     it("should not update values when unwatched setting changes", async () => {
