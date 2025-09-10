@@ -621,21 +621,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
      */
     async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
+        const updatedSentinels: ConfigurationSettingId[] = [];
         for (const sentinel of this.#sentinels) {
             const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
             if (matchedSetting) {
-                sentinel.etag = matchedSetting.etag;
+                updatedSentinels.push( {...sentinel, etag: matchedSetting.etag} );
             } else {
                 // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
                 const { key, label } = sentinel;
                 const response = await this.#getConfigurationSetting({ key, label }, { onlyIfChanged: false });
-                if (isRestError(response)) { // watched key not found
-                    sentinel.etag = undefined;
-                } else {
-                    sentinel.etag = response.etag;
-                }
+                updatedSentinels.push( {...sentinel, etag: isRestError(response) ? undefined : response.etag} );
             }
         }
+        this.#sentinels = updatedSentinels;
     }
 
     /**
@@ -700,7 +698,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     sentinel.etag !== response.etag; // etag changed
 
                 if (isDeleted || isChanged) {
-                    sentinel.etag = isChanged ? (response as GetConfigurationSettingResponse).etag : undefined;
                     const timestamp = this.#getResponseTimestamp(response);
                     if (timestamp > this.#lastKvChangeDetected) {
                         this.#lastKvChangeDetected = timestamp;

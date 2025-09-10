@@ -25,11 +25,19 @@ function addSetting(key: string, value: any) {
 }
 
 let listKvRequestCount = 0;
+let failNextListKv = false;
 const listKvCallback = () => {
+    if (failNextListKv) {
+        throw new Error("Intended error for test");
+    }
     listKvRequestCount++;
 };
 let getKvRequestCount = 0;
+let failNextGetKv = false;
 const getKvCallback = () => {
+    if (failNextGetKv) {
+        throw new Error("Intended error for test");
+    }
     getKvRequestCount++;
 };
 
@@ -40,6 +48,7 @@ describe("dynamic refresh", function () {
             { value: "red", key: "app.settings.fontColor" },
             { value: "40", key: "app.settings.fontSize" },
             { value: "30", key: "app.settings.fontSize", label: "prod" },
+            { value: "someValue", key: "sentinel" },
             { value: "someValue", key: "TestTagKey", tags: { "env": "dev" } }
         ].map(createMockedKeyValue);
         mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
@@ -48,6 +57,8 @@ describe("dynamic refresh", function () {
 
     afterEach(() => {
         restoreMocks();
+        failNextListKv = false;
+        failNextGetKv = false;
         listKvRequestCount = 0;
         getKvRequestCount = 0;
     });
@@ -236,6 +247,44 @@ describe("dynamic refresh", function () {
         expect(listKvRequestCount).eq(2);
         expect(getKvRequestCount).eq(2); // two getKv request for two watched settings
         expect(settings.get("app.settings.fontSize")).eq("50");
+        expect(settings.get("app.settings.bgColor")).eq("white");
+    });
+
+    it("should continue to refresh when previous refresh-all attempt failed", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [
+                { keyFilter: "app.settings.*" }
+            ],
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000,
+                watchedSettings: [
+                    { key: "sentinel" }
+                ]
+            }
+        });
+        expect(settings.get("app.settings.fontSize")).eq("40");
+        expect(settings.get("app.settings.fontColor")).eq("red");
+        expect(settings.get("sentinel")).to.be.undefined;
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(1); // one getKv request for sentinel key
+
+        // change setting
+        addSetting("app.settings.bgColor", "white");
+        updateSetting("sentinel", "updatedValue");
+        failNextListKv = true; // force next listConfigurationSettings request to fail
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh(); // even if the provider detects the sentinel key change, this refresh will fail, so we won't get the updated value of sentinel
+        expect(listKvRequestCount).eq(1);
+        expect(getKvRequestCount).eq(2);
+        expect(settings.get("app.settings.bgColor")).to.be.undefined;
+
+        failNextListKv = false;
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh(); // should continue to refresh even if sentinel key doesn't change now
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(4);
         expect(settings.get("app.settings.bgColor")).eq("white");
     });
 

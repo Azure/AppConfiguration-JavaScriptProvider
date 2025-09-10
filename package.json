@@ -30,7 +30,7 @@
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
-    "test": "mocha out/esm/test/cdn.test.js out/commonjs/test/cdn.test.js --parallel --timeout 100000",
+    "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel --timeout 100000",
     "test-browser": "npx playwright install chromium && vitest --config vitest.browser.config.ts run"
   },
   "repository": {
