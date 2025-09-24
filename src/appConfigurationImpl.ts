@@ -41,7 +41,7 @@ import {
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
 import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
-import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
+import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType, isSnapshotReferenceContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/refreshTimer.js";
 import {
