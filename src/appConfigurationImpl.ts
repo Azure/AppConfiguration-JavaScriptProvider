@@ -769,11 +769,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const items: ConfigurationSetting[] = [];
             for await (const page of pageIterator) {
                 pageWatchers.push({ etag: page.etag });
-                for (const setting of page.items) {
-                    items.push(setting);
-                }
+                items.push(...page.items);
             }
-
             return { items, pageWatchers };
         };
 
@@ -814,11 +811,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             const items: ConfigurationSetting[] = [];
             for await (const page of pageIterator) {
-                for (const setting of page.items) {
-                    items.push(setting);
-                }
+                items.push(...page.items);
             }
-
             return items;
         };
 
