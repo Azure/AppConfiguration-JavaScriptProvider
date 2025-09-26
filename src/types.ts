@@ -95,6 +95,7 @@ export type WatchedSetting = {
 
 export type SettingWatcher = {
     etag?: string;
+    timestamp: Date;
 }
 
 export type PagedSettingsWatcher = SettingSelector & {

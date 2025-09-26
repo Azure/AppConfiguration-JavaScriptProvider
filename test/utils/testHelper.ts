@@ -111,6 +111,49 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
     return mockIterator as any;
 }
 
+function getCachedIterator(pages: Array<{
+    items: ConfigurationSetting[];
+    response?: any;
+}>) {
+    const iterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+        [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+            return this;
+        },
+        next() {
+            while (pages.length > 0) {
+                pages.shift();
+            }
+            if (pages.length === 0) {
+                return Promise.resolve({ done: true, value: undefined });
+            }
+            const value = pages[0].items.shift();
+            return Promise.resolve({ done: !value, value });
+        },
+        byPage(): AsyncIterableIterator<any> {
+            return {
+                [Symbol.asyncIterator](): AsyncIterableIterator<any> { return this; },
+                next() {
+                    const page = pages.shift();
+                    if (!page) {
+                        return Promise.resolve({ done: true, value: undefined });
+                    }
+                    const etag = _sha256(JSON.stringify(page.items));
+
+                    return Promise.resolve({
+                        done: false,
+                        value: {
+                            items: page.items,
+                            etag,
+                            _response: page.response
+                        }
+                    });
+                }
+            };
+        }
+    };
+    return iterator as any;
+}
+
 /**
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
@@ -241,7 +284,9 @@ function restoreMocks() {
 
 const createMockedEndpoint = (name = "azure") => `https://${name}.azconfig.io`;
 
-const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret = "secret", id = "1123456") => {
+const createMockedAzureFrontDoorEndpoint = (name = "appconfig") => `https://${name}.b01.azurefd.net`;
+
+const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret = "secret", id = "123456") => {
     return `Endpoint=${endpoint};Id=${id};Secret=${secret}`;
 };
 
@@ -320,9 +365,11 @@ export {
     mockAppConfigurationClientLoadBalanceMode,
     mockConfigurationManagerGetClients,
     mockSecretClientGetSecret,
+    getCachedIterator,
     restoreMocks,
 
     createMockedEndpoint,
+    createMockedAzureFrontDoorEndpoint,
     createMockedConnectionString,
     createMockedTokenCredential,
     createMockedKeyVaultReference,

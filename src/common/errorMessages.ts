@@ -20,6 +20,8 @@ export const enum ErrorMessages {
     INVALID_LABEL_FILTER = "The characters '*' and ',' are not supported in label filters.",
     INVALID_TAG_FILTER = "Tag filter must follow the format 'tagName=tagValue'",
     CONNECTION_STRING_OR_ENDPOINT_MISSED = "A connection string or an endpoint with credential must be specified to create a client.",
+    REPLICA_DISCOVERY_NOT_SUPPORTED = "Replica discovery is not supported when loading from Azure Front Door.",
+    LOAD_BALANCING_NOT_SUPPORTED = "Load balancing is not supported when loading from Azure Front Door."
 }
 
 export const enum KeyVaultReferenceErrorMessages {
