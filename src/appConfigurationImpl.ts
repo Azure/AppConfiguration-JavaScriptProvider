@@ -12,6 +12,7 @@ import {
     isFeatureFlag,
     isSecretReference,
     GetSnapshotOptions,
+    ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
     KnownSnapshotComposition,
     ListConfigurationSettingPage
@@ -502,84 +503,64 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
         const selectors: PagedSettingsWatcher[] = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
-        const funcToExecute = async (client) => {
-            // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
-            // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
-            const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
-            // deep copy selectors to avoid modification if current client fails
-            const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
-                JSON.stringify(selectors)
-            );
 
-            for (const selector of selectorsToUpdate) {
-                if (selector.snapshotName === undefined) {
-                    const listOptions: ListConfigurationSettingsOptions = {
-                        keyFilter: selector.keyFilter,
-                        labelFilter: selector.labelFilter,
-                        tagsFilter: selector.tagFilters
-                    };
-                    const pageWatchers: SettingWatcher[] = [];
-                    const pageIterator = listConfigurationSettingsWithTrace(
-                        this.#requestTraceOptions,
-                        client,
-                        listOptions
-                    ).byPage();
+        // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
+        // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
+        const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
+        // deep copy selectors to avoid modification if current client fails
+        const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
+            JSON.stringify(selectors)
+        );
 
-                    for await (const page of pageIterator) {
-                        pageWatchers.push({etag: page.etag, timestamp: this.#getResponseTimestamp(page)});
-                        for (const setting of page.items) {
-                            if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.set(setting.key, setting);
-                            }
+        for (const selector of selectorsToUpdate) {
+            let settings: ConfigurationSetting[] = [];
+            if (selector.snapshotName === undefined) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: selector.keyFilter,
+                    labelFilter: selector.labelFilter,
+                    tagsFilter: selector.tagFilters
+                };
+                const { items, pageWatchers } = await this.#listConfigurationSettings(listOptions);
+
+                for (const pageWatcher of pageWatchers) {
+                    if (loadFeatureFlag) {
+                        this.#isFfStale = pageWatcher.timestamp < this.#lastFfChangeDetectedTime;
+                        if (this.#isFfStale) {
+                            return [];
                         }
-                        const timestamp = this.#getResponseTimestamp(page);
-                        // all pages must be later than last change detected to be considered up-to-date
-                        if (loadFeatureFlag) {
-                            this.#isFfStale = timestamp < this.#lastFfChangeDetectedTime;
-                            if (this.#isFfStale) {
-                                return [];
-                            }
-                        } else {
-                            this.#isKvStale = timestamp < this.#lastKvChangeDetectedTime;
-                            if (this.#isKvStale) {
-                                return [];
-                            }
-                        }
-                    }
-                    selector.pageWatchers = pageWatchers;
-                } else { // snapshot selector
-                    const snapshot = await this.#getSnapshot(selector.snapshotName);
-                    if (snapshot === undefined) {
-                        throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
-                    }
-                    if (snapshot.compositionType != KnownSnapshotComposition.Key) {
-                        throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
-                    }
-                    const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
-                        this.#requestTraceOptions,
-                        client,
-                        selector.snapshotName
-                    ).byPage();
-
-                    for await (const page of pageIterator) {
-                        for (const setting of page.items) {
-                            if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.set(setting.key, setting);
-                            }
+                    } else {
+                        this.#isKvStale = pageWatcher.timestamp < this.#lastKvChangeDetectedTime;
+                        if (this.#isKvStale) {
+                            return [];
                         }
                     }
                 }
+                selector.pageWatchers = pageWatchers;
+                settings = items;
+            } else { // snapshot selector
+                const snapshot = await this.#getSnapshot(selector.snapshotName);
+                if (snapshot === undefined) {
+                    throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
+                }
+                if (snapshot.compositionType != KnownSnapshotComposition.Key) {
+                    throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
+                }
+                settings = await this.#listConfigurationSettingsForSnapshot(selector.snapshotName);
             }
 
-            if (loadFeatureFlag) {
-                this.#ffSelectors = selectorsToUpdate;
-            } else {
-                this.#kvSelectors = selectorsToUpdate;
+            for (const setting of settings) {
+                if (loadFeatureFlag === isFeatureFlag(setting)) {
+                    loadedSettings.set(setting.key, setting);
+                }
             }
-            return Array.from(loadedSettings.values());
-        };
+        }
 
-        return await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
+        if (loadFeatureFlag) {
+            this.#ffSelectors = selectorsToUpdate;
+        } else {
+            this.#kvSelectors = selectorsToUpdate;
+        }
+        return Array.from(loadedSettings.values());
     }
 
     /**
@@ -652,6 +633,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadFeatureFlags() {
         const loadFeatureFlag = true;
         const featureFlagSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings(loadFeatureFlag);
+
+        if (featureFlagSettings.length === 0) {
+            return;
+        }
 
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
@@ -832,13 +817,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Gets a configuration setting by key and label. If the setting is not found, return the error instead of throwing it.
      */
-    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | RestError> {
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | RestError> {
         const funcToExecute = async (client) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
                 client,
                 configurationSettingId,
-                customOptions
+                getOptions
             );
         };
 
@@ -856,13 +841,33 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
-    async #getSnapshot(snapshotName: string, customOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
+    async #listConfigurationSettings(listOptions: ListConfigurationSettingsOptions): Promise<{ items: ConfigurationSetting[]; pageWatchers: SettingWatcher[] }> {
+        const funcToExecute = async (client) => {
+            const pageWatchers: SettingWatcher[] = [];
+            const pageIterator = listConfigurationSettingsWithTrace(
+                this.#requestTraceOptions,
+                client,
+                listOptions
+            ).byPage();
+
+            const items: ConfigurationSetting[] = [];
+            for await (const page of pageIterator) {
+                pageWatchers.push({ etag: page.etag, timestamp: this.#getResponseTimestamp(page) });
+                items.push(...page.items);
+            }
+            return { items, pageWatchers };
+        };
+
+        return await this.#executeWithFailoverPolicy(funcToExecute);
+    }
+
+    async #getSnapshot(snapshotName: string, getOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
         const funcToExecute = async (client) => {
             return getSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,
                 snapshotName,
-                customOptions
+                getOptions
             );
         };
 
@@ -877,6 +882,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    async #listConfigurationSettingsForSnapshot(snapshotName: string, listOptions?: ListConfigurationSettingsForSnapshotOptions): Promise<ConfigurationSetting[]> {
+        const funcToExecute = async (client) => {
+            const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
+                this.#requestTraceOptions,
+                client,
+                snapshotName,
+                listOptions
+            ).byPage();
+
+            const items: ConfigurationSetting[] = [];
+            for await (const page of pageIterator) {
+                items.push(...page.items);
+            }
+            return items;
+        };
+
+        return await this.#executeWithFailoverPolicy(funcToExecute);
     }
 
     // Only operations related to Azure App Configuration should be executed with failover policy.
@@ -954,7 +978,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             const contentType = parseContentType(setting.contentType);
-            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\"""
+            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\""
             if (isJsonContentType(contentType) &&
                 !isFeatureFlagContentType(contentType) &&
                 !isSecretReferenceContentType(contentType)) {
