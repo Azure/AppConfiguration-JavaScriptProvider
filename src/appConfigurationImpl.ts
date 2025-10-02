@@ -82,6 +82,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
     #fmVersion: string | undefined;
     #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
+    #useSnapshotReference: boolean = false;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -213,7 +214,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            useSnapshotReference: this.#useSnapshotReference
         };
     }
 
@@ -504,17 +506,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 selector.pageWatchers = pageWatchers;
                 settings = items;
             } else { // snapshot selector
-                const snapshot = await this.#getSnapshot(selector.snapshotName);
-                if (snapshot === undefined) {
-                    throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
-                }
-                if (snapshot.compositionType != KnownSnapshotComposition.Key) {
-                    throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
-                }
-                settings = await this.#listConfigurationSettingsForSnapshot(selector.snapshotName);
+                settings = await this.#loadConfigurationSettingsFromSnapshot(selector.snapshotName);
             }
 
             for (const setting of settings) {
+                if (isSnapshotReference(setting) && !loadFeatureFlag) {
+                    this.#useSnapshotReference = true;
+
+                    // TODO: When SDK supports snapshot reference, use the helper method from SDK.
+                    const snapshotName = parseSnapshotReference(setting).value.snapshotName;
+                    const settingsFromSnapshot = await this.#loadConfigurationSettingsFromSnapshot(snapshotName);
+
+                    for (const snapshotSetting of settingsFromSnapshot) {
+                        if (!isFeatureFlag(snapshotSetting)) {
+                            // Feature flags inside snapshot are ignored. This is consistent the behavior that key value selectors ignore feature flags.
+                            loadedSettings.set(snapshotSetting.key, snapshotSetting);
+                        }
+                    }
+                    continue;
+                }
+
                 if (loadFeatureFlag === isFeatureFlag(setting)) {
                     loadedSettings.set(setting.key, setting);
                 }
@@ -573,6 +584,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const response = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: false });
             this.#sentinels.set(watchedSetting, { etag: response?.etag });
         }
+    }
+
+    async #loadConfigurationSettingsFromSnapshot(snapshotName: string): Promise<ConfigurationSetting[]> {
+        const snapshot = await this.#getSnapshot(snapshotName);
+        if (snapshot === undefined) {
+            throw new InvalidOperationError(`Could not find snapshot with name ${snapshotName}.`);
+        }
+        if (snapshot.compositionType != KnownSnapshotComposition.Key) {
+            throw new InvalidOperationError(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
+        }
+        const settings: ConfigurationSetting[] = await this.#listConfigurationSettingsForSnapshot(snapshotName);
+        return settings;
     }
 
     /**
@@ -1070,4 +1093,29 @@ function validateTagFilters(tagFilters: string[]): void {
             throw new Error(`Invalid tag filter: ${tagFilter}. ${ErrorMessages.INVALID_TAG_FILTER}.`);
         }
     }
+}
+
+// TODO: Temporary workaround until SDK supports snapshot reference
+const snapshotReferenceContentType = "application/json; profile=\"https://azconfig.io/mime-profiles/snapshot-ref\"; charset=utf-8";
+
+interface JsonSnapshotReferenceValue {
+  snapshot_name: string;
+}
+
+function isSnapshotReference(setting: ConfigurationSetting):
+    setting is ConfigurationSetting & Required<Pick<ConfigurationSetting, "value">> {
+    return (setting && setting.contentType === snapshotReferenceContentType && typeof setting.value === "string");
+}
+
+function parseSnapshotReference(setting: ConfigurationSetting) {
+    if (!isSnapshotReference(setting)) {
+        throw new Error(`Invalid snapshot reference: ${setting}`);
+    }
+    const jsonSnapshotReferenceValue = JSON.parse(setting.value) as JsonSnapshotReferenceValue;
+
+    const snapshotReference = {
+        ...setting,
+        value: { snapshotName: jsonSnapshotReferenceValue.snapshot_name },
+    };
+    return snapshotReference;
 }
