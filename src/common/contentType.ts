@@ -60,12 +60,3 @@ export function isSecretReferenceContentType(contentType: ContentType | undefine
     }
     return mediaType === secretReferenceContentType;
 }
-
-export function isSnapshotReferenceContentType(contentType: ContentType | undefined): boolean {
-    const mediaType = contentType?.mediaType;
-    if (!mediaType) {
-        return false;
-    }
-    // TODO: replace with constant when available in Azure SDK
-    return mediaType === "application/json; profile=\"https://azconfig.io/mime-profiles/snapshot-ref\"; charset=utf-8";
-}
