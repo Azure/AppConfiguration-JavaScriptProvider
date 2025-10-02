@@ -5,7 +5,7 @@ import { AppConfigurationClientOptions } from "@azure/app-configuration";
 import { KeyVaultOptions } from "./keyvault/keyVaultOptions.js";
 import { RefreshOptions } from "./refresh/refreshOptions.js";
 import { SettingSelector } from "./types.js";
-import { FeatureFlagOptions } from "./featureManagement/FeatureFlagOptions.js";
+import { FeatureFlagOptions } from "./featureManagement/featureFlagOptions.js";
 import { StartupOptions } from "./startupOptions.js";
 
 export interface AzureAppConfigurationOptions {
