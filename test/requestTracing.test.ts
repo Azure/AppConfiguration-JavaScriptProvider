@@ -121,7 +121,7 @@ describe("request tracing", function () {
         sinon.restore();
     });
 
-    it("should have cdn tag in correlation-context header when loadFromAzureFrontDoor is used", async () => {
+    it("should have AFD tag in correlation-context header when loadFromAzureFrontDoor is used", async () => {
         try {
             await loadFromAzureFrontDoor(fakeEndpoint, {
                 clientOptions,
@@ -134,10 +134,10 @@ describe("request tracing", function () {
         expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
-        expect(correlationContext.includes("CDN")).eq(true);
+        expect(correlationContext.includes("AFD")).eq(true);
     });
 
-    it("should not have cdn tag in correlation-context header when load is used", async () => {
+    it("should not have AFD tag in correlation-context header when load is used", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions,
@@ -149,7 +149,7 @@ describe("request tracing", function () {
         expect(headerPolicy.headers).not.undefined;
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
-        expect(correlationContext.includes("CDN")).eq(false);
+        expect(correlationContext.includes("AFD")).eq(false);
     });
 
     it("should detect env in correlation-context header", async () => {
