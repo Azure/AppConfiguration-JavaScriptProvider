@@ -233,7 +233,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
-            isCdnUsed: this.#isCdnUsed
+            isAfdUsed: this.#isCdnUsed
         };
     }
 
