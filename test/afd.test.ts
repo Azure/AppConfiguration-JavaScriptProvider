@@ -11,13 +11,13 @@ import { AppConfigurationClient } from "@azure/app-configuration";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
-import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
+import { SERVER_TIMESTAMP_HEADER } from "../src/cdn/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
 function createTimestampHeaders(timestamp: string | Date) {
     const value = timestamp instanceof Date ? timestamp.toUTCString() : new Date(timestamp).toUTCString();
     return {
-        get: (name: string) => name.toLowerCase() === TIMESTAMP_HEADER ? value : undefined
+        get: (name: string) => name.toLowerCase() === SERVER_TIMESTAMP_HEADER ? value : undefined
     };
 }
 
@@ -228,6 +228,45 @@ describe("loadFromAzureFrontDoor", function() {
         featureFlags = appConfig.get<any>("feature_management").feature_flags;
         expect(featureFlags[0].id).to.equal("Beta");
         expect(featureFlags[0].enabled).to.equal(false);
+    });
+
+    it("should not refresh if the response is stale", async () => {
+        const kv1 = createMockedKeyValue({ key: "app.key1", value: "value1" });
+        const kv1_stale = createMockedKeyValue({ key: "app.key1", value: "stale-value" });
+        const kv1_new = createMockedKeyValue({ key: "app.key1", value: "new-value" });
+
+        const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        stub.onCall(0).returns(getCachedIterator([
+            { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
+        ]));
+
+        stub.onCall(1).returns(getCachedIterator([
+            { items: [kv1_stale], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } } // stale response, should not trigger refresh
+        ]));
+        stub.onCall(2).returns(getCachedIterator([
+            { items: [kv1_new], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } } // new response, should trigger refresh
+        ]));
+        stub.onCall(3).returns(getCachedIterator([
+            { items: [kv1_new], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } }
+        ]));
+
+        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
+            selectors: [{ keyFilter: "app.*" }],
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 1000
+            }
+        }); // 1 call listConfigurationSettings
+
+        expect(appConfig.get("app.key1")).to.equal("value1");
+
+        await sleepInMs(1500);
+        await appConfig.refresh(); // 1 call listConfigurationSettings for watching changes
+        expect(appConfig.get("app.key1")).to.equal("value1"); // value should not be updated
+
+        await sleepInMs(1500);
+        await appConfig.refresh(); // 1 call listConfigurationSettings for watching changes and 1 call for reloading
+        expect(appConfig.get("app.key1")).to.equal("new-value");
     });
 });
 /* eslint-ensable @typescript-eslint/no-unused-expressions */

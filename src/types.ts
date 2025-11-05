@@ -95,7 +95,7 @@ export type WatchedSetting = {
 
 export type SettingWatcher = {
     etag?: string;
-    lastServerResponseTime: Date;
+    lastServerResponseTime?: Date;
 }
 
 export type PagedSettingsWatcher = SettingSelector & {

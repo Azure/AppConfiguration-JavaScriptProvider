@@ -68,7 +68,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
-import { TIMESTAMP_HEADER } from "./cdn/constants.js";
+import { SERVER_TIMESTAMP_HEADER } from "./cdn/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -130,17 +130,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
-    // CDN
-    #isCdnUsed: boolean = false;
+    // Azure Front Door
+    #isAfdUsed: boolean = false;
 
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
-        isCdnUsed: boolean
+        isAfdUsed: boolean
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
-        this.#isCdnUsed = isCdnUsed;
+        this.#isAfdUsed = isAfdUsed;
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -169,7 +169,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
                         throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_LABEL);
                     }
-                    this.#sentinels.set(setting, { etag: undefined, lastServerResponseTime: new Date(0) });
+                    this.#sentinels.set(setting, { etag: undefined });
                 }
             }
 
@@ -229,7 +229,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
-            isAfdUsed: this.#isCdnUsed
+            isAfdUsed: this.#isAfdUsed
         };
     }
 
@@ -592,10 +592,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         for (const watchedSetting of this.#sentinels.keys()) {
             const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label };
             const response = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: false });
-            this.#sentinels.set(watchedSetting, {
-                etag: isRestError(response) ? undefined : response.etag,
-                lastServerResponseTime: this.#getResponseTimestamp(response)
-            });
+            this.#sentinels.set(watchedSetting, { etag: response?.etag });
         }
     }
 
@@ -647,22 +644,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
-        let changedSentinel;
-        let changedSentinelWatcher;
+        let changedSentinel: WatchedSetting | undefined;
+        let changedSentinelWatcher: SettingWatcher | undefined;
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
         } else {
             for (const watchedSetting of this.#sentinels.keys()) {
                 const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label };
-                const response: GetConfigurationSettingResponse | RestError =
+                const response: GetConfigurationSettingResponse | undefined =
                     await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
 
                 const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
-                const isDeleted = isRestError(response) && watcher.etag !== undefined; // previously existed, now deleted
-                const isChanged =
-                    !isRestError(response) &&
-                    response.statusCode === 200 &&
-                    watcher.etag !== response.etag; // etag changed
+                const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
+                const isChanged = response && response.statusCode === 200 && watcher.etag !== response.etag; // etag changed
 
                 if (isDeleted || isChanged) {
                     changedSentinel = watchedSetting;
@@ -747,7 +741,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     tagsFilter: selector.tagFilters
                 };
 
-                if (!this.#isCdnUsed) {
+                if (!this.#isAfdUsed) {
                     // if CDN is not used, add page etags to the listOptions to send conditional request
                     listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
                 }
@@ -761,11 +755,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 let i = 0;
                 for await (const page of pageIterator) {
                     const timestamp = this.#getResponseTimestamp(page);
-                    // when conditional request is sent, the response will be 304 if not changed
-                    if (i >= pageWatchers.length || // new page
-                        (timestamp > pageWatchers[i].lastServerResponseTime && // up to date
-                            page._response.status === 200 && // page changed
-                            page.etag !== pageWatchers[i].etag)) {
+                    if (i >= pageWatchers.length) {
+                        return true;
+                    }
+
+                    const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
+                    const isUpToDate = lastServerResponseTime ? timestamp > lastServerResponseTime : true;
+                    if (isUpToDate && page._response.status === 200 && page.etag !== pageWatchers[i].etag) {
                         return true;
                     }
                     i++;
@@ -779,9 +775,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Gets a configuration setting by key and label. If the setting is not found, return the error instead of throwing it.
+     * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
-    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | RestError> {
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         const funcToExecute = async (client) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
@@ -791,13 +787,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             );
         };
 
-        let response: GetConfigurationSettingResponse | RestError;
+        let response: GetConfigurationSettingResponse | undefined;
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
             if (isRestError(error) && error.statusCode === 404) {
-                // configuration setting not found, return the error
-                return error;
+                response = undefined;
             } else {
                 throw error;
             }
@@ -1151,9 +1146,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #getResponseTimestamp(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
         let header: string | undefined;
         if (isRestError(response)) {
-            header = response.response?.headers?.get(TIMESTAMP_HEADER) ?? undefined;
+            header = response.response?.headers?.get(SERVER_TIMESTAMP_HEADER) ?? undefined;
         } else {
-            header = response._response?.headers?.get(TIMESTAMP_HEADER) ?? undefined;
+            header = response._response?.headers?.get(SERVER_TIMESTAMP_HEADER) ?? undefined;
         }
         return header ? new Date(header) : new Date();
     }

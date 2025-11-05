@@ -50,8 +50,8 @@ export async function load(
     }
 
     try {
-        const isCdnUsed: boolean = credentialOrOptions === emptyTokenCredential;
-        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, isCdnUsed);
+        const isAfdUsed: boolean = credentialOrOptions === emptyTokenCredential;
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, isAfdUsed);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
