@@ -9,6 +9,7 @@ const expect = chai.expect;
 
 import { AppConfigurationClient } from "@azure/app-configuration";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
+import { ErrorMessages } from "../src/common/errorMessages.js";
 import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
 import { TIMESTAMP_HEADER } from "../src/cdn/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
@@ -24,6 +25,27 @@ describe("loadFromAzureFrontDoor", function() {
 
     afterEach(() => {
         restoreMocks();
+    });
+
+    it("should throw if watched settings are provided", async () => {
+        await expect(loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
+            refreshOptions: {
+                enabled: true,
+                watchedSettings: [{ key: "sentinel" }]
+            }
+        })).to.be.rejectedWith(ErrorMessages.WATCHED_SETTINGS_NOT_SUPPORTED);
+    });
+
+    it("should throw if replica discovery is enabled", async () => {
+        await expect(loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
+            replicaDiscoveryEnabled: true
+        })).to.be.rejectedWith(ErrorMessages.REPLICA_DISCOVERY_NOT_SUPPORTED);
+    });
+
+    it("should throw if load balancing is enabled", async () => {
+        await expect(loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
+            loadBalancingEnabled: true
+        })).to.be.rejectedWith(ErrorMessages.LOAD_BALANCING_NOT_SUPPORTED);
     });
 
     it("should not include authorization and sync-token header when loading from Azure Front Door", async () => {
@@ -206,69 +228,6 @@ describe("loadFromAzureFrontDoor", function() {
         featureFlags = appConfig.get<any>("feature_management").feature_flags;
         expect(featureFlags[0].id).to.equal("Beta");
         expect(featureFlags[0].enabled).to.equal(false);
-    });
-
-    it("should keep refreshing key value until cache expires", async () => {
-        let refreshSuccessfulCount = 0;
-        const sentinel = createMockedKeyValue({ key: "sentinel", value: "initial value" });
-        const sentinel_updated = createMockedKeyValue({ key: "sentinel", value: "updated value" });
-        const kv1 = createMockedKeyValue({ key: "app.key1", value: "value1" });
-        const kv2 = createMockedKeyValue({ key: "app.key2", value: "value2" });
-        const kv2_updated = createMockedKeyValue({ key: "app.key2", value: "value2-updated" });
-
-        const getStub = sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting");
-        const listStub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
-
-        getStub.onCall(0).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:00Z") }, ...sentinel } as any));
-        getStub.onCall(1).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
-        getStub.onCall(2).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:01Z") }, ...sentinel_updated } as any));
-        getStub.onCall(4).returns(Promise.resolve({ statusCode: 200, _response: { headers: createTimestampHeaders("2025-09-07T00:00:00Z") }, ...sentinel } as any)); // server old value from another cache server
-
-        listStub.onCall(0).returns(getCachedIterator([
-            { items: [kv1, kv2], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
-        ]));
-        listStub.onCall(1).returns(getCachedIterator([
-            { items: [kv1, kv2], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } } // cache has not expired
-        ]));
-        listStub.onCall(2).returns(getCachedIterator([
-            { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } } // cache has expired
-        ]));
-
-        const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
-            selectors: [{ keyFilter: "app.*" }],
-            refreshOptions: {
-                enabled: true,
-                refreshIntervalInMs: 1000,
-                watchedSettings: [
-                    { key: "sentinel" }
-                ]
-            }
-        });
-
-        appConfig.onRefresh(() => {
-            refreshSuccessfulCount++;
-        });
-
-        expect(appConfig.get("app.key2")).to.equal("value2");
-
-        await sleepInMs(1500);
-        await appConfig.refresh();
-
-        // cdn cache hasn't expired, even if the sentinel key changed, key2 should still return the old value
-        expect(appConfig.get("app.key2")).to.equal("value2");
-        expect(refreshSuccessfulCount).to.equal(0);
-
-        await sleepInMs(1500);
-        await appConfig.refresh();
-        expect(refreshSuccessfulCount).to.equal(1);
-
-        // cdn cache has expired, key2 should return the updated value even if sentinel remains the same
-        expect(appConfig.get("app.key2")).to.equal("value2-updated");
-
-        await sleepInMs(1500);
-        // even if the sentinel is different from previous value, but the timestamp is older, it should not trigger refresh
-        await appConfig.refresh();
-        expect(refreshSuccessfulCount).to.equal(1);
     });
 });
 /* eslint-ensable @typescript-eslint/no-unused-expressions */

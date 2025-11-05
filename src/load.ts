@@ -83,6 +83,10 @@ export async function loadFromAzureFrontDoor(
     if (appConfigOptions.loadBalancingEnabled) {
         throw new ArgumentError(ErrorMessages.LOAD_BALANCING_NOT_SUPPORTED);
     }
+    if (appConfigOptions.refreshOptions?.watchedSettings && appConfigOptions.refreshOptions.watchedSettings.length > 0) {
+        throw new ArgumentError(ErrorMessages.WATCHED_SETTINGS_NOT_SUPPORTED);
+    }
+
     appConfigOptions.replicaDiscoveryEnabled = false; // Disable replica discovery when loading from Azure Front Door
 
     appConfigOptions.clientOptions = {

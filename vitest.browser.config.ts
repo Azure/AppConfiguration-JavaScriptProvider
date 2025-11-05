@@ -16,7 +16,7 @@ export default defineConfig({
       "out/esm/test/featureFlag.test.js",
       "out/esm/test/json.test.js",
       "out/esm/test/startup.test.js",
-      "out/esm/test/cdn.test.js"
+      "out/esm/test/afd.test.js"
     ],
     testTimeout: 200_000,
     hookTimeout: 200_000,
