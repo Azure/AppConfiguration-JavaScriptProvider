@@ -11,7 +11,7 @@ import { AppConfigurationClient } from "@azure/app-configuration";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
-import { SERVER_TIMESTAMP_HEADER } from "../src/cdn/constants.js";
+import { SERVER_TIMESTAMP_HEADER } from "../src/afd/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
 function createTimestampHeaders(timestamp: string | Date) {

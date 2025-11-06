@@ -6,7 +6,7 @@ import { AzureAppConfiguration } from "./appConfiguration.js";
 import { AzureAppConfigurationImpl } from "./appConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
-import { AnonymousRequestPipelinePolicy, RemoveSyncTokenPipelinePolicy } from "./cdn/cdnRequestPipelinePolicy.js";
+import { AnonymousRequestPipelinePolicy, RemoveSyncTokenPipelinePolicy } from "./afd/afdRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
@@ -27,7 +27,7 @@ export async function load(connectionString: string, options?: AzureAppConfigura
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
- * @param endpoint  The URL to the App Configuration store.
+ * @param endpoint  The App Configuration store endpoint.
  * @param credential  The credential to use to connect to the App Configuration store.
  * @param options  Optional parameters.
  */
@@ -67,8 +67,8 @@ export async function load(
 }
 
 /**
- * Loads the data from Azure Front Door (CDN) and returns an instance of AzureAppConfiguration.
- * @param endpoint  The URL to the Azure Front Door.
+ * Loads the data from Azure Front Door and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The Azure Front Door endpoint.
  * @param appConfigOptions  Optional parameters.
  */
 export async function loadFromAzureFrontDoor(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;

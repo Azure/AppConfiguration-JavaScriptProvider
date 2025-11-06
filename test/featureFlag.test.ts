@@ -468,7 +468,9 @@ describe("feature flags", function () {
             }
         });
 
-        expect(settingsWithNonExistentTag.get("feature_management")).to.be.undefined;
+        featureFlags = settingsWithNonExistentTag.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+        expect((featureFlags as []).length).equals(0);
     });
 
     it("should load feature flags from snapshot", async () => {

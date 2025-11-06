@@ -22,7 +22,7 @@ export const enum ErrorMessages {
     CONNECTION_STRING_OR_ENDPOINT_MISSED = "A connection string or an endpoint with credential must be specified to create a client.",
     REPLICA_DISCOVERY_NOT_SUPPORTED = "Replica discovery is not supported when loading from Azure Front Door.",
     LOAD_BALANCING_NOT_SUPPORTED = "Load balancing is not supported when loading from Azure Front Door.",
-    WATCHED_SETTINGS_NOT_SUPPORTED = "Watched settings are not supported when loading from Azure Front Door."
+    WATCHED_SETTINGS_NOT_SUPPORTED = "Specifying watched settings is not supported when loading from Azure Front Door. If refresh is enabled, all loaded configuration settings will be watched automatically."
 }
 
 export const enum KeyVaultReferenceErrorMessages {

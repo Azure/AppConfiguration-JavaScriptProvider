@@ -68,7 +68,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
-import { SERVER_TIMESTAMP_HEADER } from "./cdn/constants.js";
+import { SERVER_TIMESTAMP_HEADER } from "./afd/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -554,10 +554,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const keyValues: [key: string, value: unknown][] = [];
         const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
 
-        if (loadedSettings.length === 0) {
-            return;
-        }
-
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             // reset old AI configuration tracing in order to track the information present in the current response from server
             this.#aiConfigurationTracing.reset();
@@ -614,10 +610,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         const loadFeatureFlag = true;
         const featureFlagSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings(loadFeatureFlag);
 
-        if (featureFlagSettings.length === 0) {
-            return;
-        }
-
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
             this.#featureFlagTracing.reset();
@@ -650,7 +642,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
         } else {
             for (const watchedSetting of this.#sentinels.keys()) {
-                const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label };
+                const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label, etag: this.#sentinels.get(watchedSetting)?.etag };
                 const response: GetConfigurationSettingResponse | undefined =
                     await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
 
@@ -742,7 +734,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 };
 
                 if (!this.#isAfdUsed) {
-                    // if CDN is not used, add page etags to the listOptions to send conditional request
+                    // if AFD is not used, add page etags to the listOptions to send conditional request
                     listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
                 }
 
