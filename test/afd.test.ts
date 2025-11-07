@@ -11,13 +11,13 @@ import { AppConfigurationClient } from "@azure/app-configuration";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
 import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs } from "./utils/testHelper.js";
-import { SERVER_TIMESTAMP_HEADER } from "../src/afd/constants.js";
+import { X_MS_DATE_HEADER } from "../src/afd/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
 function createTimestampHeaders(timestamp: string | Date) {
     const value = timestamp instanceof Date ? timestamp.toUTCString() : new Date(timestamp).toUTCString();
     return {
-        get: (name: string) => name.toLowerCase() === SERVER_TIMESTAMP_HEADER ? value : undefined
+        get: (name: string) => name.toLowerCase() === X_MS_DATE_HEADER ? value : undefined
     };
 }
 

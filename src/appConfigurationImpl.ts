@@ -68,7 +68,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
-import { SERVER_TIMESTAMP_HEADER } from "./afd/constants.js";
+import { X_MS_DATE_HEADER } from "./afd/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -745,13 +745,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 let i = 0;
                 for await (const page of pageIterator) {
-                    const timestamp = this.#getResponseTimestamp(page);
+                    const serverResponseTime = this.#getMsDateHeader(page);
                     if (i >= pageWatchers.length) {
                         return true;
                     }
 
                     const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
-                    const isUpToDate = lastServerResponseTime ? timestamp > lastServerResponseTime : true;
+                    let isUpToDate = true;
+                    if (lastServerResponseTime !== undefined && serverResponseTime !== undefined) {
+                        isUpToDate = serverResponseTime > lastServerResponseTime;
+                    }
                     if (isUpToDate && page._response.status === 200 && page.etag !== pageWatchers[i].etag) {
                         return true;
                     }
@@ -802,7 +805,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             const items: ConfigurationSetting[] = [];
             for await (const page of pageIterator) {
-                pageWatchers.push({ etag: page.etag, lastServerResponseTime: this.#getResponseTimestamp(page) });
+                pageWatchers.push({ etag: page.etag, lastServerResponseTime: this.#getMsDateHeader(page) });
                 items.push(...page.items);
             }
             return { items, pageWatchers };
@@ -1132,16 +1135,22 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Extracts the response timestamp from the headers. If not found, returns the current time.
+     * Extracts the response timestamp (x-ms-date) from the response headers. If not found, returns the current time.
      */
-    #getResponseTimestamp(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
+    #getMsDateHeader(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
         let header: string | undefined;
         if (isRestError(response)) {
-            header = response.response?.headers?.get(SERVER_TIMESTAMP_HEADER) ?? undefined;
+            header = response.response?.headers?.get(X_MS_DATE_HEADER);
         } else {
-            header = response._response?.headers?.get(SERVER_TIMESTAMP_HEADER) ?? undefined;
+            header = response._response?.headers?.get(X_MS_DATE_HEADER);
         }
-        return header ? new Date(header) : new Date();
+        if (header !== undefined) {
+            const date = new Date(header);
+            if (!isNaN(date.getTime())) {
+                return date;
+            }
+        }
+        return new Date();
     }
 }
 

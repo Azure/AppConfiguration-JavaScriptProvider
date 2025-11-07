@@ -117,13 +117,12 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     Host: identify with defined envs
     Env: identify by env `NODE_ENV` which is a popular but not standard. Usually, the value can be "development", "production".
     ReplicaCount: identify how many replicas are found
-    Features: LB
+    Features: LB+AI+AICC+AFD
     Filter: CSTM+TIME+TRGT
     MaxVariants: identify the max number of variants feature flag uses
     FFFeatures: Seed+Telemetry
     UsersKeyVault
     Failover
-    AFD
     */
     const keyValues = new Map<string, string | undefined>();
     const tags: string[] = [];
@@ -154,9 +153,6 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
 
     if (requestTracingOptions.isFailoverRequest) {
         tags.push(FAILOVER_REQUEST_TAG);
-    }
-    if (requestTracingOptions.isAfdUsed) {
-        tags.push(AFD_USED_TAG);
     }
     if (requestTracingOptions.replicaCount > 0) {
         keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
@@ -189,7 +185,8 @@ export function requestTracingEnabled(): boolean {
 
 function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
     return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
-        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false);
+        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false) ||
+        requestTracingOptions.isAfdUsed;
 }
 
 function createFeaturesString(requestTracingOptions: RequestTracingOptions): string {
@@ -202,6 +199,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
         tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
+    }
+    if (requestTracingOptions.isAfdUsed) {
+        tags.push(AFD_USED_TAG);
     }
     return tags.join(DELIMITER);
 }
