@@ -745,17 +745,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 let i = 0;
                 for await (const page of pageIterator) {
-                    const serverResponseTime = this.#getMsDateHeader(page);
+                    const serverResponseTime: Date = this.#getMsDateHeader(page);
                     if (i >= pageWatchers.length) {
                         return true;
                     }
 
                     const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
                     let isUpToDate = true;
-                    if (lastServerResponseTime !== undefined && serverResponseTime !== undefined) {
+                    if (lastServerResponseTime !== undefined) {
                         isUpToDate = serverResponseTime > lastServerResponseTime;
                     }
-                    if (isUpToDate && page._response.status === 200 && page.etag !== pageWatchers[i].etag) {
+                    if (isUpToDate &&
+                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        page.etag !== pageWatchers[i].etag) {
                         return true;
                     }
                     i++;
