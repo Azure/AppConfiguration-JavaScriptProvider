@@ -619,23 +619,22 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
-        let changedSentinel;
-        let changedSentinelWatcher;
+        let changedSentinel: WatchedSetting | undefined;
+        let changedSentinelWatcher: SettingWatcher | undefined;
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
         } else {
             for (const watchedSetting of this.#sentinels.keys()) {
                 const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label, etag: this.#sentinels.get(watchedSetting)?.etag };
-                const response = await this.#getConfigurationSetting(configurationSettingId, {
-                    onlyIfChanged: true
-                });
+                const response: GetConfigurationSettingResponse | undefined
+                    = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
 
-                const watcher = this.#sentinels.get(watchedSetting);
-                if (response?.statusCode === 200 // created or changed
-                    || (response === undefined && watcher?.etag !== undefined) // deleted
-                ) {
+                const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
+                const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
+                const isChanged = response && response.statusCode === 200 && watcher.etag !== response.etag; // etag changed
+                if (isDeleted || isChanged) {
                     changedSentinel = watchedSetting;
-                    changedSentinelWatcher = watcher;
+                    changedSentinelWatcher = { etag: isChanged ? response.etag : undefined };
                     needRefresh = true;
                     break;
                 }
@@ -647,7 +646,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 await adapter.onChangeDetected();
             }
             await this.#loadSelectedKeyValues();
-            this.#sentinels.set(changedSentinel, changedSentinelWatcher); // update the changed sentinel's watcher
+
+            if (changedSentinel && changedSentinelWatcher) {
+                // update the changed sentinel's watcher after loading new values, this can ensure a failed refresh will retry on next refresh
+                this.#sentinels.set(changedSentinel, changedSentinelWatcher);
+            }
         }
 
         this.#kvRefreshTimer.reset();
