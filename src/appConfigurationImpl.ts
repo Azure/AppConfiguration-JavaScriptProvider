@@ -626,8 +626,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         } else {
             for (const watchedSetting of this.#sentinels.keys()) {
                 const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label, etag: this.#sentinels.get(watchedSetting)?.etag };
-                const response: GetConfigurationSettingResponse | undefined
-                    = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
+                const response: GetConfigurationSettingResponse | undefined =
+                    await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
 
                 const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
                 const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
