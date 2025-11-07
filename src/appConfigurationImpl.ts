@@ -649,7 +649,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
                 const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
                 const isChanged = response && response.statusCode === 200 && watcher.etag !== response.etag; // etag changed
-
                 if (isDeleted || isChanged) {
                     changedSentinel = watchedSetting;
                     changedSentinelWatcher = { etag: isChanged ? response.etag : undefined };
