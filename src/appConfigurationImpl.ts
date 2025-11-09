@@ -751,11 +751,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     }
 
                     const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
-                    let isUpToDate = true;
+                    let isResponseFresh = false;
                     if (lastServerResponseTime !== undefined) {
-                        isUpToDate = serverResponseTime > lastServerResponseTime;
+                        isResponseFresh = serverResponseTime > lastServerResponseTime;
                     }
-                    if (isUpToDate &&
+                    if (isResponseFresh &&
                         page._response.status === 200 && // conditional request returns 304 if not changed
                         page.etag !== pageWatchers[i].etag) {
                         return true;
