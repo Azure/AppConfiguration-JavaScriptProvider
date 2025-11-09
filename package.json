@@ -12,11 +12,11 @@
     "./package.json": "./package.json",
     ".": {
       "import": {
-        "types": "./types/index.d.ts",
+        "types": "./dist/types/index.d.ts",
         "default": "./dist/esm/index.js"
       },
       "require": {
-        "types": "./types/index.d.ts",
+        "types": "./dist/types/index.d.ts",
         "default": "./dist/commonjs/index.js"
       }
     }
@@ -26,7 +26,7 @@
     "build-test": "npm run build-test-esm && npm run build-test-cjs",
     "build-test-esm": "tsc -p ./tsconfig.test.esm.json && cpy esm-package.json out/esm --rename=package.json",
     "build-test-cjs": "tsc -p ./tsconfig.test.cjs.json && cpy cjs-package.json out/commonjs --rename=package.json",
-    "clean": "rimraf dist dist-esm out types",
+    "clean": "rimraf dist out",
     "dev": "rollup --config --watch",
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
