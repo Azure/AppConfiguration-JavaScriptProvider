@@ -14,9 +14,10 @@ import {
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
-    KnownSnapshotComposition
+    KnownSnapshotComposition,
+    ListConfigurationSettingPage
 } from "@azure/app-configuration";
-import { isRestError } from "@azure/core-rest-pipeline";
+import { isRestError, RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./appConfiguration.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { IKeyValueAdapter } from "./keyValueAdapter.js";
@@ -67,6 +68,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
+import { X_MS_DATE_HEADER } from "./afd/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -128,12 +130,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // Azure Front Door
+    #isAfdUsed: boolean = false;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isAfdUsed: boolean
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
+        this.#isAfdUsed = isAfdUsed;
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -221,7 +228,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            isAfdUsed: this.#isAfdUsed
         };
     }
 
@@ -490,7 +498,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      *                          If false, loads key-value using the key-value selectors. Defaults to false.
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
-        const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
+        const selectors: PagedSettingsWatcher[] = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
 
         // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
         // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
@@ -509,6 +517,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     tagsFilter: selector.tagFilters
                 };
                 const { items, pageWatchers } = await this.#listConfigurationSettings(listOptions);
+
                 selector.pageWatchers = pageWatchers;
                 settings = items;
             } else { // snapshot selector
@@ -675,7 +684,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+        let needRefresh = false;
+        needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
@@ -718,9 +729,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    tagsFilter: selector.tagFilters,
-                    pageEtags: pageWatchers.map(w => w.etag ?? "")
+                    tagsFilter: selector.tagFilters
                 };
+
+                if (!this.#isAfdUsed) {
+                    // if AFD is not used, add page etags to the listOptions to send conditional request
+                    listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
+                }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
@@ -728,11 +743,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
 
+                let i = 0;
                 for await (const page of pageIterator) {
-                    // when conditional request is sent, the response will be 304 if not changed
-                    if (page._response.status === 200) { // created or changed
+                    const serverResponseTime: Date = this.#getMsDateHeader(page);
+                    if (i >= pageWatchers.length) {
                         return true;
                     }
+
+                    const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
+                    let isResponseFresh = false;
+                    if (lastServerResponseTime !== undefined) {
+                        isResponseFresh = serverResponseTime > lastServerResponseTime;
+                    }
+                    if (isResponseFresh &&
+                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        page.etag !== pageWatchers[i].etag) {
+                        return true;
+                    }
+                    i++;
                 }
             }
             return false;
@@ -743,7 +771,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
+     * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         const funcToExecute = async (client) => {
@@ -779,7 +807,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             const items: ConfigurationSetting[] = [];
             for await (const page of pageIterator) {
-                pageWatchers.push({ etag: page.etag });
+                pageWatchers.push({ etag: page.etag, lastServerResponseTime: this.#getMsDateHeader(page) });
                 items.push(...page.items);
             }
             return { items, pageWatchers };
@@ -1106,6 +1134,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             return first15Bytes.toString("base64url");
         }
+    }
+
+    /**
+     * Extracts the response timestamp (x-ms-date) from the response headers. If not found, returns the current time.
+     */
+    #getMsDateHeader(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
+        let header: string | undefined;
+        if (isRestError(response)) {
+            header = response.response?.headers?.get(X_MS_DATE_HEADER);
+        } else {
+            header = response._response?.headers?.get(X_MS_DATE_HEADER);
+        }
+        if (header !== undefined) {
+            const date = new Date(header);
+            if (!isNaN(date.getTime())) {
+                return date;
+            }
+        }
+        return new Date();
     }
 }
 

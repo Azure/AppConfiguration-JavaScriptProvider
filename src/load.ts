@@ -6,9 +6,17 @@ import { AzureAppConfiguration } from "./appConfiguration.js";
 import { AzureAppConfigurationImpl } from "./appConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
+import { AnonymousRequestPipelinePolicy, RemoveSyncTokenPipelinePolicy } from "./afd/afdRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
+import { ArgumentError } from "./common/errors.js";
+import { ErrorMessages } from "./common/errorMessages.js";
 
 const MIN_DELAY_FOR_UNHANDLED_ERROR_IN_MS: number = 5_000;
+
+// Empty token credential to be used when loading from Azure Front Door
+const emptyTokenCredential: TokenCredential = {
+    getToken: async () => ({ token: "", expiresOnTimestamp: Number.MAX_SAFE_INTEGER })
+};
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
@@ -19,7 +27,7 @@ export async function load(connectionString: string, options?: AzureAppConfigura
 
 /**
  * Loads the data from Azure App Configuration service and returns an instance of AzureAppConfiguration.
- * @param endpoint  The URL to the App Configuration store.
+ * @param endpoint  The App Configuration store endpoint.
  * @param credential  The credential to use to connect to the App Configuration store.
  * @param options  Optional parameters.
  */
@@ -42,7 +50,8 @@ export async function load(
     }
 
     try {
-        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options);
+        const isAfdUsed: boolean = credentialOrOptions === emptyTokenCredential;
+        const appConfiguration = new AzureAppConfigurationImpl(clientManager, options, isAfdUsed);
         await appConfiguration.load();
         return appConfiguration;
     } catch (error) {
@@ -55,4 +64,39 @@ export async function load(
         }
         throw error;
     }
+}
+
+/**
+ * Loads the data from Azure Front Door and returns an instance of AzureAppConfiguration.
+ * @param endpoint  The Azure Front Door endpoint.
+ * @param appConfigOptions  Optional parameters.
+ */
+export async function loadFromAzureFrontDoor(endpoint: URL | string, options?: AzureAppConfigurationOptions): Promise<AzureAppConfiguration>;
+
+export async function loadFromAzureFrontDoor(
+    endpoint: string | URL,
+    appConfigOptions: AzureAppConfigurationOptions = {}
+): Promise<AzureAppConfiguration> {
+    if (appConfigOptions.replicaDiscoveryEnabled) {
+        throw new ArgumentError(ErrorMessages.REPLICA_DISCOVERY_NOT_SUPPORTED);
+    }
+    if (appConfigOptions.loadBalancingEnabled) {
+        throw new ArgumentError(ErrorMessages.LOAD_BALANCING_NOT_SUPPORTED);
+    }
+    if (appConfigOptions.refreshOptions?.watchedSettings && appConfigOptions.refreshOptions.watchedSettings.length > 0) {
+        throw new ArgumentError(ErrorMessages.WATCHED_SETTINGS_NOT_SUPPORTED);
+    }
+
+    appConfigOptions.replicaDiscoveryEnabled = false; // Disable replica discovery when loading from Azure Front Door
+
+    appConfigOptions.clientOptions = {
+        ...appConfigOptions.clientOptions,
+        additionalPolicies: [
+            ...(appConfigOptions.clientOptions?.additionalPolicies || []),
+            { policy: new AnonymousRequestPipelinePolicy(), position: "perRetry" },
+            { policy: new RemoveSyncTokenPipelinePolicy(), position: "perRetry" }
+        ]
+    };
+
+    return await load(endpoint, emptyTokenCredential, appConfigOptions);
 }

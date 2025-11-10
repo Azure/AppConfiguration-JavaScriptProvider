@@ -20,6 +20,9 @@ export const enum ErrorMessages {
     INVALID_LABEL_FILTER = "The characters '*' and ',' are not supported in label filters.",
     INVALID_TAG_FILTER = "Tag filter must follow the format 'tagName=tagValue'",
     CONNECTION_STRING_OR_ENDPOINT_MISSED = "A connection string or an endpoint with credential must be specified to create a client.",
+    REPLICA_DISCOVERY_NOT_SUPPORTED = "Replica discovery is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
+    LOAD_BALANCING_NOT_SUPPORTED = "Load balancing is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
+    WATCHED_SETTINGS_NOT_SUPPORTED = "Specifying watched settings is not supported when loading from Azure Front Door. If refresh is enabled, all loaded configuration settings will be watched automatically."
 }
 
 export const enum KeyVaultReferenceErrorMessages {

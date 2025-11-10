@@ -10,7 +10,14 @@ export default defineConfig({
         { browser: "chromium" },
       ],
     },
-    include: ["out/esm/test/load.test.js", "out/esm/test/refresh.test.js", "out/esm/test/featureFlag.test.js", "out/esm/test/json.test.js", "out/esm/test/startup.test.js"],
+    include: [
+      "out/esm/test/load.test.js",
+      "out/esm/test/refresh.test.js",
+      "out/esm/test/featureFlag.test.js",
+      "out/esm/test/json.test.js",
+      "out/esm/test/startup.test.js",
+      "out/esm/test/afd.test.js"
+    ],
     testTimeout: 200_000,
     hookTimeout: 200_000,
     reporters: "default",
