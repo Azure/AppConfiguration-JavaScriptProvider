@@ -1,10 +1,33 @@
 {
-    "extends": "./tsconfig.base.json",
     "compilerOptions": {
-        "module": "ESNext",
-        "outDir": "./dist-esm"
+        // Include ES2022 (modern JS), ESNext (future features), DOM and web worker APIs for browser support.
+        "lib": [
+            "DOM",
+            "WebWorker",
+            "ESNext",
+            "ES2022"
+        ],
+        // Generate modern JavaScript syntax compatible with Node 18+ and modern browsers.
+        "target": "ES2022",
+
+        // Use Node-style resolution to locate imports
+        "moduleResolution": "Node",
+
+        // Allow default imports from CommonJS modules.
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+
+        // Ensure strict type-checking
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+        "skipDefaultLibCheck": true,
+
+        // Generate source maps and inline original TypeScript sources for debugging.
+        "sourceMap": true,
+        "inlineSources": true,
     },
-    "include": [
-        "src/**/*"
+    "exclude": [
+        "node_modules",
+        "**/node_modules/*"
     ]
 }

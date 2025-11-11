@@ -2,14 +2,14 @@
 // Licensed under the MIT license.
 
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi";
-import { MAX_TIME_OUT, createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { load } from "../src/index.js";
+import { createMockedConnectionString, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { ErrorMessages } from "../src/common/errorMessages.js";
 
 describe("startup", function () {
-    this.timeout(MAX_TIME_OUT);
 
     afterEach(() => {
         restoreMocks();
@@ -29,6 +29,7 @@ describe("startup", function () {
 
         const settings = await load(createMockedConnectionString());
         expect(attempt).eq(2);
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("TestValue");
     });
@@ -50,8 +51,8 @@ describe("startup", function () {
                 }
             });
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
-            expect(error.cause.message).eq("Load operation timed out.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
+            expect(error.cause.message).eq(ErrorMessages.LOAD_OPERATION_TIMEOUT);
             expect(attempt).eq(1);
             return;
         }
@@ -76,7 +77,7 @@ describe("startup", function () {
                 }
             });
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
             expect(error.cause.message).eq("Non-retriable Test Error");
             expect(attempt).eq(1);
             return;
@@ -102,7 +103,7 @@ describe("startup", function () {
                 }
             });
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
             expect(error.cause.message).eq("Non-retriable Test Error");
             expect(attempt).eq(1);
             return;

@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/* eslint-disable @typescript-eslint/no-unused-expressions */
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { load } from "../src/index.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, restoreMocks, createMockedConnectionString, createMockedEndpoint, createMockedTokenCredential, createMockedKeyValue } from "./utils/testHelper.js";
+import { ErrorMessages } from "../src/common/errorMessages.js";
 
 const mockedKVs = [{
     key: "app.settings.fontColor",
@@ -103,7 +105,6 @@ const mockedKVs = [{
 ].map(createMockedKeyValue);
 
 describe("load", function () {
-    this.timeout(MAX_TIME_OUT);
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
@@ -164,7 +165,7 @@ describe("load", function () {
                 snapshotName: "Test",
                 labelFilter: "\0"
             }]
-        })).eventually.rejectedWith("Key, label or tag filters should not be specified while selecting a snapshot.");
+        })).eventually.rejectedWith(ErrorMessages.INVALID_SNAPSHOT_SELECTOR);
     });
 
     it("should not include feature flags directly in the settings", async () => {
@@ -359,7 +360,7 @@ describe("load", function () {
                 labelFilter: "*"
             }]
         });
-        return expect(loadWithWildcardLabelFilter).to.eventually.rejectedWith("The characters '*' and ',' are not supported in label filters.");
+        return expect(loadWithWildcardLabelFilter).to.eventually.rejectedWith(ErrorMessages.INVALID_LABEL_FILTER);
     });
 
     it("should not support , in label filters", async () => {
@@ -370,7 +371,7 @@ describe("load", function () {
                 labelFilter: "labelA,labelB"
             }]
         });
-        return expect(loadWithMultipleLabelFilter).to.eventually.rejectedWith("The characters '*' and ',' are not supported in label filters.");
+        return expect(loadWithMultipleLabelFilter).to.eventually.rejectedWith(ErrorMessages.INVALID_LABEL_FILTER);
     });
 
     it("should throw exception when there is any invalid tag filter", async () => {
@@ -381,7 +382,7 @@ describe("load", function () {
                 tagFilters: ["emptyTag"]
             }]
         });
-        return expect(loadWithInvalidTagFilter).to.eventually.rejectedWith("Tag filter must follow the format \"tagName=tagValue\"");
+        return expect(loadWithInvalidTagFilter).to.eventually.rejectedWith(ErrorMessages.INVALID_TAG_FILTER);
     });
 
     it("should throw exception when too many tag filters are provided", async () => {
@@ -404,7 +405,7 @@ describe("load", function () {
                 }]
             });
         } catch (error) {
-            expect(error.message).eq("Failed to load.");
+            expect(error.message).eq(ErrorMessages.LOAD_OPERATION_FAILED);
             expect(error.cause.message).eq("Invalid request parameter 'tags'. Maximum number of tag filters is 5.");
             return;
         }
@@ -594,3 +595,4 @@ describe("load", function () {
         restoreMocks();
     });
 });
+/* eslint-enable @typescript-eslint/no-unused-expressions */

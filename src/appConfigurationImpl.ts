@@ -12,18 +12,21 @@ import {
     isFeatureFlag,
     isSecretReference,
     GetSnapshotOptions,
+    ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
-    KnownSnapshotComposition
+    KnownSnapshotComposition,
+    ListConfigurationSettingPage
 } from "@azure/app-configuration";
-import { isRestError } from "@azure/core-rest-pipeline";
-import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./AzureAppConfiguration.js";
-import { AzureAppConfigurationOptions } from "./AzureAppConfigurationOptions.js";
-import { IKeyValueAdapter } from "./IKeyValueAdapter.js";
-import { JsonKeyValueAdapter } from "./JsonKeyValueAdapter.js";
-import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./StartupOptions.js";
+import { isRestError, RestError } from "@azure/core-rest-pipeline";
+import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./appConfiguration.js";
+import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
+import { IKeyValueAdapter } from "./keyValueAdapter.js";
+import { JsonKeyValueAdapter } from "./jsonKeyValueAdapter.js";
+import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./startupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
-import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/KeyVaultOptions.js";
+import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/keyVaultOptions.js";
 import { Disposable } from "./common/disposable.js";
+import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
@@ -33,16 +36,23 @@ import {
     METADATA_KEY_NAME,
     ETAG_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
+    ALLOCATION_ID_KEY_NAME,
     ALLOCATION_KEY_NAME,
+    DEFAULT_WHEN_ENABLED_KEY_NAME,
+    PERCENTILE_KEY_NAME,
+    FROM_KEY_NAME,
+    TO_KEY_NAME,
     SEED_KEY_NAME,
+    VARIANT_KEY_NAME,
     VARIANTS_KEY_NAME,
+    CONFIGURATION_VALUE_KEY_NAME,
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
 import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
 import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
-import { AzureKeyVaultKeyValueAdapter } from "./keyvault/AzureKeyVaultKeyValueAdapter.js";
-import { RefreshTimer } from "./refresh/RefreshTimer.js";
+import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter.js";
+import { RefreshTimer } from "./refresh/refreshTimer.js";
 import {
     RequestTracingOptions,
     getConfigurationSettingWithTrace,
@@ -51,18 +61,16 @@ import {
     listConfigurationSettingsForSnapshotWithTrace,
     requestTracingEnabled
 } from "./requestTracing/utils.js";
-import { FeatureFlagTracingOptions } from "./requestTracing/FeatureFlagTracingOptions.js";
-import { AIConfigurationTracingOptions } from "./requestTracing/AIConfigurationTracingOptions.js";
-import { KeyFilter, LabelFilter, SettingSelector } from "./types.js";
-import { ConfigurationClientManager } from "./ConfigurationClientManager.js";
+import { FeatureFlagTracingOptions } from "./requestTracing/featureFlagTracingOptions.js";
+import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationTracingOptions.js";
+import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
+import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/error.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
+import { ErrorMessages } from "./common/errorMessages.js";
+import { X_MS_DATE_HEADER } from "./afd/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
-
-type PagedSettingSelector = SettingSelector & {
-    pageEtags?: string[];
-};
 
 export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
@@ -93,7 +101,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Aka watched settings.
      */
     #refreshEnabled: boolean = false;
-    #sentinels: ConfigurationSettingId[] = [];
+    #sentinels: Map<WatchedSetting, SettingWatcher> = new Map();
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
     #kvRefreshTimer: RefreshTimer;
@@ -113,21 +121,26 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
      */
-    #kvSelectors: PagedSettingSelector[] = [];
+    #kvSelectors: PagedSettingsWatcher[] = [];
     /**
      * Selectors of feature flags obtained from @see AzureAppConfigurationOptions.featureFlagOptions.selectors
      */
-    #ffSelectors: PagedSettingSelector[] = [];
+    #ffSelectors: PagedSettingsWatcher[] = [];
 
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // Azure Front Door
+    #isAfdUsed: boolean = false;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isAfdUsed: boolean
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
+        this.#isAfdUsed = isAfdUsed;
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -151,19 +164,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             } else {
                 for (const setting of watchedSettings) {
                     if (setting.key.includes("*") || setting.key.includes(",")) {
-                        throw new ArgumentError("The characters '*' and ',' are not supported in key of watched settings.");
+                        throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_KEY);
                     }
                     if (setting.label?.includes("*") || setting.label?.includes(",")) {
-                        throw new ArgumentError("The characters '*' and ',' are not supported in label of watched settings.");
+                        throw new ArgumentError(ErrorMessages.INVALID_WATCHED_SETTINGS_LABEL);
                     }
-                    this.#sentinels.push(setting);
+                    this.#sentinels.set(setting, { etag: undefined });
                 }
             }
 
             // custom refresh interval
             if (refreshIntervalInMs !== undefined) {
                 if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(ErrorMessages.INVALID_REFRESH_INTERVAL);
                 }
                 this.#kvRefreshInterval = refreshIntervalInMs;
             }
@@ -182,7 +195,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 // custom refresh interval
                 if (refreshIntervalInMs !== undefined) {
                     if (refreshIntervalInMs < MIN_REFRESH_INTERVAL_IN_MS) {
-                        throw new RangeError(`The feature flag refresh interval cannot be less than ${MIN_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                        throw new RangeError(ErrorMessages.INVALID_FEATURE_FLAG_REFRESH_INTERVAL);
                     }
                     this.#ffRefreshInterval = refreshIntervalInMs;
                 }
@@ -195,7 +208,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const { secretRefreshIntervalInMs } = options.keyVaultOptions;
             if (secretRefreshIntervalInMs !== undefined) {
                 if (secretRefreshIntervalInMs < MIN_SECRET_REFRESH_INTERVAL_IN_MS) {
-                    throw new RangeError(`The Key Vault secret refresh interval cannot be less than ${MIN_SECRET_REFRESH_INTERVAL_IN_MS} milliseconds.`);
+                    throw new RangeError(ErrorMessages.INVALID_SECRET_REFRESH_INTERVAL);
                 }
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
@@ -215,7 +228,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            isAfdUsed: this.#isAfdUsed
         };
     }
 
@@ -272,7 +286,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 new Promise((_, reject) => {
                     timeoutId = setTimeout(() => {
                         abortController.abort(); // abort the initialization promise
-                        reject(new Error("Load operation timed out."));
+                        reject(new Error(ErrorMessages.LOAD_OPERATION_TIMEOUT));
                     },
                     startupTimeout);
                 })
@@ -287,7 +301,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await new Promise(resolve => setTimeout(resolve, MIN_DELAY_FOR_UNHANDLED_FAILURE - timeElapsed));
                 }
             }
-            throw new Error("Failed to load.", { cause: error });
+            throw new Error(ErrorMessages.LOAD_OPERATION_FAILED, { cause: error });
         } finally {
             clearTimeout(timeoutId); // cancel the timeout promise
         }
@@ -341,7 +355,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async refresh(): Promise<void> {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
+            throw new InvalidOperationError(ErrorMessages.REFRESH_NOT_ENABLED);
         }
 
         if (this.#refreshInProgress) {
@@ -360,7 +374,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     onRefresh(listener: () => any, thisArg?: any): Disposable {
         if (!this.#refreshEnabled && !this.#featureFlagRefreshEnabled && !this.#secretRefreshEnabled) {
-            throw new InvalidOperationError("Refresh is not enabled for key-values, feature flags or Key Vault secrets.");
+            throw new InvalidOperationError(ErrorMessages.REFRESH_NOT_ENABLED);
         }
 
         const boundedListener = listener.bind(thisArg);
@@ -385,7 +399,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             let postAttempts = 0;
             do { // at least try to load once
                 try {
-                    await this.#loadSelectedAndWatchedKeyValues();
+                    if (this.#refreshEnabled && !this.#watchAll) {
+                        await this.#loadWatchedSettings();
+                    }
+
+                    await this.#loadSelectedKeyValues();
+
                     if (this.#featureFlagEnabled) {
                         await this.#loadFeatureFlags();
                     }
@@ -421,9 +440,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (this.#requestTracingEnabled && !this.#fmVersion) {
             try {
                 // get feature management package version
-                const fmPackage = await import(FM_PACKAGE_NAME);
+                const fmPackage = await import(/* @vite-ignore */FM_PACKAGE_NAME);
                 this.#fmVersion = fmPackage?.VERSION;
-            } catch (error) {
+            } catch {
                 // ignore the error
             }
         }
@@ -479,82 +498,61 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      *                          If false, loads key-value using the key-value selectors. Defaults to false.
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
-        const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
-        const funcToExecute = async (client) => {
-            const loadedSettings: ConfigurationSetting[] = [];
-            // deep copy selectors to avoid modification if current client fails
-            const selectorsToUpdate = JSON.parse(
-                JSON.stringify(selectors)
-            );
+        const selectors: PagedSettingsWatcher[] = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
 
-            for (const selector of selectorsToUpdate) {
-                if (selector.snapshotName === undefined) {
-                    const listOptions: ListConfigurationSettingsOptions = {
-                        keyFilter: selector.keyFilter,
-                        labelFilter: selector.labelFilter,
-                        tagsFilter: selector.tagFilters
-                    };
-                    const pageEtags: string[] = [];
-                    const pageIterator = listConfigurationSettingsWithTrace(
-                        this.#requestTraceOptions,
-                        client,
-                        listOptions
-                    ).byPage();
+        // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
+        // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
+        const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
+        // deep copy selectors to avoid modification if current client fails
+        const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
+            JSON.stringify(selectors)
+        );
 
-                    for await (const page of pageIterator) {
-                        pageEtags.push(page.etag ?? "");
-                        for (const setting of page.items) {
-                            if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.push(setting);
-                            }
-                        }
-                    }
-                    selector.pageEtags = pageEtags;
-                } else { // snapshot selector
-                    const snapshot = await this.#getSnapshot(selector.snapshotName);
-                    if (snapshot === undefined) {
-                        throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
-                    }
-                    if (snapshot.compositionType != KnownSnapshotComposition.Key) {
-                        throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
-                    }
-                    const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
-                        this.#requestTraceOptions,
-                        client,
-                        selector.snapshotName
-                    ).byPage();
+        for (const selector of selectorsToUpdate) {
+            let settings: ConfigurationSetting[] = [];
+            if (selector.snapshotName === undefined) {
+                const listOptions: ListConfigurationSettingsOptions = {
+                    keyFilter: selector.keyFilter,
+                    labelFilter: selector.labelFilter,
+                    tagsFilter: selector.tagFilters
+                };
+                const { items, pageWatchers } = await this.#listConfigurationSettings(listOptions);
 
-                    for await (const page of pageIterator) {
-                        for (const setting of page.items) {
-                            if (loadFeatureFlag === isFeatureFlag(setting)) {
-                                loadedSettings.push(setting);
-                            }
-                        }
-                    }
+                selector.pageWatchers = pageWatchers;
+                settings = items;
+            } else { // snapshot selector
+                const snapshot = await this.#getSnapshot(selector.snapshotName);
+                if (snapshot === undefined) {
+                    throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
+                }
+                if (snapshot.compositionType != KnownSnapshotComposition.Key) {
+                    throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
+                }
+                settings = await this.#listConfigurationSettingsForSnapshot(selector.snapshotName);
+            }
+
+            for (const setting of settings) {
+                if (loadFeatureFlag === isFeatureFlag(setting)) {
+                    loadedSettings.set(setting.key, setting);
                 }
             }
+        }
 
-            if (loadFeatureFlag) {
-                this.#ffSelectors = selectorsToUpdate;
-            } else {
-                this.#kvSelectors = selectorsToUpdate;
-            }
-            return loadedSettings;
-        };
-
-        return await this.#executeWithFailoverPolicy(funcToExecute) as ConfigurationSetting[];
+        if (loadFeatureFlag) {
+            this.#ffSelectors = selectorsToUpdate;
+        } else {
+            this.#kvSelectors = selectorsToUpdate;
+        }
+        return Array.from(loadedSettings.values());
     }
 
     /**
-     * Loads selected key-values and watched settings (sentinels) for refresh from App Configuration to the local configuration.
+     * Loads selected key-values from App Configuration to the local configuration.
      */
-    async #loadSelectedAndWatchedKeyValues() {
+    async #loadSelectedKeyValues() {
         this.#secretReferences = []; // clear all cached key vault reference configuration settings
         const keyValues: [key: string, value: unknown][] = [];
         const loadedSettings: ConfigurationSetting[] = await this.#loadConfigurationSettings();
-        if (this.#refreshEnabled && !this.#watchAll) {
-            await this.#updateWatchedKeyValuesEtag(loadedSettings);
-        }
 
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             // reset old AI configuration tracing in order to track the information present in the current response from server
@@ -584,23 +582,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Updates etag of watched settings from loaded data. If a watched setting is not covered by any selector, a request will be sent to retrieve it.
+     * Loads watched settings (sentinels) for refresh from App Configuration to the local configuration.
      */
-    async #updateWatchedKeyValuesEtag(existingSettings: ConfigurationSetting[]): Promise<void> {
-        for (const sentinel of this.#sentinels) {
-            const matchedSetting = existingSettings.find(s => s.key === sentinel.key && s.label === sentinel.label);
-            if (matchedSetting) {
-                sentinel.etag = matchedSetting.etag;
-            } else {
-                // Send a request to retrieve key-value since it may be either not loaded or loaded with a different label or different casing
-                const { key, label } = sentinel;
-                const response = await this.#getConfigurationSetting({ key, label });
-                if (response) {
-                    sentinel.etag = response.etag;
-                } else {
-                    sentinel.etag = undefined;
-                }
-            }
+    async #loadWatchedSettings(): Promise<void> {
+        for (const watchedSetting of this.#sentinels.keys()) {
+            const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label };
+            const response = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: false });
+            this.#sentinels.set(watchedSetting, { etag: response?.etag });
         }
     }
 
@@ -648,20 +636,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         // try refresh if any of watched settings is changed.
         let needRefresh = false;
+        let changedSentinel: WatchedSetting | undefined;
+        let changedSentinelWatcher: SettingWatcher | undefined;
         if (this.#watchAll) {
             needRefresh = await this.#checkConfigurationSettingsChange(this.#kvSelectors);
-        }
-        for (const sentinel of this.#sentinels.values()) {
-            const response = await this.#getConfigurationSetting(sentinel, {
-                onlyIfChanged: true
-            });
+        } else {
+            for (const watchedSetting of this.#sentinels.keys()) {
+                const configurationSettingId: ConfigurationSettingId = { key: watchedSetting.key, label: watchedSetting.label, etag: this.#sentinels.get(watchedSetting)?.etag };
+                const response: GetConfigurationSettingResponse | undefined =
+                    await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: true });
 
-            if (response?.statusCode === 200 // created or changed
-                || (response === undefined && sentinel.etag !== undefined) // deleted
-            ) {
-                sentinel.etag = response?.etag;// update etag of the sentinel
-                needRefresh = true;
-                break;
+                const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
+                const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
+                const isChanged = response && response.statusCode === 200 && watcher.etag !== response.etag; // etag changed
+                if (isDeleted || isChanged) {
+                    changedSentinel = watchedSetting;
+                    changedSentinelWatcher = { etag: isChanged ? response.etag : undefined };
+                    needRefresh = true;
+                    break;
+                }
             }
         }
 
@@ -669,7 +662,12 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             for (const adapter of this.#adapters) {
                 await adapter.onChangeDetected();
             }
-            await this.#loadSelectedAndWatchedKeyValues();
+            await this.#loadSelectedKeyValues();
+
+            if (changedSentinel && changedSentinelWatcher) {
+                // update the changed sentinel's watcher after loading new values, this can ensure a failed refresh will retry on next refresh
+                this.#sentinels.set(changedSentinel, changedSentinelWatcher);
+            }
         }
 
         this.#kvRefreshTimer.reset();
@@ -686,7 +684,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+        let needRefresh = false;
+        needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
@@ -719,18 +719,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @param selectors - The @see PagedSettingSelector of the kev-value collection.
      * @returns true if key-value collection has changed, false otherwise.
      */
-    async #checkConfigurationSettingsChange(selectors: PagedSettingSelector[]): Promise<boolean> {
+    async #checkConfigurationSettingsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
         const funcToExecute = async (client) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
                 }
+                const pageWatchers: SettingWatcher[] = selector.pageWatchers ?? [];
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    tagsFilter: selector.tagFilters,
-                    pageEtags: selector.pageEtags
+                    tagsFilter: selector.tagFilters
                 };
+
+                if (!this.#isAfdUsed) {
+                    // if AFD is not used, add page etags to the listOptions to send conditional request
+                    listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
+                }
 
                 const pageIterator = listConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
@@ -738,10 +743,24 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions
                 ).byPage();
 
+                let i = 0;
                 for await (const page of pageIterator) {
-                    if (page._response.status === 200) { // created or changed
+                    const serverResponseTime: Date = this.#getMsDateHeader(page);
+                    if (i >= pageWatchers.length) {
                         return true;
                     }
+
+                    const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
+                    let isResponseFresh = false;
+                    if (lastServerResponseTime !== undefined) {
+                        isResponseFresh = serverResponseTime > lastServerResponseTime;
+                    }
+                    if (isResponseFresh &&
+                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        page.etag !== pageWatchers[i].etag) {
+                        return true;
+                    }
+                    i++;
                 }
             }
             return false;
@@ -752,15 +771,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
+     * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
-    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, customOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
+    async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         const funcToExecute = async (client) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
                 client,
                 configurationSettingId,
-                customOptions
+                getOptions
             );
         };
 
@@ -777,13 +796,33 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return response;
     }
 
-    async #getSnapshot(snapshotName: string, customOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
+    async #listConfigurationSettings(listOptions: ListConfigurationSettingsOptions): Promise<{ items: ConfigurationSetting[]; pageWatchers: SettingWatcher[] }> {
+        const funcToExecute = async (client) => {
+            const pageWatchers: SettingWatcher[] = [];
+            const pageIterator = listConfigurationSettingsWithTrace(
+                this.#requestTraceOptions,
+                client,
+                listOptions
+            ).byPage();
+
+            const items: ConfigurationSetting[] = [];
+            for await (const page of pageIterator) {
+                pageWatchers.push({ etag: page.etag, lastServerResponseTime: this.#getMsDateHeader(page) });
+                items.push(...page.items);
+            }
+            return { items, pageWatchers };
+        };
+
+        return await this.#executeWithFailoverPolicy(funcToExecute);
+    }
+
+    async #getSnapshot(snapshotName: string, getOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
         const funcToExecute = async (client) => {
             return getSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,
                 snapshotName,
-                customOptions
+                getOptions
             );
         };
 
@@ -798,6 +837,25 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
         return response;
+    }
+
+    async #listConfigurationSettingsForSnapshot(snapshotName: string, listOptions?: ListConfigurationSettingsForSnapshotOptions): Promise<ConfigurationSetting[]> {
+        const funcToExecute = async (client) => {
+            const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
+                this.#requestTraceOptions,
+                client,
+                snapshotName,
+                listOptions
+            ).byPage();
+
+            const items: ConfigurationSetting[] = [];
+            for await (const page of pageIterator) {
+                items.push(...page.items);
+            }
+            return items;
+        };
+
+        return await this.#executeWithFailoverPolicy(funcToExecute);
     }
 
     // Only operations related to Azure App Configuration should be executed with failover policy.
@@ -840,7 +898,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
 
         this.#clientManager.refreshClients();
-        throw new Error("All fallback clients failed to get configuration settings.");
+        throw new Error(ErrorMessages.ALL_FALLBACK_CLIENTS_FAILED);
     }
 
     async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
@@ -875,7 +933,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #setAIConfigurationTracing(setting: ConfigurationSetting<string>): void {
         if (this.#requestTracingEnabled && this.#aiConfigurationTracing !== undefined) {
             const contentType = parseContentType(setting.contentType);
-            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\"""
+            // content type: "application/json; profile=\"https://azconfig.io/mime-profiles/ai\""
             if (isJsonContentType(contentType) &&
                 !isFeatureFlagContentType(contentType) &&
                 !isSecretReferenceContentType(contentType)) {
@@ -916,15 +974,20 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
-            throw new ArgumentError("The value of configuration setting cannot be undefined.");
+            throw new ArgumentError(ErrorMessages.CONFIGURATION_SETTING_VALUE_UNDEFINED);
         }
         const featureFlag = JSON.parse(rawFlag);
 
         if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
+            let allocationId = "";
+            if (featureFlag[ALLOCATION_KEY_NAME] !== undefined) {
+                allocationId = await this.#generateAllocationId(featureFlag);
+            }
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
+                ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
         }
@@ -962,6 +1025,135 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
         }
     }
+
+    async #generateAllocationId(featureFlag: any): Promise<string> {
+        let rawAllocationId = "";
+        // Only default variant when enabled and variants allocated by percentile involve in the experimentation
+        // The allocation id is genearted from default variant when enabled and percentile allocation
+        const variantsForExperimentation: string[] = [];
+
+        rawAllocationId += `seed=${featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] ?? ""}\ndefault_when_enabled=`;
+
+        if (featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]) {
+            variantsForExperimentation.push(featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]);
+            rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
+        }
+
+        rawAllocationId += "\npercentiles=";
+
+        const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
+        if (percentileList) {
+            const sortedPercentileList = percentileList
+                .filter(p =>
+                    (p[FROM_KEY_NAME] !== undefined) &&
+                    (p[TO_KEY_NAME] !== undefined) &&
+                    (p[VARIANT_KEY_NAME] !== undefined) &&
+                    (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
+                .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
+
+            const percentileAllocation: string[] = [];
+            for (const percentile of sortedPercentileList) {
+                variantsForExperimentation.push(percentile[VARIANT_KEY_NAME]);
+                percentileAllocation.push(`${percentile[FROM_KEY_NAME]},${base64Helper(percentile[VARIANT_KEY_NAME])},${percentile[TO_KEY_NAME]}`);
+            }
+            rawAllocationId += percentileAllocation.join(";");
+        }
+
+        if (variantsForExperimentation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
+            // All fields required for generating allocation id are missing, short-circuit and return empty string
+            return "";
+        }
+
+        rawAllocationId += "\nvariants=";
+
+        if (variantsForExperimentation.length !== 0) {
+            const variantsList = featureFlag[VARIANTS_KEY_NAME];
+            if (variantsList) {
+                const sortedVariantsList = variantsList
+                    .filter(v =>
+                        (v[NAME_KEY_NAME] !== undefined) &&
+                        variantsForExperimentation.includes(v[NAME_KEY_NAME]))
+                    .sort((a, b) => (a.name > b.name ? 1 : -1));
+
+                    const variantConfiguration: string[] = [];
+                    for (const variant of sortedVariantsList) {
+                        const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], jsonSorter) ?? "";
+                        variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`);
+                    }
+                    rawAllocationId += variantConfiguration.join(";");
+            }
+        }
+
+        let crypto;
+
+        // Check for browser environment
+        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+            crypto = window.crypto;
+        }
+        // Check for Node.js environment
+        else if (typeof global !== "undefined" && global.crypto) {
+            crypto = global.crypto;
+        }
+        // Fallback to native Node.js crypto module
+        else {
+            try {
+                if (typeof module !== "undefined" && module.exports) {
+                    crypto = require("crypto");
+                }
+                else {
+                    crypto = await import("crypto");
+                }
+            } catch (error) {
+                console.error("Failed to load the crypto module:", error.message);
+                throw error;
+            }
+        }
+
+        // Convert to UTF-8 encoded bytes
+        const data = new TextEncoder().encode(rawAllocationId);
+
+        // In the browser, use crypto.subtle.digest
+        if (crypto.subtle) {
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = new Uint8Array(hashBuffer);
+
+            // Only use the first 15 bytes
+            const first15Bytes = hashArray.slice(0, 15);
+
+            // btoa/atob is also available in Node.js 18+
+            const base64String = btoa(String.fromCharCode(...first15Bytes));
+            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            return base64urlString;
+        }
+        // In Node.js, use the crypto module's hash function
+        else {
+            const hash = crypto.createHash("sha256").update(data).digest();
+
+            // Only use the first 15 bytes
+            const first15Bytes = hash.slice(0, 15);
+
+            return first15Bytes.toString("base64url");
+        }
+    }
+
+    /**
+     * Extracts the response timestamp (x-ms-date) from the response headers. If not found, returns the current time.
+     */
+    #getMsDateHeader(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
+        let header: string | undefined;
+        if (isRestError(response)) {
+            header = response.response?.headers?.get(X_MS_DATE_HEADER);
+        } else {
+            header = response._response?.headers?.get(X_MS_DATE_HEADER);
+        }
+        if (header !== undefined) {
+            const date = new Date(header);
+            if (!isNaN(date.getTime())) {
+                return date;
+            }
+        }
+        return new Date();
+    }
 }
 
 function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector[] {
@@ -983,17 +1175,17 @@ function getValidSettingSelectors(selectors: SettingSelector[]): SettingSelector
         const selector = { ...selectorCandidate };
         if (selector.snapshotName) {
             if (selector.keyFilter || selector.labelFilter || selector.tagFilters) {
-                throw new ArgumentError("Key, label or tag filters should not be specified while selecting a snapshot.");
+                throw new ArgumentError(ErrorMessages.INVALID_SNAPSHOT_SELECTOR);
             }
         } else {
             if (!selector.keyFilter) {
-                throw new ArgumentError("Key filter cannot be null or empty.");
+                throw new ArgumentError(ErrorMessages.INVALID_KEY_FILTER);
             }
             if (!selector.labelFilter) {
                 selector.labelFilter = LabelFilter.Null;
             }
             if (selector.labelFilter.includes("*") || selector.labelFilter.includes(",")) {
-                throw new ArgumentError("The characters '*' and ',' are not supported in label filters.");
+                throw new ArgumentError(ErrorMessages.INVALID_LABEL_FILTER);
             }
             if (selector.tagFilters) {
                 validateTagFilters(selector.tagFilters);
@@ -1045,7 +1237,7 @@ function validateTagFilters(tagFilters: string[]): void {
     for (const tagFilter of tagFilters) {
         const res = tagFilter.split("=");
         if (res[0] === "" || res.length !== 2) {
-            throw new Error(`Invalid tag filter: ${tagFilter}. Tag filter must follow the format "tagName=tagValue".`);
+            throw new Error(`Invalid tag filter: ${tagFilter}. ${ErrorMessages.INVALID_TAG_FILTER}.`);
         }
     }
 }

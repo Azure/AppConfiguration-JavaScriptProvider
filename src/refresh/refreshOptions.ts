@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { WatchedSetting } from "../WatchedSetting.js";
+import { WatchedSetting } from "../types.js";
 
 export const DEFAULT_REFRESH_INTERVAL_IN_MS = 30_000;
 export const MIN_REFRESH_INTERVAL_IN_MS = 1_000;

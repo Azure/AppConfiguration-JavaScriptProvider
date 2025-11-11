@@ -2,14 +2,19 @@
 // Licensed under the MIT license.
 
 import * as chai from "chai";
-import * as chaiAsPromised from "chai-as-promised";
+import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-import { load } from "./exportedApi.js";
-import { MAX_TIME_OUT, restoreMocks, createMockedConnectionString, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
+import { load } from "../src/index.js";
+import { restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "../src/ConfigurationClientWrapper.js";
+import { ConfigurationClientWrapper } from "../src/configurationClientWrapper.js";
 
+const mockedKVs = [
+    { value: "red", key: "app.settings.fontColor" },
+    { value: "40", key: "app.settings.fontSize" },
+    { value: "30", key: "app.settings.fontSize", label: "prod" }
+].map(createMockedKeyValue);
 const fakeEndpoint_1 = createMockedEndpoint("fake_1");
 const fakeEndpoint_2 = createMockedEndpoint("fake_2");
 const fakeClientWrapper_1 = new ConfigurationClientWrapper(fakeEndpoint_1, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_1)));
@@ -18,7 +23,6 @@ const clientRequestCounter_1 = {count: 0};
 const clientRequestCounter_2 = {count: 0};
 
 describe("load balance", function () {
-    this.timeout(MAX_TIME_OUT);
 
     beforeEach(() => {
     });
@@ -29,8 +33,8 @@ describe("load balance", function () {
 
     it("should load balance the request when loadBalancingEnabled", async () => {
         mockConfigurationManagerGetClients([fakeClientWrapper_1, fakeClientWrapper_2], false);
-        mockAppConfigurationClientLoadBalanceMode(fakeClientWrapper_1, clientRequestCounter_1);
-        mockAppConfigurationClientLoadBalanceMode(fakeClientWrapper_2, clientRequestCounter_2);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientRequestCounter_1);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientRequestCounter_2);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -66,8 +70,8 @@ describe("load balance", function () {
         clientRequestCounter_1.count = 0;
         clientRequestCounter_2.count = 0;
         mockConfigurationManagerGetClients([fakeClientWrapper_1, fakeClientWrapper_2], false);
-        mockAppConfigurationClientLoadBalanceMode(fakeClientWrapper_1, clientRequestCounter_1);
-        mockAppConfigurationClientLoadBalanceMode(fakeClientWrapper_2, clientRequestCounter_2);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientRequestCounter_1);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientRequestCounter_2);
 
         const connectionString = createMockedConnectionString();
         // loadBalancingEnabled is default to false

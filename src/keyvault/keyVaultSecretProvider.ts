@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { KeyVaultOptions } from "./KeyVaultOptions.js";
-import { RefreshTimer } from "../refresh/RefreshTimer.js";
-import { ArgumentError } from "../common/error.js";
+import { KeyVaultOptions } from "./keyVaultOptions.js";
+import { RefreshTimer } from "../refresh/refreshTimer.js";
+import { ArgumentError } from "../common/errors.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
+import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
@@ -51,7 +52,7 @@ export class AzureKeyVaultSecretProvider {
 
     async #getSecretValueFromKeyVault(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         if (!this.#keyVaultOptions) {
-            throw new ArgumentError("Failed to get secret value. The keyVaultOptions is not configured.");
+            throw new ArgumentError(KeyVaultReferenceErrorMessages.KEY_VAULT_OPTIONS_UNDEFINED);
         }
         const { name: secretName, vaultUrl, sourceId, version } = secretIdentifier;
         // precedence: secret clients > custom secret resolver
@@ -64,7 +65,7 @@ export class AzureKeyVaultSecretProvider {
             return await this.#keyVaultOptions.secretResolver(new URL(sourceId));
         }
         // When code reaches here, it means that the key vault reference cannot be resolved in all possible ways.
-        throw new ArgumentError("Failed to process the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret.");
+        throw new ArgumentError(KeyVaultReferenceErrorMessages.KEY_VAULT_REFERENCE_UNRESOLVABLE);
     }
 
     #getSecretClient(vaultUrl: URL): SecretClient | undefined {

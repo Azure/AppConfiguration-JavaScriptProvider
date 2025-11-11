@@ -1,4 +1,4 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-export { load } from "../src";
+export const X_MS_DATE_HEADER = "x-ms-date";
