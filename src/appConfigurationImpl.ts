@@ -11,6 +11,9 @@ import {
     featureFlagPrefix,
     isFeatureFlag,
     isSecretReference,
+    isSnapshotReference,
+    parseSnapshotReference,
+    SnapshotReferenceValue,
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
@@ -57,7 +60,7 @@ import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationT
 import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
@@ -513,8 +516,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 if (isSnapshotReference(setting) && !loadFeatureFlag) {
                     this.#useSnapshotReference = true;
 
-                    // TODO: When SDK supports snapshot reference, use the helper method from SDK.
-                    const snapshotName = parseSnapshotReference(setting).value.snapshotName;
+                    const snapshotRef: ConfigurationSetting<SnapshotReferenceValue> = parseSnapshotReference(setting);
+                    const snapshotName = snapshotRef.value.snapshotName;
+                    if (!snapshotName) {
+                        throw new SnapshotReferenceError(`Invalid format for Snapshot reference setting '${setting.key}'.`);
+                    }
                     const settingsFromSnapshot = await this.#loadConfigurationSettingsFromSnapshot(snapshotName);
 
                     for (const snapshotSetting of settingsFromSnapshot) {
@@ -589,7 +595,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #loadConfigurationSettingsFromSnapshot(snapshotName: string): Promise<ConfigurationSetting[]> {
         const snapshot = await this.#getSnapshot(snapshotName);
         if (snapshot === undefined) {
-            throw new InvalidOperationError(`Could not find snapshot with name ${snapshotName}.`);
+            return []; // treat non-existing snapshot as empty
         }
         if (snapshot.compositionType != KnownSnapshotComposition.Key) {
             throw new InvalidOperationError(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
@@ -1093,29 +1099,4 @@ function validateTagFilters(tagFilters: string[]): void {
             throw new Error(`Invalid tag filter: ${tagFilter}. ${ErrorMessages.INVALID_TAG_FILTER}.`);
         }
     }
-}
-
-// TODO: Temporary workaround until SDK supports snapshot reference
-const snapshotReferenceContentType = "application/json; profile=\"https://azconfig.io/mime-profiles/snapshot-ref\"; charset=utf-8";
-
-interface JsonSnapshotReferenceValue {
-  snapshot_name: string;
-}
-
-function isSnapshotReference(setting: ConfigurationSetting):
-    setting is ConfigurationSetting & Required<Pick<ConfigurationSetting, "value">> {
-    return (setting && setting.contentType === snapshotReferenceContentType && typeof setting.value === "string");
-}
-
-function parseSnapshotReference(setting: ConfigurationSetting) {
-    if (!isSnapshotReference(setting)) {
-        throw new Error(`Invalid snapshot reference: ${setting}`);
-    }
-    const jsonSnapshotReferenceValue = JSON.parse(setting.value) as JsonSnapshotReferenceValue;
-
-    const snapshotReference = {
-        ...setting,
-        value: { snapshotName: jsonSnapshotReferenceValue.snapshot_name },
-    };
-    return snapshotReference;
 }
