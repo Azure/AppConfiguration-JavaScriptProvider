@@ -12,10 +12,6 @@ import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
-const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
-const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
-
 // Async, browser-safe SHA-256 using native crypto.subtle when available; falls back to tiny FNV-1a for Node without subtle.
 async function _sha256(input: string): Promise<string> {
     let crypto;
@@ -290,8 +286,11 @@ const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret 
     return `Endpoint=${endpoint};Id=${id};Secret=${secret}`;
 };
 
-const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_CLIENT_ID, clientSecret = TEST_CLIENT_SECRET) => {
-    return new ClientSecretCredential(tenantId, clientId, clientSecret);
+const createMockedTokenCredential = () => {
+    const effectiveTenantId = uuid.v4();
+    const effectiveClientId = uuid.v4();
+    const effectiveClientSecret = uuid.v4();
+    return new ClientSecretCredential(effectiveTenantId, effectiveClientId, effectiveClientSecret);
 };
 
 const createMockedKeyVaultReference = (key: string, vaultUri: string): ConfigurationSetting => ({
