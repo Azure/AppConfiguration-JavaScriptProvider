@@ -33,6 +33,13 @@ export class KeyVaultReferenceError extends Error {
     }
 }
 
+export class SnapshotReferenceError extends Error {
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, options);
+        this.name = "SnapshotReferenceError";
+    }
+}
+
 export function isFailoverableError(error: any): boolean {
     if (!isRestError(error)) {
         return false;

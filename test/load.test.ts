@@ -581,8 +581,14 @@ describe("load", function () {
 
     it("should load key values from snapshot", async () => {
         const snapshotName = "Test";
-        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
-        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)]);
+        const snapshotResponses = new Map([
+            [snapshotName, { compositionType: "key" }]
+        ]);
+        const snapshotKVs = new Map([
+            [snapshotName, [[{key: "TestKey", value: "TestValue"}].map(createMockedKeyValue)]]]
+        );
+        mockAppConfigurationClientGetSnapshot(snapshotResponses);
+        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotKVs);
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             selectors: [{
@@ -590,9 +596,7 @@ describe("load", function () {
             }]
         });
         expect(settings).not.undefined;
-        expect(settings).not.undefined;
         expect(settings.get("TestKey")).eq("TestValue");
-        restoreMocks();
     });
 });
 /* eslint-enable @typescript-eslint/no-unused-expressions */

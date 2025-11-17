@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -182,29 +182,29 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], custom
     });
 }
 
-function mockAppConfigurationClientGetSnapshot(snapshotName: string, mockedResponse: any, customCallback?: (options) => any) {
+function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
         if (customCallback) {
             customCallback(options);
         }
 
-        if (name === snapshotName) {
-            return mockedResponse;
+        if (snapshotResponses.has(name)) {
+            return snapshotResponses.get(name);
         } else {
             throw new RestError("", { statusCode: 404 });
         }
     });
 }
 
-function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName: string, pages: ConfigurationSetting[][], customCallback?: (options) => any) {
+function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
 
-        if (name === snapshotName) {
-            const kvs = _filterKVs(pages.flat(), listOptions);
-            return getMockedIterator(pages, kvs, listOptions);
+        if (snapshotResponses.has(name)) {
+            const kvs = _filterKVs(snapshotResponses.get(name)!.flat(), listOptions);
+            return getMockedIterator(snapshotResponses.get(name)!, kvs, listOptions);
         } else {
             throw new RestError("", { statusCode: 404 });
         }
@@ -252,7 +252,7 @@ const createMockedKeyVaultReference = (key: string, vaultUri: string): Configura
     // https://${vaultName}.vault.azure.net/secrets/${secretName}
     value: `{"uri":"${vaultUri}"}`,
     key,
-    contentType: "application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8",
+    contentType: secretReferenceContentType,
     lastModified: new Date(),
     tags: {},
     etag: uuid.v4(),
@@ -296,6 +296,16 @@ const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => 
     isReadOnly: false
 }, props));
 
+const createMockedSnapshotReference = (key: string, snapshotName: string): ConfigurationSetting => ({
+    value: `{"snapshot_name":"${snapshotName}"}`,
+    key,
+    contentType: "application/json; profile=\"https://azconfig.io/mime-profiles/snapshot-ref\"; charset=utf-8",
+    lastModified: new Date(),
+    tags: {},
+    etag: uuid.v4(),
+    isReadOnly: false,
+});
+
 class HttpRequestHeadersPolicy {
     headers: any;
     name: string;
@@ -328,6 +338,7 @@ export {
     createMockedJsonKeyValue,
     createMockedKeyValue,
     createMockedFeatureFlag,
+    createMockedSnapshotReference,
 
     sleepInMs,
     HttpRequestHeadersPolicy
