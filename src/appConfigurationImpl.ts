@@ -11,6 +11,9 @@ import {
     featureFlagPrefix,
     isFeatureFlag,
     isSecretReference,
+    isSnapshotReference,
+    parseSnapshotReference,
+    SnapshotReferenceValue,
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
@@ -57,7 +60,7 @@ import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationT
 import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
-import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError } from "./common/errors.js";
+import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
@@ -82,6 +85,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #featureFlagTracing: FeatureFlagTracingOptions | undefined;
     #fmVersion: string | undefined;
     #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
+    #useSnapshotReference: boolean = false;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -213,7 +217,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             isFailoverRequest: this.#isFailoverRequest,
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
-            aiConfigurationTracing: this.#aiConfigurationTracing
+            aiConfigurationTracing: this.#aiConfigurationTracing,
+            useSnapshotReference: this.#useSnapshotReference
         };
     }
 
@@ -504,17 +509,29 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 selector.pageWatchers = pageWatchers;
                 settings = items;
             } else { // snapshot selector
-                const snapshot = await this.#getSnapshot(selector.snapshotName);
-                if (snapshot === undefined) {
-                    throw new InvalidOperationError(`Could not find snapshot with name ${selector.snapshotName}.`);
-                }
-                if (snapshot.compositionType != KnownSnapshotComposition.Key) {
-                    throw new InvalidOperationError(`Composition type for the selected snapshot with name ${selector.snapshotName} must be 'key'.`);
-                }
-                settings = await this.#listConfigurationSettingsForSnapshot(selector.snapshotName);
+                settings = await this.#loadConfigurationSettingsFromSnapshot(selector.snapshotName);
             }
 
             for (const setting of settings) {
+                if (isSnapshotReference(setting) && !loadFeatureFlag) {
+                    this.#useSnapshotReference = true;
+
+                    const snapshotRef: ConfigurationSetting<SnapshotReferenceValue> = parseSnapshotReference(setting);
+                    const snapshotName = snapshotRef.value.snapshotName;
+                    if (!snapshotName) {
+                        throw new SnapshotReferenceError(`Invalid format for Snapshot reference setting '${setting.key}'.`);
+                    }
+                    const settingsFromSnapshot = await this.#loadConfigurationSettingsFromSnapshot(snapshotName);
+
+                    for (const snapshotSetting of settingsFromSnapshot) {
+                        if (!isFeatureFlag(snapshotSetting)) {
+                            // Feature flags inside snapshot are ignored. This is consistent the behavior that key value selectors ignore feature flags.
+                            loadedSettings.set(snapshotSetting.key, snapshotSetting);
+                        }
+                    }
+                    continue;
+                }
+
                 if (loadFeatureFlag === isFeatureFlag(setting)) {
                     loadedSettings.set(setting.key, setting);
                 }
@@ -573,6 +590,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             const response = await this.#getConfigurationSetting(configurationSettingId, { onlyIfChanged: false });
             this.#sentinels.set(watchedSetting, { etag: response?.etag });
         }
+    }
+
+    async #loadConfigurationSettingsFromSnapshot(snapshotName: string): Promise<ConfigurationSetting[]> {
+        const snapshot = await this.#getSnapshot(snapshotName);
+        if (snapshot === undefined) {
+            return []; // treat non-existing snapshot as empty
+        }
+        if (snapshot.compositionType != KnownSnapshotComposition.Key) {
+            throw new InvalidOperationError(`Composition type for the selected snapshot with name ${snapshotName} must be 'key'.`);
+        }
+        const settings: ConfigurationSetting[] = await this.#listConfigurationSettingsForSnapshot(snapshotName);
+        return settings;
     }
 
     /**

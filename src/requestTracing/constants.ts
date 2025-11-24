@@ -51,6 +51,7 @@ export const REPLICA_COUNT_KEY = "ReplicaCount";
 export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
 export const KEY_VAULT_REFRESH_CONFIGURED_TAG = "RefreshesKeyVault";
 export const FAILOVER_REQUEST_TAG = "Failover";
+export const SNAPSHOT_REFERENCE_TAG = "SnapshotRef";
 
 // Compact feature tags
 export const FEATURES_KEY = "Features";
