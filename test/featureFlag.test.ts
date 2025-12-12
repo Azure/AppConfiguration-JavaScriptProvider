@@ -475,8 +475,14 @@ describe("feature flags", function () {
 
     it("should load feature flags from snapshot", async () => {
         const snapshotName = "Test";
-        mockAppConfigurationClientGetSnapshot(snapshotName, {compositionType: "key"});
-        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName, [[createMockedFeatureFlag("TestFeature", { enabled: true })]]);
+        const snapshotResponses = new Map([
+            [snapshotName, { compositionType: "key" }]
+        ]);
+        const snapshotKVs = new Map([
+            [snapshotName, [[createMockedFeatureFlag("TestFeature", { enabled: true })]]]
+        ]);
+        mockAppConfigurationClientGetSnapshot(snapshotResponses);
+        mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotKVs);
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
             featureFlagOptions: {
