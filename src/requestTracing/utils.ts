@@ -42,7 +42,8 @@ import {
     FM_VERSION_KEY,
     DELIMITER,
     AI_CONFIGURATION_TAG,
-    AI_CHAT_COMPLETION_CONFIGURATION_TAG
+    AI_CHAT_COMPLETION_CONFIGURATION_TAG,
+    SNAPSHOT_REFERENCE_TAG
 } from "./constants.js";
 
 export interface RequestTracingOptions {
@@ -55,6 +56,7 @@ export interface RequestTracingOptions {
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
+    useSnapshotReference: boolean;
 }
 
 // Utils
@@ -202,6 +204,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.isAfdUsed) {
         tags.push(AFD_USED_TAG);
+    }
+    if (requestTracingOptions.useSnapshotReference) {
+        tags.push(SNAPSHOT_REFERENCE_TAG);
     }
     return tags.join(DELIMITER);
 }
