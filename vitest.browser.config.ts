@@ -16,7 +16,8 @@ export default defineConfig({
       "out/esm/test/featureFlag.test.js",
       "out/esm/test/json.test.js",
       "out/esm/test/startup.test.js",
-      "out/esm/test/afd.test.js"
+      "out/esm/test/afd.test.js",
+      "out/esm/test/snapshotReference.test.js"
     ],
     testTimeout: 200_000,
     hookTimeout: 200_000,
