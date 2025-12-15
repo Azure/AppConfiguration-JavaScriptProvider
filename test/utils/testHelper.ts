@@ -2,7 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
@@ -11,10 +11,6 @@ import { ConfigurationClientManager } from "../../src/configurationClientManager
 import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000000";
-const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000000";
-const TEST_CLIENT_SECRET = "0000000000000000000000000000000000000000";
 
 // Async, browser-safe SHA-256 using native crypto.subtle when available; falls back to tiny FNV-1a for Node without subtle.
 async function _sha256(input: string): Promise<string> {
@@ -229,29 +225,29 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], custom
     });
 }
 
-function mockAppConfigurationClientGetSnapshot(snapshotName: string, mockedResponse: any, customCallback?: (options) => any) {
+function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
         if (customCallback) {
             customCallback(options);
         }
 
-        if (name === snapshotName) {
-            return mockedResponse;
+        if (snapshotResponses.has(name)) {
+            return snapshotResponses.get(name);
         } else {
             throw new RestError("", { statusCode: 404 });
         }
     });
 }
 
-function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotName: string, pages: ConfigurationSetting[][], customCallback?: (options) => any) {
+function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options) => any) {
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
 
-        if (name === snapshotName) {
-            const kvs = _filterKVs(pages.flat(), listOptions);
-            return getMockedIterator(pages, kvs, listOptions);
+        if (snapshotResponses.has(name)) {
+            const kvs = _filterKVs(snapshotResponses.get(name)!.flat(), listOptions);
+            return getMockedIterator(snapshotResponses.get(name)!, kvs, listOptions);
         } else {
             throw new RestError("", { statusCode: 404 });
         }
@@ -290,15 +286,18 @@ const createMockedConnectionString = (endpoint = createMockedEndpoint(), secret 
     return `Endpoint=${endpoint};Id=${id};Secret=${secret}`;
 };
 
-const createMockedTokenCredential = (tenantId = TEST_TENANT_ID, clientId = TEST_CLIENT_ID, clientSecret = TEST_CLIENT_SECRET) => {
-    return new ClientSecretCredential(tenantId, clientId, clientSecret);
+const createMockedTokenCredential = () => {
+    const effectiveTenantId = uuid.v4();
+    const effectiveClientId = uuid.v4();
+    const effectiveClientSecret = uuid.v4();
+    return new ClientSecretCredential(effectiveTenantId, effectiveClientId, effectiveClientSecret);
 };
 
 const createMockedKeyVaultReference = (key: string, vaultUri: string): ConfigurationSetting => ({
     // https://${vaultName}.vault.azure.net/secrets/${secretName}
     value: `{"uri":"${vaultUri}"}`,
     key,
-    contentType: "application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8",
+    contentType: secretReferenceContentType,
     lastModified: new Date(),
     tags: {},
     etag: uuid.v4(),
@@ -342,6 +341,16 @@ const createMockedFeatureFlag = (name: string, flagProps?: any, props?: any) => 
     isReadOnly: false
 }, props));
 
+const createMockedSnapshotReference = (key: string, snapshotName: string): ConfigurationSetting => ({
+    value: `{"snapshot_name":"${snapshotName}"}`,
+    key,
+    contentType: "application/json; profile=\"https://azconfig.io/mime-profiles/snapshot-ref\"; charset=utf-8",
+    lastModified: new Date(),
+    tags: {},
+    etag: uuid.v4(),
+    isReadOnly: false,
+});
+
 class HttpRequestHeadersPolicy {
     headers: any;
     name: string;
@@ -376,6 +385,7 @@ export {
     createMockedJsonKeyValue,
     createMockedKeyValue,
     createMockedFeatureFlag,
+    createMockedSnapshotReference,
 
     sleepInMs,
     HttpRequestHeadersPolicy
