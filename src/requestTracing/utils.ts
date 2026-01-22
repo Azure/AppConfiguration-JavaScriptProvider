@@ -42,7 +42,8 @@ import {
     DELIMITER,
     AI_CONFIGURATION_TAG,
     AI_CHAT_COMPLETION_CONFIGURATION_TAG,
-    SNAPSHOT_REFERENCE_TAG
+    SNAPSHOT_REFERENCE_TAG,
+    AZURE_AI_SDK_TAG
 } from "./constants.js";
 
 export interface RequestTracingOptions {
@@ -55,6 +56,7 @@ export interface RequestTracingOptions {
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     useSnapshotReference: boolean;
+    useAzureAI: boolean;
 }
 
 // Utils
@@ -199,6 +201,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.useSnapshotReference) {
         tags.push(SNAPSHOT_REFERENCE_TAG);
+    }
+    if (requestTracingOptions.useAzureAI) {
+        tags.push(AZURE_AI_SDK_TAG);
     }
     return tags.join(DELIMITER);
 }

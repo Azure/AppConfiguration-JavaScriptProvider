@@ -43,7 +43,7 @@ import {
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
-import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE } from "./requestTracing/constants.js";
+import { FM_PACKAGE_NAME, AI_MIME_PROFILE, AI_CHAT_COMPLETION_MIME_PROFILE, AZURE_AI_PACKAGE_NAMES } from "./requestTracing/constants.js";
 import { parseContentType, isJsonContentType, isFeatureFlagContentType, isSecretReferenceContentType } from "./common/contentType.js";
 import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter.js";
 import { RefreshTimer } from "./refresh/refreshTimer.js";
@@ -86,6 +86,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #fmVersion: string | undefined;
     #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     #useSnapshotReference: boolean = false;
+    #useAzureAI: boolean = false;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -218,7 +219,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
-            useSnapshotReference: this.#useSnapshotReference
+            useSnapshotReference: this.#useSnapshotReference,
+            useAzureAI: this.#useAzureAI
         };
     }
 
@@ -384,6 +386,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #initializeWithRetryPolicy(abortSignal: AbortSignal): Promise<void> {
         if (!this.#isInitialLoadCompleted) {
             await this.#inspectFmPackage();
+            await this.#inspectAzureAIPackages();
             const startTimestamp = Date.now();
             let postAttempts = 0;
             do { // at least try to load once
@@ -433,6 +436,23 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#fmVersion = fmPackage?.VERSION;
             } catch {
                 // ignore the error
+            }
+        }
+    }
+
+    /**
+     * Inspects whether Azure AI packages are installed.
+     */
+    async #inspectAzureAIPackages() {
+        if (this.#requestTracingEnabled && !this.#useAzureAI) {
+            for (const packageName of AZURE_AI_PACKAGE_NAMES) {
+                try {
+                    await import(/* @vite-ignore */packageName);
+                    this.#useAzureAI = true;
+                    break; // Found one package, no need to check others
+                } catch {
+                    // Package not installed, continue checking
+                }
             }
         }
     }

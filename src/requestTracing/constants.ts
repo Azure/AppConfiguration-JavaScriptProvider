@@ -56,6 +56,7 @@ export const SNAPSHOT_REFERENCE_TAG = "SnapshotRef";
 // Compact feature tags
 export const FEATURES_KEY = "Features";
 export const LOAD_BALANCE_CONFIGURED_TAG = "LB";
+export const AZURE_AI_SDK_TAG = "AzureAI";
 
 // Feature management package
 export const FM_PACKAGE_NAME = "@microsoft/feature-management";
@@ -78,5 +79,8 @@ export const AI_CHAT_COMPLETION_CONFIGURATION_TAG = "AICC";
 
 export const AI_MIME_PROFILE = "https://azconfig.io/mime-profiles/ai";
 export const AI_CHAT_COMPLETION_MIME_PROFILE = "https://azconfig.io/mime-profiles/ai/chat-completion";
+
+// Azure AI SDK tracing
+export const AZURE_AI_PACKAGE_NAMES = ["@azure/ai-agents", "@azure/ai-projects", "@azure/openai", "@azure-rest/ai-inference"];
 
 export const DELIMITER = "+";
