@@ -52,11 +52,11 @@ export const KEY_VAULT_CONFIGURED_TAG = "UsesKeyVault";
 export const KEY_VAULT_REFRESH_CONFIGURED_TAG = "RefreshesKeyVault";
 export const FAILOVER_REQUEST_TAG = "Failover";
 export const SNAPSHOT_REFERENCE_TAG = "SnapshotRef";
+export const AI_SDK_TAG = "UsesAISdk";
 
 // Compact feature tags
 export const FEATURES_KEY = "Features";
 export const LOAD_BALANCE_CONFIGURED_TAG = "LB";
-export const AZURE_AI_SDK_TAG = "AzureAI";
 
 // Feature management package
 export const FM_PACKAGE_NAME = "@microsoft/feature-management";

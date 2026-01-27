@@ -220,7 +220,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
             useSnapshotReference: this.#useSnapshotReference,
-            useAzureAI: this.#useAzureAI
+            usesAISdk: this.#useAzureAI
         };
     }
 

@@ -43,7 +43,7 @@ import {
     AI_CONFIGURATION_TAG,
     AI_CHAT_COMPLETION_CONFIGURATION_TAG,
     SNAPSHOT_REFERENCE_TAG,
-    AZURE_AI_SDK_TAG
+    AI_SDK_TAG
 } from "./constants.js";
 
 export interface RequestTracingOptions {
@@ -56,7 +56,7 @@ export interface RequestTracingOptions {
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     useSnapshotReference: boolean;
-    useAzureAI: boolean;
+    usesAISdk: boolean;
 }
 
 // Utils
@@ -154,6 +154,9 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     if (requestTracingOptions.isFailoverRequest) {
         tags.push(FAILOVER_REQUEST_TAG);
     }
+    if (requestTracingOptions.usesAISdk) {
+        tags.push(AI_SDK_TAG);
+    }
     if (requestTracingOptions.replicaCount > 0) {
         keyValues.set(REPLICA_COUNT_KEY, requestTracingOptions.replicaCount.toString());
     }
@@ -201,9 +204,6 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.useSnapshotReference) {
         tags.push(SNAPSHOT_REFERENCE_TAG);
-    }
-    if (requestTracingOptions.useAzureAI) {
-        tags.push(AZURE_AI_SDK_TAG);
     }
     return tags.join(DELIMITER);
 }
