@@ -144,10 +144,6 @@ describe("key vault reference", function () {
 
 describe("key vault secret refresh", function () {
 
-    afterEach(() => {
-        restoreMocks();
-    });
-
     beforeEach(() => {
         const data = [
             ["TestKey", "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName", "SecretValue"]
@@ -155,6 +151,10 @@ describe("key vault secret refresh", function () {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const kvs = data.map(([key, vaultUri, _value]) => createMockedKeyVaultReference(key, vaultUri));
         mockAppConfigurationClientListConfigurationSettings([kvs]);
+    });
+
+    afterEach(() => {
+        restoreMocks();
     });
 
     it("should not allow secret refresh interval less than 1 minute", async () => {
