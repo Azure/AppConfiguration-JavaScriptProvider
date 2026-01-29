@@ -1,6 +1,6 @@
 {
   "name": "@azure/app-configuration-provider",
-  "version": "2.4.0",
+  "version": "2.3.1",
   "description": "The JavaScript configuration provider for Azure App Configuration",
   "files": [
     "dist/",
