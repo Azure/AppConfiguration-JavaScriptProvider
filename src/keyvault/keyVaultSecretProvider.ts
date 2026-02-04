@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { KeyVaultOptions } from "./keyVaultOptions.js";
+import { KeyVaultOptions, MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyVaultOptions.js";
 import { RefreshTimer } from "../refresh/refreshTimer.js";
 import { ArgumentError } from "../common/errors.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
@@ -10,6 +10,7 @@ import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
     #secretRefreshTimer: RefreshTimer | undefined;
+    #minSecretRefreshTimer: RefreshTimer;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
@@ -24,6 +25,7 @@ export class AzureKeyVaultSecretProvider {
         }
         this.#keyVaultOptions = keyVaultOptions;
         this.#secretRefreshTimer = refreshTimer;
+        this.#minSecretRefreshTimer = new RefreshTimer(MIN_SECRET_REFRESH_INTERVAL_IN_MS);
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
             const clientUrl = new URL(client.vaultUrl);
@@ -47,7 +49,10 @@ export class AzureKeyVaultSecretProvider {
     }
 
     clearCache(): void {
-        this.#cachedSecretValues.clear();
+        if (this.#minSecretRefreshTimer.canRefresh()) {
+            this.#cachedSecretValues.clear();
+            this.#minSecretRefreshTimer.reset();
+        }
     }
 
     async #getSecretValueFromKeyVault(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
