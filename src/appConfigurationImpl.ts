@@ -58,6 +58,7 @@ import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter
 import { RefreshTimer } from "./refresh/refreshTimer.js";
 import {
     RequestTracingOptions,
+    checkConfigurationSettingsWithTrace,
     getConfigurationSettingWithTrace,
     listConfigurationSettingsWithTrace,
     getSnapshotWithTrace,
@@ -766,7 +767,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
                 }
 
-                const pageIterator = listConfigurationSettingsWithTrace(
+                const pageIterator = checkConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
                     client,
                     listOptions
