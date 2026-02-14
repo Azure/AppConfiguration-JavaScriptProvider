@@ -150,6 +150,48 @@ function getCachedIterator(pages: Array<{
     return iterator as any;
 }
 
+function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any) {
+    const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+        [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+            return this;
+        },
+        next() {
+            return Promise.resolve({ done: true, value: undefined });
+        },
+        byPage(): AsyncIterableIterator<any> {
+            let remainingPages;
+            const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined;
+            return {
+                [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                    remainingPages = [...pages];
+                    return this;
+                },
+                async next() {
+                    const pageItems = remainingPages.shift();
+                    const pageEtag = pageEtags?.shift();
+                    if (pageItems === undefined) {
+                        return { done: true, value: undefined };
+                    } else {
+                        const items = _filterKVs(pageItems ?? [], listOptions);
+                        const etag = await _sha256(JSON.stringify(items));
+                        const statusCode = pageEtag === etag ? 304 : 200;
+                        return {
+                            done: false,
+                            value: {
+                                items: [], // HEAD request returns no items
+                                etag,
+                                _response: { status: statusCode }
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    };
+
+    return mockIterator as any;
+}
+
 /**
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
@@ -167,6 +209,14 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
     });
+
+    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
+        return getMockedHeadIterator(pages, listOptions);
+    });
 }
 
 function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
@@ -174,6 +224,10 @@ function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[]
         countObject.count += 1;
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
+    });
+    sinon.stub(clientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
+        countObject.count += 1;
+        return getMockedHeadIterator(pages, listOptions);
     });
 }
 
@@ -189,6 +243,9 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
+        sinon.stub(fakeStaticClientWrapper.client, "checkConfigurationSettings").callsFake(() => {
+            throw new RestError("Internal Server Error", { statusCode: 500 });
+        });
         clients.push(fakeStaticClientWrapper);
 
         if (!isFailoverable) {
@@ -201,6 +258,9 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
             const kvs = _filterKVs(pages.flat(), listOptions);
             return getMockedIterator(pages, kvs, listOptions);
+        });
+        sinon.stub(fakeDynamicClientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
+            return getMockedHeadIterator(pages, listOptions);
         });
         return clients;
     });

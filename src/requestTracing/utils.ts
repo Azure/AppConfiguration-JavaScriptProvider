@@ -7,6 +7,7 @@ import {
     ConfigurationSettingId,
     GetConfigurationSettingOptions,
     ListConfigurationSettingsOptions,
+    CheckConfigurationSettingsOptions,
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions
 } from "@azure/app-configuration";
@@ -67,6 +68,15 @@ export function listConfigurationSettingsWithTrace(
 ) {
     const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
     return client.listConfigurationSettings(actualListOptions);
+}
+
+export function checkConfigurationSettingsWithTrace(
+    requestTracingOptions: RequestTracingOptions,
+    client: AppConfigurationClient,
+    checkOptions: CheckConfigurationSettingsOptions
+) {
+    const actualCheckOptions = applyRequestTracing(requestTracingOptions, checkOptions);
+    return client.checkConfigurationSettings(actualCheckOptions);
 }
 
 export function getConfigurationSettingWithTrace(
