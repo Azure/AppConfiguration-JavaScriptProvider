@@ -17,9 +17,10 @@ import {
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions,
     GetSnapshotResponse,
-    KnownSnapshotComposition
+    KnownSnapshotComposition,
+    ListConfigurationSettingPage
 } from "@azure/app-configuration";
-import { isRestError } from "@azure/core-rest-pipeline";
+import { isRestError, RestError } from "@azure/core-rest-pipeline";
 import { AzureAppConfiguration, ConfigurationObjectConstructionOptions } from "./appConfiguration.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { IKeyValueAdapter } from "./keyValueAdapter.js";
@@ -28,6 +29,7 @@ import { DEFAULT_STARTUP_TIMEOUT_IN_MS } from "./startupOptions.js";
 import { DEFAULT_REFRESH_INTERVAL_IN_MS, MIN_REFRESH_INTERVAL_IN_MS } from "./refresh/refreshOptions.js";
 import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyvault/keyVaultOptions.js";
 import { Disposable } from "./common/disposable.js";
+import { base64Helper, jsonSorter } from "./common/utils.js";
 import {
     FEATURE_FLAGS_KEY_NAME,
     FEATURE_MANAGEMENT_KEY_NAME,
@@ -37,9 +39,16 @@ import {
     METADATA_KEY_NAME,
     ETAG_KEY_NAME,
     FEATURE_FLAG_REFERENCE_KEY_NAME,
+    ALLOCATION_ID_KEY_NAME,
     ALLOCATION_KEY_NAME,
+    DEFAULT_WHEN_ENABLED_KEY_NAME,
+    PERCENTILE_KEY_NAME,
+    FROM_KEY_NAME,
+    TO_KEY_NAME,
     SEED_KEY_NAME,
+    VARIANT_KEY_NAME,
     VARIANTS_KEY_NAME,
+    CONFIGURATION_VALUE_KEY_NAME,
     CONDITIONS_KEY_NAME,
     CLIENT_FILTERS_KEY_NAME
 } from "./featureManagement/constants.js";
@@ -49,6 +58,7 @@ import { AzureKeyVaultKeyValueAdapter } from "./keyvault/keyVaultKeyValueAdapter
 import { RefreshTimer } from "./refresh/refreshTimer.js";
 import {
     RequestTracingOptions,
+    checkConfigurationSettingsWithTrace,
     getConfigurationSettingWithTrace,
     listConfigurationSettingsWithTrace,
     getSnapshotWithTrace,
@@ -62,6 +72,7 @@ import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
+import { X_MS_DATE_HEADER } from "./afd/constants.js";
 
 const MIN_DELAY_FOR_UNHANDLED_FAILURE = 5_000; // 5 seconds
 
@@ -124,12 +135,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
 
+    // Azure Front Door
+    #isAfdUsed: boolean = false;
+
     constructor(
         clientManager: ConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
+        isAfdUsed: boolean
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
+        this.#isAfdUsed = isAfdUsed;
 
         // enable request tracing if not opt-out
         this.#requestTracingEnabled = requestTracingEnabled();
@@ -218,6 +234,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             featureFlagTracing: this.#featureFlagTracing,
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
+            isAfdUsed: this.#isAfdUsed,
             useSnapshotReference: this.#useSnapshotReference
         };
     }
@@ -487,7 +504,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      *                          If false, loads key-value using the key-value selectors. Defaults to false.
      */
     async #loadConfigurationSettings(loadFeatureFlag: boolean = false): Promise<ConfigurationSetting[]> {
-        const selectors = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
+        const selectors: PagedSettingsWatcher[] = loadFeatureFlag ? this.#ffSelectors : this.#kvSelectors;
 
         // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
         // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
@@ -506,6 +523,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     tagsFilter: selector.tagFilters
                 };
                 const { items, pageWatchers } = await this.#listConfigurationSettings(listOptions);
+
                 selector.pageWatchers = pageWatchers;
                 settings = items;
             } else { // snapshot selector
@@ -696,7 +714,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+        let needRefresh = false;
+        needRefresh = await this.#checkConfigurationSettingsChange(this.#ffSelectors);
+
         if (needRefresh) {
             await this.#loadFeatureFlags();
         }
@@ -739,21 +759,38 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 const listOptions: ListConfigurationSettingsOptions = {
                     keyFilter: selector.keyFilter,
                     labelFilter: selector.labelFilter,
-                    tagsFilter: selector.tagFilters,
-                    pageEtags: pageWatchers.map(w => w.etag ?? "")
+                    tagsFilter: selector.tagFilters
                 };
 
-                const pageIterator = listConfigurationSettingsWithTrace(
+                if (!this.#isAfdUsed) {
+                    // if AFD is not used, add page etags to the listOptions to send conditional request
+                    listOptions.pageEtags = pageWatchers.map(w => w.etag ?? "") ;
+                }
+
+                const pageIterator = checkConfigurationSettingsWithTrace(
                     this.#requestTraceOptions,
                     client,
                     listOptions
                 ).byPage();
 
+                let i = 0;
                 for await (const page of pageIterator) {
-                    // when conditional request is sent, the response will be 304 if not changed
-                    if (page._response.status === 200) { // created or changed
+                    const serverResponseTime: Date = this.#getMsDateHeader(page);
+                    if (i >= pageWatchers.length) {
                         return true;
                     }
+
+                    const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
+                    let isResponseFresh = false;
+                    if (lastServerResponseTime !== undefined) {
+                        isResponseFresh = serverResponseTime > lastServerResponseTime;
+                    }
+                    if (isResponseFresh &&
+                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        page.etag !== pageWatchers[i].etag) {
+                        return true;
+                    }
+                    i++;
                 }
             }
             return false;
@@ -764,7 +801,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
+     * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
         const funcToExecute = async (client) => {
@@ -800,7 +837,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             const items: ConfigurationSetting[] = [];
             for await (const page of pageIterator) {
-                pageWatchers.push({ etag: page.etag });
+                pageWatchers.push({ etag: page.etag, lastServerResponseTime: this.#getMsDateHeader(page) });
                 items.push(...page.items);
             }
             return { items, pageWatchers };
@@ -973,9 +1010,14 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (featureFlag[TELEMETRY_KEY_NAME] && featureFlag[TELEMETRY_KEY_NAME][ENABLED_KEY_NAME] === true) {
             const metadata = featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME];
+            let allocationId = "";
+            if (featureFlag[ALLOCATION_KEY_NAME] !== undefined) {
+                allocationId = await this.#generateAllocationId(featureFlag);
+            }
             featureFlag[TELEMETRY_KEY_NAME][METADATA_KEY_NAME] = {
                 [ETAG_KEY_NAME]: setting.etag,
                 [FEATURE_FLAG_REFERENCE_KEY_NAME]: this.#createFeatureFlagReference(setting),
+                ...(allocationId !== "" && { [ALLOCATION_ID_KEY_NAME]: allocationId }),
                 ...(metadata || {})
             };
         }
@@ -1012,6 +1054,135 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#featureFlagTracing.usesSeed = true;
             }
         }
+    }
+
+    async #generateAllocationId(featureFlag: any): Promise<string> {
+        let rawAllocationId = "";
+        // Only default variant when enabled and variants allocated by percentile involve in the experimentation
+        // The allocation id is genearted from default variant when enabled and percentile allocation
+        const variantsForExperimentation: string[] = [];
+
+        rawAllocationId += `seed=${featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] ?? ""}\ndefault_when_enabled=`;
+
+        if (featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]) {
+            variantsForExperimentation.push(featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]);
+            rawAllocationId += `${featureFlag[ALLOCATION_KEY_NAME][DEFAULT_WHEN_ENABLED_KEY_NAME]}`;
+        }
+
+        rawAllocationId += "\npercentiles=";
+
+        const percentileList = featureFlag[ALLOCATION_KEY_NAME][PERCENTILE_KEY_NAME];
+        if (percentileList) {
+            const sortedPercentileList = percentileList
+                .filter(p =>
+                    (p[FROM_KEY_NAME] !== undefined) &&
+                    (p[TO_KEY_NAME] !== undefined) &&
+                    (p[VARIANT_KEY_NAME] !== undefined) &&
+                    (p[FROM_KEY_NAME] !== p[TO_KEY_NAME]))
+                .sort((a, b) => a[FROM_KEY_NAME] - b[FROM_KEY_NAME]);
+
+            const percentileAllocation: string[] = [];
+            for (const percentile of sortedPercentileList) {
+                variantsForExperimentation.push(percentile[VARIANT_KEY_NAME]);
+                percentileAllocation.push(`${percentile[FROM_KEY_NAME]},${base64Helper(percentile[VARIANT_KEY_NAME])},${percentile[TO_KEY_NAME]}`);
+            }
+            rawAllocationId += percentileAllocation.join(";");
+        }
+
+        if (variantsForExperimentation.length === 0 && featureFlag[ALLOCATION_KEY_NAME][SEED_KEY_NAME] === undefined) {
+            // All fields required for generating allocation id are missing, short-circuit and return empty string
+            return "";
+        }
+
+        rawAllocationId += "\nvariants=";
+
+        if (variantsForExperimentation.length !== 0) {
+            const variantsList = featureFlag[VARIANTS_KEY_NAME];
+            if (variantsList) {
+                const sortedVariantsList = variantsList
+                    .filter(v =>
+                        (v[NAME_KEY_NAME] !== undefined) &&
+                        variantsForExperimentation.includes(v[NAME_KEY_NAME]))
+                    .sort((a, b) => (a.name > b.name ? 1 : -1));
+
+                    const variantConfiguration: string[] = [];
+                    for (const variant of sortedVariantsList) {
+                        const configurationValue = JSON.stringify(variant[CONFIGURATION_VALUE_KEY_NAME], jsonSorter) ?? "";
+                        variantConfiguration.push(`${base64Helper(variant[NAME_KEY_NAME])},${configurationValue}`);
+                    }
+                    rawAllocationId += variantConfiguration.join(";");
+            }
+        }
+
+        let crypto;
+
+        // Check for browser environment
+        if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+            crypto = window.crypto;
+        }
+        // Check for Node.js environment
+        else if (typeof global !== "undefined" && global.crypto) {
+            crypto = global.crypto;
+        }
+        // Fallback to native Node.js crypto module
+        else {
+            try {
+                if (typeof module !== "undefined" && module.exports) {
+                    crypto = require("crypto");
+                }
+                else {
+                    crypto = await import("crypto");
+                }
+            } catch (error) {
+                console.error("Failed to load the crypto module:", error.message);
+                throw error;
+            }
+        }
+
+        // Convert to UTF-8 encoded bytes
+        const data = new TextEncoder().encode(rawAllocationId);
+
+        // In the browser, use crypto.subtle.digest
+        if (crypto.subtle) {
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = new Uint8Array(hashBuffer);
+
+            // Only use the first 15 bytes
+            const first15Bytes = hashArray.slice(0, 15);
+
+            // btoa/atob is also available in Node.js 18+
+            const base64String = btoa(String.fromCharCode(...first15Bytes));
+            const base64urlString = base64String.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            return base64urlString;
+        }
+        // In Node.js, use the crypto module's hash function
+        else {
+            const hash = crypto.createHash("sha256").update(data).digest();
+
+            // Only use the first 15 bytes
+            const first15Bytes = hash.slice(0, 15);
+
+            return first15Bytes.toString("base64url");
+        }
+    }
+
+    /**
+     * Extracts the response timestamp (x-ms-date) from the response headers. If not found, returns the current time.
+     */
+    #getMsDateHeader(response: GetConfigurationSettingResponse | ListConfigurationSettingPage | RestError): Date {
+        let header: string | undefined;
+        if (isRestError(response)) {
+            header = response.response?.headers?.get(X_MS_DATE_HEADER);
+        } else {
+            header = response._response?.headers?.get(X_MS_DATE_HEADER);
+        }
+        if (header !== undefined) {
+            const date = new Date(header);
+            if (!isNaN(date.getTime())) {
+                return date;
+            }
+        }
+        return new Date();
     }
 }
 

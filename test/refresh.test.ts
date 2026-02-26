@@ -275,7 +275,7 @@ describe("dynamic refresh", function () {
         updateSetting("sentinel", "updatedValue");
         failNextListKv = true; // force next listConfigurationSettings request to fail
         await sleepInMs(2 * 1000 + 1);
-        await settings.refresh(); // even if the provider detects the sentinel key change, this refresh will fail, so we won't get the updated value of sentinel
+        await settings.refresh(); // even if the provider detects the sentinel key change, this refresh will fail, so we won't get the updated value
         expect(listKvRequestCount).eq(1);
         expect(getKvRequestCount).eq(2);
         expect(settings.get("app.settings.bgColor")).to.be.undefined;

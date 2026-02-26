@@ -7,6 +7,7 @@ import {
     ConfigurationSettingId,
     GetConfigurationSettingOptions,
     ListConfigurationSettingsOptions,
+    CheckConfigurationSettingsOptions,
     GetSnapshotOptions,
     ListConfigurationSettingsForSnapshotOptions
 } from "@azure/app-configuration";
@@ -27,6 +28,7 @@ import {
     HostType,
     KEY_VAULT_CONFIGURED_TAG,
     KEY_VAULT_REFRESH_CONFIGURED_TAG,
+    AFD_USED_TAG,
     KUBERNETES_ENV_VAR,
     NODEJS_DEV_ENV_VAL,
     NODEJS_ENV_VAR,
@@ -51,6 +53,7 @@ export interface RequestTracingOptions {
     initialLoadCompleted: boolean;
     replicaCount: number;
     isFailoverRequest: boolean;
+    isAfdUsed: boolean;
     featureFlagTracing: FeatureFlagTracingOptions | undefined;
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
@@ -65,6 +68,15 @@ export function listConfigurationSettingsWithTrace(
 ) {
     const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
     return client.listConfigurationSettings(actualListOptions);
+}
+
+export function checkConfigurationSettingsWithTrace(
+    requestTracingOptions: RequestTracingOptions,
+    client: AppConfigurationClient,
+    checkOptions: CheckConfigurationSettingsOptions
+) {
+    const actualCheckOptions = applyRequestTracing(requestTracingOptions, checkOptions);
+    return client.checkConfigurationSettings(actualCheckOptions);
 }
 
 export function getConfigurationSettingWithTrace(
@@ -101,7 +113,9 @@ function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: 
     const actualOptions = { ...operationOptions };
     if (requestTracingOptions.enabled) {
         actualOptions.requestOptions = {
+            ...actualOptions.requestOptions,
             customHeaders: {
+                ...actualOptions.requestOptions?.customHeaders,
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
@@ -115,7 +129,7 @@ function createCorrelationContextHeader(requestTracingOptions: RequestTracingOpt
     Host: identify with defined envs
     Env: identify by env `NODE_ENV` which is a popular but not standard. Usually, the value can be "development", "production".
     ReplicaCount: identify how many replicas are found
-    Features: LB
+    Features: LB+AI+AICC+AFD
     Filter: CSTM+TIME+TRGT
     MaxVariants: identify the max number of variants feature flag uses
     FFFeatures: Seed+Telemetry
@@ -183,7 +197,8 @@ export function requestTracingEnabled(): boolean {
 
 function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
     return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
-        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false);
+        (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false) ||
+        requestTracingOptions.isAfdUsed;
 }
 
 function createFeaturesString(requestTracingOptions: RequestTracingOptions): string {
@@ -196,6 +211,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.aiConfigurationTracing?.usesAIChatCompletionConfiguration) {
         tags.push(AI_CHAT_COMPLETION_CONFIGURATION_TAG);
+    }
+    if (requestTracingOptions.isAfdUsed) {
+        tags.push(AFD_USED_TAG);
     }
     if (requestTracingOptions.useSnapshotReference) {
         tags.push(SNAPSHOT_REFERENCE_TAG);
