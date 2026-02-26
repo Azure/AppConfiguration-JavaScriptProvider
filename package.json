@@ -7,6 +7,8 @@
     "LICENSE",
     "README.md"
   ],
+  "main": "./dist/commonjs/index.js",
+  "type": "module",
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -21,7 +23,7 @@
     }
   },
   "scripts": {
-    "build": "npm run clean && rollup --config && npm run build-test",
+    "build": "npm run clean && rollup --config && cpy cjs-package.json dist/commonjs --rename=package.json && npm run build-test",
     "build-test": "npm run build-test-esm && npm run build-test-cjs",
     "build-test-esm": "tsc -p ./tsconfig.test.esm.json && cpy esm-package.json out/esm --rename=package.json",
     "build-test-cjs": "tsc -p ./tsconfig.test.cjs.json && cpy cjs-package.json out/commonjs --rename=package.json",
