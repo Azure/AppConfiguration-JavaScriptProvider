@@ -134,30 +134,35 @@ describe("loadFromAzureFrontDoor", function() {
         const kv2_updated = createMockedKeyValue({ key: "app.key2", value: "value2-updated" });
         const kv3 = createMockedKeyValue({ key: "app.key3", value: "value3" });
 
-        const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const listStub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const checkStub = sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings" as any);
 
-        stub.onCall(0).returns(getCachedIterator([
+        // Initial load
+        listStub.onCall(0).returns(getCachedIterator([
             { items: [kv1, kv2], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
 
-        stub.onCall(1).returns(getCachedIterator([
+        // 1st refresh: check (HEAD) detects change, then reload (GET)
+        checkStub.onCall(0).returns(getCachedIterator([
             { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
         ]));
-        stub.onCall(2).returns(getCachedIterator([
+        listStub.onCall(1).returns(getCachedIterator([
             { items: [kv1, kv2_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
         ]));
 
-        stub.onCall(3).returns(getCachedIterator([
+        // 2nd refresh: check (HEAD) detects change, then reload (GET)
+        checkStub.onCall(1).returns(getCachedIterator([
             { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
-        stub.onCall(4).returns(getCachedIterator([
+        listStub.onCall(2).returns(getCachedIterator([
             { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
 
-        stub.onCall(5).returns(getCachedIterator([
+        // 3rd refresh: check (HEAD) detects change, then reload (GET)
+        checkStub.onCall(2).returns(getCachedIterator([
             { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:05Z") } }
         ]));
-        stub.onCall(6).returns(getCachedIterator([
+        listStub.onCall(3).returns(getCachedIterator([
             { items: [kv1, kv3], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:05Z") } }
         ]));
 
@@ -192,19 +197,22 @@ describe("loadFromAzureFrontDoor", function() {
         const ff = createMockedFeatureFlag("Beta");
         const ff_updated = createMockedFeatureFlag("Beta", { enabled: false });
 
-        const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const listStub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const checkStub = sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings" as any);
 
-        stub.onCall(0).returns(getCachedIterator([
+        // Initial load: onCall(0) = default KV selector, onCall(1) = feature flags
+        listStub.onCall(0).returns(getCachedIterator([
             { items: [ff], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
-        stub.onCall(1).returns(getCachedIterator([
+        listStub.onCall(1).returns(getCachedIterator([
             { items: [ff], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
 
-        stub.onCall(2).returns(getCachedIterator([
+        // 1st refresh: check (HEAD) detects change, then reload (GET)
+        checkStub.onCall(0).returns(getCachedIterator([
             { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
-        stub.onCall(3).returns(getCachedIterator([
+        listStub.onCall(2).returns(getCachedIterator([
             { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
 
@@ -235,18 +243,23 @@ describe("loadFromAzureFrontDoor", function() {
         const kv1_stale = createMockedKeyValue({ key: "app.key1", value: "stale-value" });
         const kv1_new = createMockedKeyValue({ key: "app.key1", value: "new-value" });
 
-        const stub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
-        stub.onCall(0).returns(getCachedIterator([
+        const listStub = sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const checkStub = sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings" as any);
+
+        // Initial load
+        listStub.onCall(0).returns(getCachedIterator([
             { items: [kv1], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:01Z") } }
         ]));
 
-        stub.onCall(1).returns(getCachedIterator([
-            { items: [kv1_stale], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } } // stale response, should not trigger refresh
+        // 1st refresh: check (HEAD) returns stale response, should not trigger refresh
+        checkStub.onCall(0).returns(getCachedIterator([
+            { items: [kv1_stale], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
-        stub.onCall(2).returns(getCachedIterator([
-            { items: [kv1_new], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } } // new response, should trigger refresh
+        // 2nd refresh: check (HEAD) detects change, then reload (GET)
+        checkStub.onCall(1).returns(getCachedIterator([
+            { items: [kv1_new], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } }
         ]));
-        stub.onCall(3).returns(getCachedIterator([
+        listStub.onCall(1).returns(getCachedIterator([
             { items: [kv1_new], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:02Z") } }
         ]));
 
