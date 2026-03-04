@@ -334,8 +334,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
             }
             // Deep copy object values to avoid mutating the original objects in #configMap via shared references.
-            // Using JSON.parse(JSON.stringify(...)) instead of structuredClone for compatibility with Node.js < 17.
-            current[lastSegment] = typeof value === "object" && value !== null ? JSON.parse(JSON.stringify(value)) : value;
+            current[lastSegment] = typeof value === "object" && value !== null ? structuredClone(value) : value;
         }
         return data;
     }
@@ -494,10 +493,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
         const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
         // Deep copy selectors to avoid modification if current client fails.
-        // Using JSON.parse(JSON.stringify(...)) instead of structuredClone for compatibility with Node.js < 17.
-        const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
-            JSON.stringify(selectors)
-        );
+        const selectorsToUpdate: PagedSettingsWatcher[] = structuredClone(selectors);
 
         for (const selector of selectorsToUpdate) {
             let settings: ConfigurationSetting[] = [];
