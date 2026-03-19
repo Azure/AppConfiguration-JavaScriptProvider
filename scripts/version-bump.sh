@@ -111,18 +111,12 @@ BRANCH_PREFIX=$(echo "$GIT_USERNAME" | awk '{print $1}' | tr '[:upper:]' '[:lowe
 
 BRANCH_NAME="${BRANCH_PREFIX}/version-${NEW_VERSION}"
 
-# ── Read current version ─────────────────────────────────────────────────────
+# ── Show plan ─────────────────────────────────────────────────────────────────
 
-CURRENT_VERSION=$(grep -oP 'VERSION = "\K[^"]+' "$VERSION_TS")
-info "Current version : $CURRENT_VERSION"
 info "New version     : $NEW_VERSION"
 info "Target branch   : $TARGET_BRANCH"
 info "New branch      : $BRANCH_NAME"
 echo ""
-
-if [[ "$CURRENT_VERSION" == "$NEW_VERSION" ]]; then
-  error "Current version is already $NEW_VERSION. Nothing to do."
-fi
 
 # ── Confirm with user ────────────────────────────────────────────────────────
 
@@ -143,6 +137,15 @@ git fetch origin "$TARGET_BRANCH"
 
 info "Creating branch '$BRANCH_NAME' from origin/$TARGET_BRANCH..."
 git checkout -b "$BRANCH_NAME" "origin/$TARGET_BRANCH"
+
+# ── Read current version (after checkout so we read from the target branch) ──
+
+CURRENT_VERSION=$(grep -oP 'VERSION = "\K[^"]+' "$VERSION_TS")
+info "Current version : $CURRENT_VERSION"
+
+if [[ "$CURRENT_VERSION" == "$NEW_VERSION" ]]; then
+  error "Current version is already $NEW_VERSION. Nothing to do."
+fi
 
 # ── Update version in all files ──────────────────────────────────────────────
 
