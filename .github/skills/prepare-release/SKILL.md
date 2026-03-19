@@ -68,11 +68,20 @@ When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 2: Merge Main to Release Branch
 
-After the version bump PR is merged, create a PR to merge `test-main` into the stable release branch.
+After the version bump PR is merged, create a PR to merge `test-main` into the stable release branch by running:
 
-1. Determine the major version from the new version string (e.g., `2` from `2.4.0`).
+```bash
+./scripts/merge-to-release.sh <new_version>
+```
+
+For example: `./scripts/merge-to-release.sh 2.5.0`
+
+The script will automatically:
+1. Determine the major version from the version string (e.g., `2` from `2.5.0`).
 2. Create a PR from `test-main` → `test-release/stable/v{major}` (e.g., `test-release/stable/v2`).
 3. Title the PR: `Merge test-main to test-release/stable/v{major}`.
+
+When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 > **Important**: Use "Merge commit" (not squash) when merging this PR to preserve commit history.
 
@@ -115,11 +124,20 @@ When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 3: Merge Preview to Release Branch
 
-After the version bump PR is merged, create a PR to merge `test-preview` into the preview release branch.
+After the version bump PR is merged, create a PR to merge `test-preview` into the preview release branch by running:
 
-1. Determine the major version from the new version string (e.g., `2` from `2.4.1-preview`).
+```bash
+./scripts/merge-to-release.sh <new_version> --preview
+```
+
+For example: `./scripts/merge-to-release.sh 2.5.1-preview --preview`
+
+The script will automatically:
+1. Determine the major version from the version string (e.g., `2` from `2.5.1-preview`).
 2. Create a PR from `test-preview` → `test-release/v{major}` (e.g., `test-release/v2`).
 3. Title the PR: `Merge test-preview to test-release/v{major}`.
+
+When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 > **Important**: Use "Merge commit" (not squash) when merging this PR.
 
