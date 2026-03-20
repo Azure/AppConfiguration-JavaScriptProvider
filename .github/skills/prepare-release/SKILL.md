@@ -64,8 +64,6 @@ The script will automatically:
 
 When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
-**Sample PR**: https://github.com/Azure/AppConfiguration-JavaScriptProvider/pull/277
-
 #### Step 2: Merge Main to Release Branch
 
 After the version bump PR is merged, create a PR to merge `test-main` into the stable release branch by running:
@@ -76,16 +74,9 @@ After the version bump PR is merged, create a PR to merge `test-main` into the s
 
 For example: `./scripts/merge-to-release.sh 2.5.0`
 
-The script will automatically:
-1. Determine the major version from the version string (e.g., `2` from `2.5.0`).
-2. Create a PR from `test-main` → `test-release/stable/v{major}` (e.g., `test-release/stable/v2`).
-3. Title the PR: `Merge test-main to test-release/stable/v{major}`.
-
 When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 > **Important**: Use "Merge commit" (not squash) when merging this PR to preserve commit history.
-
-**Sample PR**: https://github.com/Azure/AppConfiguration-JavaScriptProvider/pull/268
 
 ---
 
@@ -114,12 +105,6 @@ After the merge-to-preview PR is merged, create a version bump PR targeting `tes
 
 For example: `./scripts/version-bump.sh 2.5.1-preview --preview`
 
-The script will automatically:
-1. Read the current version from `src/version.ts` on the `test-preview` branch.
-2. Create a new branch from `test-preview` named `<username>/version-<new_version>` (e.g., `linglingye/version-2.5.1-preview`).
-3. Update the version in all four files (`src/version.ts`, `package.json`, `package-lock.json` lines 3 and 9).
-4. Commit, push, and create a PR to `test-preview` with title: `Version bump <new_version>`.
-
 When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 3: Merge Preview to Release Branch
@@ -132,16 +117,9 @@ After the version bump PR is merged, create a PR to merge `test-preview` into th
 
 For example: `./scripts/merge-to-release.sh 2.5.1-preview --preview`
 
-The script will automatically:
-1. Determine the major version from the version string (e.g., `2` from `2.5.1-preview`).
-2. Create a PR from `test-preview` → `test-release/v{major}` (e.g., `test-release/v2`).
-3. Title the PR: `Merge test-preview to test-release/v{major}`.
-
 When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 > **Important**: Use "Merge commit" (not squash) when merging this PR.
-
-**Sample PR**: https://github.com/Azure/AppConfiguration-JavaScriptProvider/pull/274
 
 ---
 
