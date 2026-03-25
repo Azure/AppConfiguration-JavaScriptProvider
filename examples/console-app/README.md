@@ -31,6 +31,8 @@ To run the examples using the published version of the package:
     npm install
     ```
 
+    This will install all required packages listed in `package.json` with their latest compatible versions.
+
 2. There are two ways to run the examples using correct credentials:
 
     - Edit the file `.env.template`, adding the access keys to your App Configuration store. and rename the file from `.env.template` to just `.env`. The examples will read this file automatically.
