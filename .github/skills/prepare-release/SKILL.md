@@ -11,9 +11,9 @@ This skill automates the release preparation workflow for the [Azure App Configu
 
 Use this skill when you need to:
 - Bump the package version for a new stable or preview release
-- Create merge PRs to sync branches (test-main → test-preview, test-main → test-release/stable, test-preview → test-release)
+- Create merge PRs to sync branches (main → preview, main → release/stable, preview → release)
 - Prepare all the PRs needed before publishing a new release
-- Resolve merge conflicts between test-main and test-preview branches
+- Resolve merge conflicts between main and preview branches
 
 ## Background
 
@@ -22,10 +22,10 @@ Use this skill when you need to:
 - **Package Name**: `@azure/app-configuration-provider`
 
 ### Branch Structure
-- `test-main` – primary development branch for stable releases
-- `test-preview` – development branch for preview releases
-- `test-release/stable/v{major}` – release branch for stable versions (e.g., `test-release/stable/v2`)
-- `test-release/v{major}` – release branch for preview versions (e.g., `test-release/v2`)
+- `main` – primary development branch for stable releases
+- `preview` – development branch for preview releases
+- `release/stable/v{major}` – release branch for stable versions (e.g., `release/stable/v2`)
+- `release/v{major}` – release branch for preview versions (e.g., `release/v2`)
 
 ### Version Files
 The version must be updated in **all four locations** simultaneously:
@@ -48,7 +48,7 @@ Ask the user whether this is a **stable** or **preview** release, and what the *
 
 #### Step 1: Version Bump PR
 
-Create a version bump PR targeting `test-main` by running the version bump script:
+Create a version bump PR targeting `main` by running the version bump script:
 
 ```bash
 ./scripts/version-bump.sh <new_version>
@@ -58,15 +58,15 @@ For example: `./scripts/version-bump.sh 2.5.0`
 
 The script will automatically:
 1. Read the current version from `src/version.ts`.
-2. Create a new branch from `test-main` named `<username>/version-<new_version>` (e.g., `linglingye/version-2.5.0`).
+2. Create a new branch from `main` named `<username>/version-<new_version>` (e.g., `linglingye/version-2.5.0`).
 3. Update the version in all four files (`src/version.ts`, `package.json`, `package-lock.json` lines 3 and 9).
-4. Commit, push, and create a PR to `test-main` with title: `Version bump <new_version>`.
+4. Commit, push, and create a PR to `main` with title: `Version bump <new_version>`.
 
 When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 2: Merge Main to Release Branch
 
-After the version bump PR is merged, create a PR to merge `test-main` into the stable release branch by running:
+After the version bump PR is merged, create a PR to merge `main` into the stable release branch by running:
 
 ```bash
 ./scripts/merge-to-release.sh <new_version>
@@ -84,12 +84,12 @@ When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 1: Merge Main to Preview (Conflict Resolution)
 
-Create a PR to merge `test-main` into `test-preview`. This will likely have conflicts.
+Create a PR to merge `main` into `preview`. This will likely have conflicts.
 
-1. Fetch the latest `test-main` and `test-preview` branches.
-2. Create a new branch from `test-preview` named `<username>/resolve-conflict` (or similar).
-3. Merge `test-main` into this branch. If there are conflicts, inform the user and let them resolve manually.
-4. Push the branch and create a PR targeting `test-preview` with title: `Merge test-main to test-preview`.
+1. Fetch the latest `main` and `preview` branches.
+2. Create a new branch from `preview` named `<username>/resolve-conflict` (or similar).
+3. Merge `main` into this branch. If there are conflicts, inform the user and let them resolve manually.
+4. Push the branch and create a PR targeting `preview` with title: `Merge main to preview`.
 
 > **Important**: Use "Merge commit" (not squash) when merging this PR.
 
@@ -97,7 +97,7 @@ Create a PR to merge `test-main` into `test-preview`. This will likely have conf
 
 #### Step 2: Version Bump PR
 
-After the merge-to-preview PR is merged, create a version bump PR targeting `test-preview` by running the version bump script with the `--preview` flag:
+After the merge-to-preview PR is merged, create a version bump PR targeting `preview` by running the version bump script with the `--preview` flag:
 
 ```bash
 ./scripts/version-bump.sh <new_version> --preview
@@ -109,7 +109,7 @@ When the script prompts `Proceed? [y/N]`, confirm by entering `y`.
 
 #### Step 3: Merge Preview to Release Branch
 
-After the version bump PR is merged, create a PR to merge `test-preview` into the preview release branch by running:
+After the version bump PR is merged, create a PR to merge `preview` into the preview release branch by running:
 
 ```bash
 ./scripts/merge-to-release.sh <new_version> --preview
