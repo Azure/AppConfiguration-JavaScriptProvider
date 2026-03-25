@@ -10,8 +10,8 @@
 #   ./scripts/merge-to-release.sh <version> [--preview]
 #
 # Examples:
-#   ./scripts/merge-to-release.sh 2.5.0             # test-main → test-release/stable/v2
-#   ./scripts/merge-to-release.sh 2.5.1-preview --preview  # test-preview → test-release/v2
+#   ./scripts/merge-to-release.sh 2.5.0             # main → release/stable/v2
+#   ./scripts/merge-to-release.sh 2.5.1-preview --preview  # preview → release/v2
 #
 # Prerequisites:
 #   - git and gh (GitHub CLI) must be installed and authenticated
@@ -27,12 +27,12 @@ Usage: $(basename "$0") <version> [--preview]
 
 Arguments:
   version       The version that was just bumped (used to determine major version)
-  --preview     Merge test-preview → test-release/v{major} instead of
-                test-main → test-release/stable/v{major}
+  --preview     Merge preview → release/v{major} instead of
+                main → release/stable/v{major}
 
 Examples:
-  $(basename "$0") 2.5.0                    # test-main → test-release/stable/v2
-  $(basename "$0") 2.5.1-preview --preview  # test-preview → test-release/v2
+  $(basename "$0") 2.5.0                    # main → release/stable/v2
+  $(basename "$0") 2.5.1-preview --preview  # preview → release/v2
 EOF
   exit 1
 }
@@ -84,13 +84,13 @@ fi
 MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
 
 if [[ "$IS_PREVIEW" == true ]]; then
-  SOURCE_BRANCH="test-preview"
-  TARGET_BRANCH="test-release/v${MAJOR_VERSION}"
-  PR_TITLE="Merge test-preview to test-release/v${MAJOR_VERSION}"
+  SOURCE_BRANCH="preview"
+  TARGET_BRANCH="release/v${MAJOR_VERSION}"
+  PR_TITLE="Merge preview to release/v${MAJOR_VERSION}"
 else
-  SOURCE_BRANCH="test-main"
-  TARGET_BRANCH="test-release/stable/v${MAJOR_VERSION}"
-  PR_TITLE="Merge test-main to test-release/stable/v${MAJOR_VERSION}"
+  SOURCE_BRANCH="main"
+  TARGET_BRANCH="release/stable/v${MAJOR_VERSION}"
+  PR_TITLE="Merge main to release/stable/v${MAJOR_VERSION}"
 fi
 
 info "Source branch : $SOURCE_BRANCH"

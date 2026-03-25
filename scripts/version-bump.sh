@@ -11,8 +11,8 @@
 #   ./scripts/version-bump.sh <new_version> [--preview]
 #
 # Examples:
-#   ./scripts/version-bump.sh 2.5.0             # stable release → PR to test-main
-#   ./scripts/version-bump.sh 2.5.1-preview --preview  # preview release → PR to test-preview
+#   ./scripts/version-bump.sh 2.5.0             # stable release → PR to main
+#   ./scripts/version-bump.sh 2.5.1-preview --preview  # preview release → PR to preview
 #
 # Prerequisites:
 #   - git, sed, and gh (GitHub CLI) must be installed and authenticated
@@ -28,11 +28,11 @@ Usage: $(basename "$0") <new_version> [--preview]
 
 Arguments:
   new_version   The version to bump to (e.g. 2.5.0 or 2.5.1-preview)
-  --preview     Target the test-preview branch instead of test-main
+  --preview     Target the preview branch instead of main
 
 Examples:
-  $(basename "$0") 2.5.0                    # stable → PR to test-main
-  $(basename "$0") 2.5.1-preview --preview  # preview → PR to test-preview
+  $(basename "$0") 2.5.0                    # stable → PR to main
+  $(basename "$0") 2.5.1-preview --preview  # preview → PR to preview
 EOF
   exit 1
 }
@@ -96,9 +96,9 @@ PACKAGE_LOCK="$PROJECT_DIR/package-lock.json"
 
 # Determine target branch and branch prefix
 if [[ "$IS_PREVIEW" == true ]]; then
-  TARGET_BRANCH="test-preview"
+  TARGET_BRANCH="preview"
 else
-  TARGET_BRANCH="test-main"
+  TARGET_BRANCH="main"
 fi
 
 # Get git username for branch naming (e.g. "linglingye" from "linglingye/version-2.4.0")
