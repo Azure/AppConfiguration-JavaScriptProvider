@@ -36,7 +36,7 @@ The version must be updated in **all four locations** simultaneously:
 
 ### Version Format
 - **Stable**: `{major}.{minor}.{patch}` (e.g., `2.4.0`)
-- **Preview**: `{major}.{minor}.{patch}-preview` (e.g., `2.4.1-preview`)
+- **Preview**: `{major}.{minor}.{patch}-preview` (e.g., `2.4.2-preview`)
 
 ## Quick Start
 
