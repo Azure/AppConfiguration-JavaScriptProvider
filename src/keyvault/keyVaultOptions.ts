@@ -31,9 +31,9 @@ export interface KeyVaultOptions {
     /**
      * Specifies the callback used to resolve key vault references that have no applied SecretClient.
      * @param keyVaultReference The Key Vault reference to resolve.
-     * @returns The secret value.
+     * @returns The secret value, which can be of any type.
      */
-    secretResolver?: (keyVaultReference: URL) => string | Promise<string>;
+    secretResolver?: (keyVaultReference: URL) => unknown | Promise<unknown>;
 
     /**
      * Specifies whether to resolve the secret value in parallel.
