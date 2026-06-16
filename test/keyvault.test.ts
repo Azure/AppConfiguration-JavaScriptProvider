@@ -142,6 +142,152 @@ describe("key vault reference", function () {
     });
 });
 
+describe("key vault secret request deduplication", function () {
+    afterEach(() => {
+        restoreMocks();
+    });
+
+    function mockDuplicateKeyVaultReferences(count: number, secretUri: string) {
+        const kvs = Array.from({ length: count }, (_, i) =>
+            createMockedKeyVaultReference(`TestKey${i}`, secretUri));
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+        return kvs;
+    }
+
+    it("should issue only one Key Vault request when many settings reference the same secret (sequential mode)", async () => {
+        const secretUri = "https://fake-vault-name.vault.azure.net/secrets/sharedSecret";
+        mockDuplicateKeyVaultReferences(5, secretUri);
+
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const getSecretStub = sinon.stub(client, "getSecret").callsFake(async () => {
+            // small delay to simulate network so concurrent calls would overlap
+            await sleepInMs(10);
+            return { value: "SharedSecretValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client]
+            }
+        });
+
+        expect(getSecretStub.callCount).eq(1);
+        for (let i = 0; i < 5; i++) {
+            expect(settings.get(`TestKey${i}`)).eq("SharedSecretValue");
+        }
+    });
+
+    it("should issue only one Key Vault request when many settings reference the same secret (parallel mode)", async () => {
+        const secretUri = "https://fake-vault-name.vault.azure.net/secrets/sharedSecret";
+        mockDuplicateKeyVaultReferences(5, secretUri);
+
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const getSecretStub = sinon.stub(client, "getSecret").callsFake(async () => {
+            await sleepInMs(10);
+            return { value: "SharedSecretValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(getSecretStub.callCount).eq(1);
+        for (let i = 0; i < 5; i++) {
+            expect(settings.get(`TestKey${i}`)).eq("SharedSecretValue");
+        }
+    });
+
+    it("should invoke secretResolver only once for duplicate references (parallel mode)", async () => {
+        const secretUri = "https://fake-vault-name.vault.azure.net/secrets/sharedSecret";
+        mockDuplicateKeyVaultReferences(4, secretUri);
+
+        const resolverSpy = sinon.spy(async (kvrUrl: URL) => {
+            await sleepInMs(10);
+            return `Resolved::${kvrUrl.toString()}`;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretResolver: resolverSpy,
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(resolverSpy.callCount).eq(1);
+        for (let i = 0; i < 4; i++) {
+            expect(settings.get(`TestKey${i}`)).eq(`Resolved::${secretUri}`);
+        }
+    });
+
+    it("should fetch each version independently when references point to different versions of the same secret", async () => {
+        const baseUri = "https://fake-vault-name.vault.azure.net/secrets/sharedSecret";
+        const v1 = `${baseUri}/version1id`;
+        const v2 = `${baseUri}/version2id`;
+        const kvs = [
+            createMockedKeyVaultReference("TestKeyA", v1),
+            createMockedKeyVaultReference("TestKeyB", v1),
+            createMockedKeyVaultReference("TestKeyC", v2)
+        ];
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const getSecretStub = sinon.stub(client, "getSecret").callsFake(async (_name, options) => {
+            await sleepInMs(10);
+            return { value: `value-${options?.version}` } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(getSecretStub.callCount).eq(2);
+        expect(settings.get("TestKeyA")).eq("value-version1id");
+        expect(settings.get("TestKeyB")).eq("value-version1id");
+        expect(settings.get("TestKeyC")).eq("value-version2id");
+    });
+
+    it("should not cache failures: a follow-up resolution retries the Key Vault request", async () => {
+        const secretUri = "https://fake-vault-name.vault.azure.net/secrets/sharedSecret";
+        mockDuplicateKeyVaultReferences(3, secretUri);
+
+        // Mock the underlying call to fail on the very first batch, succeed on subsequent batches.
+        // The provider performs startup retries on failure; we assert that:
+        //   - within the first batch, 3 concurrent references => 1 call (dedup)
+        //   - the failure is NOT cached: the next batch fires a new call (which succeeds)
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const getSecretStub = sinon.stub(client, "getSecret");
+        getSecretStub.onCall(0).callsFake(async () => {
+            await sleepInMs(10);
+            throw new Error("boom");
+        });
+        getSecretStub.callsFake(async () => {
+            await sleepInMs(10);
+            return { value: "RecoveredValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        // Exactly 2 underlying calls: first batch (deduped, failed), second batch (deduped, succeeded).
+        // If failures were negatively cached, callCount would be 1 and all references would observe the error;
+        // if dedup were missing, callCount would be 3 (or 6) instead.
+        expect(getSecretStub.callCount).eq(2);
+        for (let i = 0; i < 3; i++) {
+            expect(settings.get(`TestKey${i}`)).eq("RecoveredValue");
+        }
+    });
+});
+
 describe("key vault secret refresh", function () {
 
     beforeEach(() => {

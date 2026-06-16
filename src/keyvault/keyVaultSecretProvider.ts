@@ -13,6 +13,7 @@ export class AzureKeyVaultSecretProvider {
     #minSecretRefreshTimer: RefreshTimer;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
+    #inflightRequests: Map<string, Promise<unknown>> = new Map<string, Promise<unknown>>(); // map secret identifier to in-flight fetch promise, used to dedupe concurrent requests
 
     constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
@@ -42,10 +43,23 @@ export class AzureKeyVaultSecretProvider {
                 return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Fallback to fetching the secret value from Key Vault.
-        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-        this.#cachedSecretValues.set(identifierKey, secretValue);
-        return secretValue;
+        // Dedupe concurrent fetches for the same secret: if a request is already in flight,
+        // await the existing promise instead of issuing a new Key Vault call.
+        let pending = this.#inflightRequests.get(identifierKey);
+        if (pending === undefined) {
+            pending = this.#getSecretValueFromKeyVault(secretIdentifier)
+                .then((secretValue) => {
+                    this.#cachedSecretValues.set(identifierKey, secretValue);
+                    return secretValue;
+                })
+                .finally(() => {
+                    // Always remove the in-flight entry so failures are not cached
+                    // and subsequent calls can retry.
+                    this.#inflightRequests.delete(identifierKey);
+                });
+            this.#inflightRequests.set(identifierKey, pending);
+        }
+        return pending;
     }
 
     clearCache(): void {
