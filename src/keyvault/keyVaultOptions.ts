@@ -33,7 +33,7 @@ export interface KeyVaultOptions {
      * @param keyVaultReference The Key Vault reference to resolve.
      * @returns The secret value, which can be of any type.
      */
-    secretResolver?: (keyVaultReference: URL) => unknown | Promise<unknown>;
+    secretResolver?: (keyVaultReference: URL) => any | Promise<any>;
 
     /**
      * Specifies whether to resolve the secret value in parallel.
