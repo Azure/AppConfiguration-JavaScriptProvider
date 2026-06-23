@@ -98,18 +98,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #sentinels: Map<WatchedSetting, SettingWatcher> = new Map();
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
-    #kvRefreshTimer: RefreshTimer;
+    #kvRefreshTimer: RefreshTimer | undefined = undefined;
 
     // Feature flags
     #featureFlagEnabled: boolean = false;
     #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
-    #ffRefreshTimer: RefreshTimer;
+    #ffRefreshTimer: RefreshTimer | undefined = undefined;
 
     // Key Vault references
     #secretRefreshEnabled: boolean = false;
     #secretReferences: ConfigurationSetting[] = []; // cached key vault references
-    #secretRefreshTimer: RefreshTimer;
+    #secretRefreshTimer: RefreshTimer | undefined = undefined;
     #resolveSecretsInParallel: boolean = false;
 
     /**
@@ -126,7 +126,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     constructor(
         clientManager: ConfigurationClientManager,
-        options: AzureAppConfigurationOptions | undefined,
+        options?: AzureAppConfigurationOptions,
     ) {
         this.#options = options;
         this.#clientManager = clientManager;
@@ -415,7 +415,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         postAttempts += 1;
                         backoffDuration = getExponentialBackoffDuration(postAttempts);
                     }
-                    console.warn(`Failed to load. Error message: ${error.message}. Retrying in ${backoffDuration} ms.`);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.warn(`Failed to load. Error message: ${errorMessage}. Retrying in ${backoffDuration} ms.`);
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
                 }
             } while (!abortSignal.aborted);
@@ -690,7 +691,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer.canRefresh()) {
+        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer!.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -699,7 +700,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#loadFeatureFlags();
         }
 
-        this.#ffRefreshTimer.reset();
+        this.#ffRefreshTimer!.reset();
         return Promise.resolve(needRefresh);
     }
 
@@ -728,7 +729,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @returns true if key-value collection has changed, false otherwise.
      */
     async #checkConfigurationSettingsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
@@ -765,7 +766,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Gets a configuration setting by key and label.If the setting is not found, return undefine instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
                 client,
@@ -788,7 +789,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettings(listOptions: ListConfigurationSettingsOptions): Promise<{ items: ConfigurationSetting[]; pageWatchers: SettingWatcher[] }> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageWatchers: SettingWatcher[] = [];
             const pageIterator = listConfigurationSettingsWithTrace(
                 this.#requestTraceOptions,
@@ -808,7 +809,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #getSnapshot(snapshotName: string, getOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return getSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,
@@ -831,7 +832,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettingsForSnapshot(snapshotName: string, listOptions?: ListConfigurationSettingsForSnapshotOptions): Promise<ConfigurationSetting[]> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,

@@ -14,7 +14,7 @@ export class AzureKeyVaultSecretProvider {
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
-    constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
+    constructor(keyVaultOptions?: KeyVaultOptions, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
             if (refreshTimer === undefined) {
                 throw new ArgumentError("Refresh timer must be specified when Key Vault secret refresh is enabled.");
