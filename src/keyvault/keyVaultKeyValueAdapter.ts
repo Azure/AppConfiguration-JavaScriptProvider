@@ -16,7 +16,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     #keyVaultOptions: KeyVaultOptions | undefined;
     #keyVaultSecretProvider: AzureKeyVaultSecretProvider;
 
-    constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
+    constructor(keyVaultOptions?: KeyVaultOptions, refreshTimer?: RefreshTimer) {
         this.#keyVaultOptions = keyVaultOptions;
         this.#keyVaultSecretProvider = new AzureKeyVaultSecretProvider(keyVaultOptions, refreshTimer);
     }
