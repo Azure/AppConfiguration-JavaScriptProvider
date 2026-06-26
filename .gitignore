@@ -397,6 +397,9 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 
+# JetBrains IDE
+.idea/
+
 # bundled folder
 dist/
 dist-esm/
