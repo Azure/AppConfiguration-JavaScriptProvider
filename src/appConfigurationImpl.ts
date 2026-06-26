@@ -750,7 +750,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 for await (const page of pageIterator) {
                     // when conditional request is sent, the response will be 304 if not changed
-                    if (page._response.status === 200) { // created or changed
+                    if (Number(page._response.status) === 200) { // created or changed
                         return true;
                     }
                 }

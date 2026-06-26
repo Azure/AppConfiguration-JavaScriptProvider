@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientListConfigurationSettingsWithStringStatus, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -572,6 +572,48 @@ describe("dynamic refresh feature flags", function () {
         expect(settings.get<any>("feature_management").feature_flags[0].id).eq("Beta");
         expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(false);
 
+    });
+
+    it("should refresh feature flags when page response status is string", async () => {
+        mockedKVs = [
+            createMockedFeatureFlag("Beta", { enabled: true })
+        ];
+        mockAppConfigurationClientListConfigurationSettingsWithStringStatus([mockedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
+
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "Beta"
+                }],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 2000 // 2 seconds for quick test.
+                }
+            }
+        });
+        expect(listKvRequestCount).eq(2); // one listKv request for kvs and one listKv request for feature flags
+        expect(getKvRequestCount).eq(0);
+        expect(settings).not.undefined;
+        expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(true);
+
+        // change feature flag Beta to false
+        updateSetting(".appconfig.featureflag/Beta", JSON.stringify({
+            "id": "Beta",
+            "description": "",
+            "enabled": false,
+            "conditions": {
+                "client_filters": []
+            }
+        }));
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(listKvRequestCount).eq(4); // 2 + 2 more requests: one conditional request to detect change and one request to reload all feature flags
+        expect(getKvRequestCount).eq(0);
+        expect(settings.get<any>("feature_management").feature_flags[0].enabled).eq(false);
     });
 
     it("should refresh feature flags based on page etags, only on change", async () => {

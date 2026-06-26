@@ -63,7 +63,7 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     });
 }
 
-function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSetting[], listOptions: any) {
+function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSetting[], listOptions: any, useStringStatus: boolean = false) {
     const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
         [Symbol.asyncIterator](): AsyncIterableIterator<any> {
             kvs = _filterKVs(pages.flat(), listOptions);
@@ -95,7 +95,7 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
                             value: {
                                 items,
                                 etag,
-                                _response: { status: statusCode }
+                                _response: { status: useStringStatus ? `${statusCode}` : statusCode }
                             }
                         };
                     }
@@ -123,6 +123,18 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
 
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
+    });
+}
+
+function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pages: ConfigurationSetting[][], customCallback?: (listOptions) => any) {
+
+    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
+        const kvs = _filterKVs(pages.flat(), listOptions);
+        return getMockedIterator(pages, kvs, listOptions, true);
     });
 }
 
@@ -323,6 +335,7 @@ class HttpRequestHeadersPolicy {
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
+    mockAppConfigurationClientListConfigurationSettingsWithStringStatus,
     mockAppConfigurationClientGetConfigurationSetting,
     mockAppConfigurationClientGetSnapshot,
     mockAppConfigurationClientListConfigurationSettingsForSnapshot,
