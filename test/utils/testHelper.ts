@@ -6,7 +6,7 @@ import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType, s
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
-import { RestError } from "@azure/core-rest-pipeline";
+import { RestError, PipelineRequest, PipelineResponse, SendRequest } from "@azure/core-rest-pipeline";
 import { ConfigurationClientManager } from "../../src/configurationClientManager.js";
 import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
 
@@ -51,7 +51,7 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
         }
         let tagsMatched = true;
         if (tagsFilter.length > 0) {
-            tagsMatched = tagsFilter.every(tag => {
+            tagsMatched = tagsFilter.every((tag: string) => {
                 const [tagName, tagValue] = tag.split("=");
                 if (tagValue === "\0") {
                     return kv.tags && kv.tags[tagName] === null;
@@ -63,7 +63,7 @@ function _filterKVs(unfilteredKvs: ConfigurationSetting[], listOptions: any) {
     });
 }
 
-function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSetting[], listOptions: any) {
+function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSetting[], listOptions: any, useStringStatus: boolean = false) {
     const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
         [Symbol.asyncIterator](): AsyncIterableIterator<any> {
             kvs = _filterKVs(pages.flat(), listOptions);
@@ -74,7 +74,7 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
             return Promise.resolve({ done: !value, value });
         },
         byPage(): AsyncIterableIterator<any> {
-            let remainingPages;
+            let remainingPages: ConfigurationSetting[][];
             const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined; // a copy of the original list
             return {
                 [Symbol.asyncIterator](): AsyncIterableIterator<any> {
@@ -95,7 +95,7 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
                             value: {
                                 items,
                                 etag,
-                                _response: { status: statusCode }
+                                _response: { status: useStringStatus ? `${statusCode}` : statusCode }
                             }
                         };
                     }
@@ -114,7 +114,7 @@ function getMockedIterator(pages: ConfigurationSetting[][], kvs: ConfigurationSe
  *
  * @param pages List of pages, each page is a list of ConfigurationSetting
  */
-function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions) => any) {
+function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
 
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
@@ -123,6 +123,18 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
 
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
+    });
+}
+
+function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
+
+    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
+        const kvs = _filterKVs(pages.flat(), listOptions);
+        return getMockedIterator(pages, kvs, listOptions, true);
     });
 }
 
@@ -163,7 +175,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
     });
 }
 
-function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], customCallback?: (options) => any) {
+function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], customCallback?: (options: any) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         if (customCallback) {
             customCallback(options);
@@ -182,7 +194,7 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], custom
     });
 }
 
-function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options) => any) {
+function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options: any) => any) {
     sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
         if (customCallback) {
             customCallback(options);
@@ -196,7 +208,7 @@ function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, an
     });
 }
 
-function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options) => any) {
+function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options: any) => any) {
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
@@ -218,7 +230,7 @@ function mockSecretClientGetSecret(uriValueList: [string, string][]) {
         dict.set(uri, value);
     }
 
-    sinon.stub(SecretClient.prototype, "getSecret").callsFake(async function (secretName, options) {
+    sinon.stub(SecretClient.prototype, "getSecret").callsFake(async function (this: SecretClient, secretName, options) {
         const url = new URL(this.vaultUrl);
         url.pathname = `/secrets/${secretName}`;
         if (options?.version) {
@@ -314,7 +326,7 @@ class HttpRequestHeadersPolicy {
         this.headers = {};
         this.name = "HttpRequestHeadersPolicy";
     }
-    sendRequest(req, next) {
+    sendRequest(req: PipelineRequest, next: SendRequest): Promise<PipelineResponse> {
         this.headers = req.headers;
         return next(req).then(resp => resp);
     }
@@ -323,6 +335,7 @@ class HttpRequestHeadersPolicy {
 export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
+    mockAppConfigurationClientListConfigurationSettingsWithStringStatus,
     mockAppConfigurationClientGetConfigurationSetting,
     mockAppConfigurationClientGetSnapshot,
     mockAppConfigurationClientListConfigurationSettingsForSnapshot,
