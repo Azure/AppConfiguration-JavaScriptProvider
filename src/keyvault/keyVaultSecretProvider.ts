@@ -13,6 +13,7 @@ export class AzureKeyVaultSecretProvider {
     #minSecretRefreshTimer: RefreshTimer;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
+    #inflightRequests: Map<string, Promise<unknown>> = new Map<string, Promise<unknown>>(); // map secret identifier to in-flight Key Vault request
 
     constructor(keyVaultOptions?: KeyVaultOptions, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
@@ -42,10 +43,21 @@ export class AzureKeyVaultSecretProvider {
                 return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Fallback to fetching the secret value from Key Vault.
-        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-        this.#cachedSecretValues.set(identifierKey, secretValue);
-        return secretValue;
+        // Deduplicate concurrent requests for the same secret: if a request is already in-flight, await it.
+        let pendingRequest = this.#inflightRequests.get(identifierKey);
+        if (pendingRequest === undefined) {
+            pendingRequest = this.#getSecretValueFromKeyVault(secretIdentifier)
+                .then((secretValue) => {
+                    this.#cachedSecretValues.set(identifierKey, secretValue);
+                    return secretValue;
+                })
+                .finally(() => {
+                    // Failures are not cached so subsequent calls can retry.
+                    this.#inflightRequests.delete(identifierKey);
+                });
+            this.#inflightRequests.set(identifierKey, pendingRequest);
+        }
+        return pendingRequest;
     }
 
     clearCache(): void {
