@@ -9,11 +9,9 @@ import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
-    #secretRefreshTimer: RefreshTimer | undefined;
     #minSecretRefreshTimer: RefreshTimer;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
-    #inflightRequests: Map<string, Promise<unknown>> = new Map<string, Promise<unknown>>(); // map secret identifier to in-flight Key Vault request
 
     constructor(keyVaultOptions?: KeyVaultOptions, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
@@ -25,7 +23,6 @@ export class AzureKeyVaultSecretProvider {
             }
         }
         this.#keyVaultOptions = keyVaultOptions;
-        this.#secretRefreshTimer = refreshTimer;
         this.#minSecretRefreshTimer = new RefreshTimer(MIN_SECRET_REFRESH_INTERVAL_IN_MS);
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
@@ -37,27 +34,17 @@ export class AzureKeyVaultSecretProvider {
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
 
-        // If the refresh interval is not expired, return the cached value if available.
-        if (this.#cachedSecretValues.has(identifierKey) &&
-            (!this.#secretRefreshTimer || !this.#secretRefreshTimer.canRefresh())) {
-                return this.#cachedSecretValues.get(identifierKey);
+        // Return the cached value if available. The cache is invalidated externally (on secret refresh
+        // or when a key-value change is detected) so a stale value is never served.
+        if (this.#cachedSecretValues.has(identifierKey)) {
+            return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Deduplicate concurrent requests for the same secret: if a request is already in-flight, await it.
-        let pendingRequest = this.#inflightRequests.get(identifierKey);
-        if (pendingRequest === undefined) {
-            pendingRequest = this.#getSecretValueFromKeyVault(secretIdentifier)
-                .then((secretValue) => {
-                    this.#cachedSecretValues.set(identifierKey, secretValue);
-                    return secretValue;
-                })
-                .finally(() => {
-                    // Failures are not cached so subsequent calls can retry.
-                    this.#inflightRequests.delete(identifierKey);
-                });
-            this.#inflightRequests.set(identifierKey, pendingRequest);
-        }
-        return pendingRequest;
+        // Fetch the secret value from Key Vault and cache it. Failures are not cached, so a subsequent
+        // call will retry.
+        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+        this.#cachedSecretValues.set(identifierKey, secretValue);
+        return secretValue;
     }
 
     clearCache(): void {

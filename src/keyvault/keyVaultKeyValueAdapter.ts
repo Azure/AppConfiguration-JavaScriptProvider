@@ -49,6 +49,28 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         }
     }
 
+    /**
+     * Returns the normalized Key Vault secret identifier (sourceId) for a secret reference setting,
+     * or undefined if the reference cannot be parsed. Used to deduplicate references that resolve to
+     * the same secret before resolving them.
+     */
+    getSecretReferenceId(setting: ConfigurationSetting): string | undefined {
+        try {
+            return parseKeyVaultSecretIdentifier(
+                parseSecretReference(setting).value.secretId
+            ).sourceId;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Clears the cached secret values, throttled by the minimum secret refresh interval.
+     */
+    clearCache(): void {
+        this.#keyVaultSecretProvider.clearCache();
+    }
+
     async onChangeDetected(): Promise<void> {
         this.#keyVaultSecretProvider.clearCache();
         return;

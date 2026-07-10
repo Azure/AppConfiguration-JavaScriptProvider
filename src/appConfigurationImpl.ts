@@ -111,6 +111,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #secretReferences: ConfigurationSetting[] = []; // cached key vault references
     #secretRefreshTimer: RefreshTimer | undefined = undefined;
     #resolveSecretsInParallel: boolean = false;
+    #keyVaultAdapter: AzureKeyVaultKeyValueAdapter;
 
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
@@ -204,7 +205,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             }
             this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled ?? false;
         }
-        this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
+        this.#keyVaultAdapter = new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer);
+        this.#adapters.push(this.#keyVaultAdapter);
         this.#adapters.push(new JsonKeyValueAdapter());
     }
 
@@ -715,6 +717,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
+        // Invalidate cached secret values so the refresh round re-fetches them from Key Vault.
+        this.#keyVaultAdapter.clearCache();
         await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
             this.#configMap.set(key, value);
         });
@@ -895,22 +899,30 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
     async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
         if (this.#resolveSecretsInParallel) {
-            const secretResolutionPromises: Promise<void>[] = [];
+            // Preload phase: resolve each unique secret exactly once, in parallel, to warm the cache.
+            // References that resolve to the same secret identifier are deduplicated so that only a
+            // single Key Vault request is issued per unique secret.
+            const seenSecretIds = new Set<string>();
+            const uniqueSecretReferences: ConfigurationSetting[] = [];
             for (const setting of secretReferences) {
-                const secretResolutionPromise = this.#processKeyValue(setting)
-                    .then(([key, value]) => {
-                        resultHandler(key, value);
-                    });
-                secretResolutionPromises.push(secretResolutionPromise);
+                const secretId = this.#keyVaultAdapter.getSecretReferenceId(setting);
+                if (secretId === undefined) {
+                    // The reference cannot be parsed; resolve it individually so the appropriate error
+                    // is surfaced when it is processed below.
+                    uniqueSecretReferences.push(setting);
+                } else if (!seenSecretIds.has(secretId)) {
+                    seenSecretIds.add(secretId);
+                    uniqueSecretReferences.push(setting);
+                }
             }
+            await Promise.all(uniqueSecretReferences.map(setting => this.#processKeyValue(setting)));
+        }
 
-            // Wait for all secret resolution promises to be resolved
-            await Promise.all(secretResolutionPromises);
-        } else {
-            for (const setting of secretReferences) {
-                const [key, value] = await this.#processKeyValue(setting);
-                resultHandler(key, value);
-            }
+        // Resolve every reference. In parallel mode the values are served from the warmed cache
+        // without any additional I/O.
+        for (const setting of secretReferences) {
+            const [key, value] = await this.#processKeyValue(setting);
+            resultHandler(key, value);
         }
     }
 
