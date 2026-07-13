@@ -50,25 +50,29 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
     }
 
     /**
-     * Returns the normalized Key Vault secret identifier (sourceId) for a secret reference setting,
-     * or undefined if the reference cannot be parsed. Used to deduplicate references that resolve to
-     * the same secret before resolving them.
+     * Deduplicates secret references by their normalized secret identifier (sourceId) and preloads each
+     * unique secret exactly once, warming the cache so that processKeyValue only reads from it.
+     * Best-effort: unparseable references are skipped and re-surfaced by processKeyValue with full context.
      */
-    getSecretReferenceId(setting: ConfigurationSetting): string | undefined {
-        try {
-            return parseKeyVaultSecretIdentifier(
-                parseSecretReference(setting).value.secretId
-            ).sourceId;
-        } catch {
-            return undefined;
+    async preload(settings: ConfigurationSetting[]): Promise<void> {
+        if (!this.#keyVaultOptions) {
+            return; // nothing to do; processKeyValue will throw the proper ArgumentError
         }
-    }
-
-    /**
-     * Clears the cached secret values, throttled by the minimum secret refresh interval.
-     */
-    clearCache(): void {
-        this.#keyVaultSecretProvider.clearCache();
+        const uniqueSecretIdentifiers = new Map<string, KeyVaultSecretIdentifier>();
+        for (const setting of settings) {
+            if (!this.canProcess(setting)) {
+                continue;
+            }
+            try {
+                const secretIdentifier = parseKeyVaultSecretIdentifier(
+                    parseSecretReference(setting).value.secretId
+                );
+                uniqueSecretIdentifiers.set(secretIdentifier.sourceId, secretIdentifier); // dedup by sourceId
+            } catch {
+                // Skip invalid references; processKeyValue re-parses and raises KeyVaultReferenceError with context.
+            }
+        }
+        await this.#keyVaultSecretProvider.preloadSecrets([...uniqueSecretIdentifiers.values()]);
     }
 
     async onChangeDetected(): Promise<void> {

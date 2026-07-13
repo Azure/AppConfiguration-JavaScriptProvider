@@ -9,6 +9,7 @@ import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
+    #secretRefreshTimer: RefreshTimer | undefined;
     #minSecretRefreshTimer: RefreshTimer;
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
@@ -23,6 +24,7 @@ export class AzureKeyVaultSecretProvider {
             }
         }
         this.#keyVaultOptions = keyVaultOptions;
+        this.#secretRefreshTimer = refreshTimer;
         this.#minSecretRefreshTimer = new RefreshTimer(MIN_SECRET_REFRESH_INTERVAL_IN_MS);
         this.#secretClients = new Map();
         for (const client of this.#keyVaultOptions?.secretClients ?? []) {
@@ -31,17 +33,53 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
+    /**
+     * Fetches the given unique secrets ahead of resolution to warm the cache. Honors the secret refresh
+     * timer and the parallel resolution option. This is best-effort: per-secret failures are swallowed so
+     * that the error is surfaced with full context later by getSecretValue during resolution.
+     */
+    async preloadSecrets(secretIdentifiers: KeyVaultSecretIdentifier[]): Promise<void> {
+        const loadSecret = async (secretIdentifier: KeyVaultSecretIdentifier) => {
+            try {
+                await this.#loadSecretValue(secretIdentifier);
+            } catch {
+                // Leave uncached; getSecretValue re-fetches and surfaces the error during resolution.
+            }
+        };
+
+        if (this.#keyVaultOptions?.parallelSecretResolutionEnabled) {
+            await Promise.all(secretIdentifiers.map(loadSecret));
+        } else {
+            for (const secretIdentifier of secretIdentifiers) {
+                await loadSecret(secretIdentifier);
+            }
+        }
+    }
+
+    /**
+     * Fetches a secret value into the cache if it is not cached yet, or if the secret refresh interval has
+     * expired. This is the only place the refresh timer gates a fetch.
+     */
+    async #loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<void> {
+        const identifierKey = secretIdentifier.sourceId;
+        const shouldRefresh = this.#secretRefreshTimer?.canRefresh() ?? false;
+        if (this.#cachedSecretValues.has(identifierKey) && !shouldRefresh) {
+            return; // already cached and still fresh
+        }
+        this.#cachedSecretValues.set(identifierKey, await this.#getSecretValueFromKeyVault(secretIdentifier));
+    }
+
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
 
-        // Return the cached value if available. The cache is invalidated externally (on secret refresh
-        // or when a key-value change is detected) so a stale value is never served.
+        // Return the cached value if available. Freshness is handled by preloadSecrets, which warms the
+        // cache before resolution.
         if (this.#cachedSecretValues.has(identifierKey)) {
             return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Fetch the secret value from Key Vault and cache it. Failures are not cached, so a subsequent
-        // call will retry.
+        // Fallback for secrets that preload skipped or failed to fetch. Failures are not cached, so a
+        // subsequent call will retry.
         const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
         this.#cachedSecretValues.set(identifierKey, secretValue);
         return secretValue;

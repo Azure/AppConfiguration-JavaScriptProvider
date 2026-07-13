@@ -241,12 +241,12 @@ describe("key vault reference deduplication", function () {
         expect(settings.get("TestKeyVersioned")).eq("VersionedValue");
     });
 
-    it("should not cache failures and retry on a subsequent attempt", async () => {
+    it("should recover and not cache the failure when preload fails to fetch a secret", async () => {
         mockDuplicateReferences();
         const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
         const stub = sinon.stub(client, "getSecret");
-        // The first (deduplicated) request rejects; the retry attempt succeeds.
-        // If the failure were cached, the retry would never succeed.
+        // The preload fetch (best-effort) rejects and must not be cached; the on-demand resolution then
+        // recovers by re-fetching successfully.
         stub.onCall(0).callsFake(async () => {
             await sleepInMs(100);
             throw new Error("Key Vault unavailable");
@@ -262,11 +262,67 @@ describe("key vault reference deduplication", function () {
             }
         });
 
-        // First round: 5 concurrent references deduped to a single failing request.
-        // Second round (after load retry): a single succeeding request.
-        expect(stub.callCount).eq(2);
+        // The failed preload is not cached, so all references still resolve successfully.
         for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
             expect(settings.get(key)).eq("SecretValue");
+        }
+    });
+
+    it("should re-fetch once per unique secret on a key-value change reload", async () => {
+        const sentinelEtag = "sentinel-etag";
+        const kvs = [
+            ...["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"].map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
+            createMockedKeyValue({ key: "sentinel", value: "v1", etag: sentinelEtag })
+        ];
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+        mockAppConfigurationClientGetConfigurationSetting(kvs);
+
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        let callCount = 0;
+        sinon.stub(client, "getSecret").callsFake(async () => {
+            callCount++;
+            await sleepInMs(100);
+            return { value: `SecretValue-${callCount}` } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 1000,
+                watchedSettings: [{ key: "sentinel" }]
+            },
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+        // Initial load resolves the duplicates with a single request.
+        expect(callCount).eq(1);
+
+        // Wait past the min secret refresh interval so the key-value change reload re-fetches secrets.
+        await sleepInMs(60_000 + 100);
+
+        // Trigger a key-value change reload by changing the sentinel.
+        const updatedKvs = [
+            ...["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"].map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
+            createMockedKeyValue({ key: "sentinel", value: "v2", etag: "sentinel-etag-2" })
+        ];
+        restoreMocks();
+        mockAppConfigurationClientListConfigurationSettings([updatedKvs]);
+        mockAppConfigurationClientGetConfigurationSetting(updatedKvs);
+        let reloadCallCount = 0;
+        sinon.stub(client, "getSecret").callsFake(async () => {
+            reloadCallCount++;
+            await sleepInMs(100);
+            return { value: "SecretValue-reloaded" } as KeyVaultSecret;
+        });
+
+        await settings.refresh();
+
+        // The key-value change reload clears the cache and re-fetches, but only once for the unique secret.
+        expect(reloadCallCount).eq(1);
+        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
+            expect(settings.get(key)).eq("SecretValue-reloaded");
         }
     });
 
