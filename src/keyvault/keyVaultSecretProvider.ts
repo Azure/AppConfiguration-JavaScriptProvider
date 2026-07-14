@@ -33,11 +33,7 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
-    /**
-     * Fetches the given unique secrets ahead of resolution to warm the cache. Honors the secret refresh
-     * timer and the parallel resolution option. This is best-effort: per-secret failures are swallowed so
-     * that the error is surfaced with full context later by getSecretValue during resolution.
-     */
+    // Fetches the given unique secrets to warm the cache.
     async preloadSecrets(secretIdentifiers: KeyVaultSecretIdentifier[]): Promise<void> {
         const loadSecret = async (secretIdentifier: KeyVaultSecretIdentifier) => {
             try {
@@ -56,10 +52,6 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
-    /**
-     * Fetches a secret value into the cache if it is not cached yet, or if the secret refresh interval has
-     * expired. This is the only place the refresh timer gates a fetch.
-     */
     async #loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<void> {
         const identifierKey = secretIdentifier.sourceId;
         const shouldRefresh = this.#secretRefreshTimer?.canRefresh() ?? false;
@@ -71,15 +63,11 @@ export class AzureKeyVaultSecretProvider {
 
     async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
-
-        // Return the cached value if available. Freshness is handled by preloadSecrets, which warms the
-        // cache before resolution.
         if (this.#cachedSecretValues.has(identifierKey)) {
             return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Fallback for secrets that preload skipped or failed to fetch. Failures are not cached, so a
-        // subsequent call will retry.
+        // Fallback for secrets that preload skipped or failed to fetch.
         const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
         this.#cachedSecretValues.set(identifierKey, secretValue);
         return secretValue;

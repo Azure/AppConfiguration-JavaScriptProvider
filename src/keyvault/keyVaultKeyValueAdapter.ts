@@ -49,11 +49,6 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         }
     }
 
-    /**
-     * Deduplicates secret references by their normalized secret identifier (sourceId) and preloads each
-     * unique secret exactly once, warming the cache so that processKeyValue only reads from it.
-     * Best-effort: unparseable references are skipped and re-surfaced by processKeyValue with full context.
-     */
     async preload(settings: ConfigurationSetting[]): Promise<void> {
         if (!this.#keyVaultOptions) {
             return; // nothing to do; processKeyValue will throw the proper ArgumentError
