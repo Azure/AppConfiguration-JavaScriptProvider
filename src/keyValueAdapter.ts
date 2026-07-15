@@ -22,5 +22,5 @@ export interface IKeyValueAdapter {
     /**
      * This method is called when a change is detected in the configuration setting.
      */
-    onChangeDetected(): Promise<void>;
+    onChangeDetected?(): Promise<void>;
 }

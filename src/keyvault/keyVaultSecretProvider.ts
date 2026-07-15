@@ -33,26 +33,7 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
-    // Fetches the given unique secrets to warm the cache.
-    async preloadSecrets(secretIdentifiers: KeyVaultSecretIdentifier[]): Promise<void> {
-        const loadSecret = async (secretIdentifier: KeyVaultSecretIdentifier) => {
-            try {
-                await this.#loadSecretValue(secretIdentifier);
-            } catch {
-                // Leave uncached; getSecretValue re-fetches and surfaces the error during resolution.
-            }
-        };
-
-        if (this.#keyVaultOptions?.parallelSecretResolutionEnabled) {
-            await Promise.all(secretIdentifiers.map(loadSecret));
-        } else {
-            for (const secretIdentifier of secretIdentifiers) {
-                await loadSecret(secretIdentifier);
-            }
-        }
-    }
-
-    async #loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<void> {
+    async loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<void> {
         const identifierKey = secretIdentifier.sourceId;
         const shouldRefresh = this.#secretRefreshTimer?.canRefresh() ?? false;
         if (this.#cachedSecretValues.has(identifierKey) && !shouldRefresh) {
@@ -67,10 +48,9 @@ export class AzureKeyVaultSecretProvider {
             return this.#cachedSecretValues.get(identifierKey);
         }
 
-        // Fallback for secrets that preload skipped or failed to fetch.
-        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
-        this.#cachedSecretValues.set(identifierKey, secretValue);
-        return secretValue;
+        // Fallback for secrets that preload skipped or failed to fetch. loadSecretValue populates the cache.
+        await this.loadSecretValue(secretIdentifier);
+        return this.#cachedSecretValues.get(identifierKey);
     }
 
     clearCache(): void {

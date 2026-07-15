@@ -110,7 +110,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #secretRefreshEnabled: boolean = false;
     #secretReferences: ConfigurationSetting[] = []; // cached key vault references
     #secretRefreshTimer: RefreshTimer | undefined = undefined;
-    #resolveSecretsInParallel: boolean = false;
 
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
@@ -202,7 +201,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
             }
-            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled ?? false;
         }
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
         this.#adapters.push(new JsonKeyValueAdapter());
@@ -558,23 +556,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
+        for (const adapter of this.#adapters) {
+            await adapter.preload?.(loadedSettings.filter(s => adapter.canProcess(s))); // dedup and warm the secret cache
+        }
+
         for (const setting of loadedSettings) {
             if (isSecretReference(setting)) {
                 this.#secretReferences.push(setting); // cache secret references for resolve/refresh secret separately
-                continue;
             }
             // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
-        }
-
-        if (this.#secretReferences.length > 0) {
-            for (const adapter of this.#adapters) {
-                await adapter.preload?.(this.#secretReferences); // dedup and warm the secret cache
-            }
-            await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
-                keyValues.push([key, value]);
-            });
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -674,7 +666,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (needRefresh) {
             for (const adapter of this.#adapters) {
-                await adapter.onChangeDetected();
+                await adapter.onChangeDetected?.();
             }
             await this.#loadSelectedKeyValues();
 
@@ -718,12 +710,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        for (const adapter of this.#adapters) {
-            await adapter.preload?.(this.#secretReferences); // dedup and warm the secret cache
+        const keyVaultRefAdapter = this.#adapters.find(adapter => adapter instanceof AzureKeyVaultKeyValueAdapter) as AzureKeyVaultKeyValueAdapter | undefined;
+        if (keyVaultRefAdapter) {
+            // dedup and warm the secret cache
+            await keyVaultRefAdapter.preload(this.#secretReferences);
         }
-        await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
+
+        for (const setting of this.#secretReferences) {
+            const [key, value] = await this.#processKeyValue(setting);
             this.#configMap.set(key, value);
-        });
+        }
 
         this.#secretRefreshTimer.reset();
         return Promise.resolve(true);
@@ -897,27 +893,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         this.#clientManager.refreshClients();
         throw new Error(ErrorMessages.ALL_FALLBACK_CLIENTS_FAILED);
-    }
-
-    async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
-        if (this.#resolveSecretsInParallel) {
-            const secretResolutionPromises: Promise<void>[] = [];
-            for (const setting of secretReferences) {
-                const secretResolutionPromise = this.#processKeyValue(setting)
-                    .then(([key, value]) => {
-                        resultHandler(key, value);
-                    });
-                secretResolutionPromises.push(secretResolutionPromise);
-            }
-
-            // Wait for all secret resolution promises to be resolved
-            await Promise.all(secretResolutionPromises);
-        } else {
-            for (const setting of secretReferences) {
-                const [key, value] = await this.#processKeyValue(setting);
-                resultHandler(key, value);
-            }
-        }
     }
 
     async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {

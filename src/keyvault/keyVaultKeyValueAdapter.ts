@@ -51,7 +51,7 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
 
     async preload(settings: ConfigurationSetting[]): Promise<void> {
         if (!this.#keyVaultOptions) {
-            return; // nothing to do; processKeyValue will throw the proper ArgumentError
+            return; // no-op when keyVaultOptions is not configured
         }
         const uniqueSecretIdentifiers = new Map<string, KeyVaultSecretIdentifier>();
         for (const setting of settings) {
@@ -67,7 +67,22 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
                 // Skip invalid references; processKeyValue re-parses and raises KeyVaultReferenceError with context.
             }
         }
-        await this.#keyVaultSecretProvider.preloadSecrets([...uniqueSecretIdentifiers.values()]);
+
+        const loadSecret = async (secretIdentifier: KeyVaultSecretIdentifier) => {
+            try {
+                await this.#keyVaultSecretProvider.loadSecretValue(secretIdentifier);
+            } catch {
+                // Leave uncached; getSecretValue re-fetches and surfaces the error during resolution.
+            }
+        };
+
+        if (this.#keyVaultOptions?.parallelSecretResolutionEnabled) {
+            await Promise.all([...uniqueSecretIdentifiers.values()].map(loadSecret));
+        } else {
+            for (const secretIdentifier of uniqueSecretIdentifiers.values()) {
+                await loadSecret(secretIdentifier);
+            }
+        }
     }
 
     async onChangeDetected(): Promise<void> {
