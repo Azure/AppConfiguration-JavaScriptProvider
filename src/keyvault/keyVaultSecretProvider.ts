@@ -3,9 +3,11 @@
 
 import { KeyVaultOptions, MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyVaultOptions.js";
 import { RefreshTimer } from "../refresh/refreshTimer.js";
-import { ArgumentError } from "../common/errors.js";
+import { ArgumentError, KeyVaultReferenceError } from "../common/errors.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
-import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
+import { KeyVaultReferenceErrorMessages, buildKeyVaultReferenceErrorMessage } from "../common/errorMessages.js";
+import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
@@ -33,18 +35,32 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
-    async loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<void> {
+    async loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
         const shouldRefresh = this.#secretRefreshTimer?.canRefresh() ?? false;
         if (this.#cachedSecretValues.has(identifierKey) && !shouldRefresh) {
-            return; // already cached and still fresh
+            return this.#cachedSecretValues.get(identifierKey); // already cached and still fresh
         }
-        this.#cachedSecretValues.set(identifierKey, await this.#getSecretValueFromKeyVault(secretIdentifier));
+        let secretValue: unknown;
+        try {
+            secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+        } catch (error) {
+            if (isRestError(error) || error instanceof AuthenticationError) {
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", secretIdentifier.sourceId), { cause: error });
+            }
+            throw error;
+        }
+        this.#cachedSecretValues.set(identifierKey, secretValue);
+        return secretValue;
     }
 
-    // Reads a secret value that was fetched into the cache during preload. All network I/O happens in preload.
-    getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): unknown {
-        return this.#cachedSecretValues.get(secretIdentifier.sourceId);
+    // Serves the secret value from cache when available; otherwise loads it from Key Vault on demand.
+    async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
+        const identifierKey = secretIdentifier.sourceId;
+        if (this.#cachedSecretValues.has(identifierKey)) {
+            return this.#cachedSecretValues.get(identifierKey); // serve from cache
+        }
+        return this.loadSecretValue(secretIdentifier); // fallback: load on demand
     }
 
     clearCache(): void {
