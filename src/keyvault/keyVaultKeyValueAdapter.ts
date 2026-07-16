@@ -29,58 +29,56 @@ export class AzureKeyVaultKeyValueAdapter implements IKeyValueAdapter {
         if (!this.#keyVaultOptions) {
             throw new ArgumentError(KeyVaultReferenceErrorMessages.KEY_VAULT_OPTIONS_UNDEFINED);
         }
-        let secretIdentifier: KeyVaultSecretIdentifier;
-        try {
-            secretIdentifier = parseKeyVaultSecretIdentifier(
-                parseSecretReference(setting).value.secretId
-            );
-        } catch (error) {
-            throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Invalid Key Vault reference.", setting), { cause: error });
-        }
-
-        try {
-            const secretValue = await this.#keyVaultSecretProvider.getSecretValue(secretIdentifier);
-            return [setting.key, secretValue];
-        } catch (error) {
-            if (isRestError(error) || error instanceof AuthenticationError) {
-                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, secretIdentifier.sourceId), { cause: error });
-            }
-            throw error;
-        }
+        // Secret references are parsed, validated and resolved during preload; here we only read the
+        // cached value. Parsing is guaranteed to succeed because preload runs first.
+        const secretIdentifier = parseKeyVaultSecretIdentifier(
+            parseSecretReference(setting).value.secretId
+        );
+        const secretValue = this.#keyVaultSecretProvider.getSecretValue(secretIdentifier);
+        return [setting.key, secretValue];
     }
 
     async preload(settings: ConfigurationSetting[]): Promise<void> {
         if (!this.#keyVaultOptions) {
             return; // no-op when keyVaultOptions is not configured
         }
-        const uniqueSecretIdentifiers = new Map<string, KeyVaultSecretIdentifier>();
+        // Deduplicate references by secret identifier (sourceId)
+        // ConfigurationSetting is for Key Vault reference error building.
+        const uniqueSecrets = new Map<string, { secretIdentifier: KeyVaultSecretIdentifier; setting: ConfigurationSetting }>();
         for (const setting of settings) {
             if (!this.canProcess(setting)) {
                 continue;
             }
+            let secretIdentifier: KeyVaultSecretIdentifier;
             try {
-                const secretIdentifier = parseKeyVaultSecretIdentifier(
+                secretIdentifier = parseKeyVaultSecretIdentifier(
                     parseSecretReference(setting).value.secretId
                 );
-                uniqueSecretIdentifiers.set(secretIdentifier.sourceId, secretIdentifier); // dedup by sourceId
-            } catch {
-                // Skip invalid references; processKeyValue re-parses and raises KeyVaultReferenceError with context.
+            } catch (error) {
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Invalid Key Vault reference.", setting), { cause: error });
+            }
+            if (!uniqueSecrets.has(secretIdentifier.sourceId)) {
+                uniqueSecrets.set(secretIdentifier.sourceId, { secretIdentifier, setting });
             }
         }
 
-        const loadSecret = async (secretIdentifier: KeyVaultSecretIdentifier) => {
+        const loadSecret = async ({ secretIdentifier, setting }: { secretIdentifier: KeyVaultSecretIdentifier; setting: ConfigurationSetting }) => {
             try {
                 await this.#keyVaultSecretProvider.loadSecretValue(secretIdentifier);
-            } catch {
-                // Leave uncached; getSecretValue re-fetches and surfaces the error during resolution.
+            } catch (error) {
+                if (isRestError(error) || error instanceof AuthenticationError) {
+                    throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", setting, secretIdentifier.sourceId), { cause: error });
+                }
+                throw error;
             }
         };
 
-        if (this.#keyVaultOptions?.parallelSecretResolutionEnabled) {
-            await Promise.all([...uniqueSecretIdentifiers.values()].map(loadSecret));
+        const uniqueSecretEntries = [...uniqueSecrets.values()];
+        if (this.#keyVaultOptions.parallelSecretResolutionEnabled) {
+            await Promise.all(uniqueSecretEntries.map(loadSecret));
         } else {
-            for (const secretIdentifier of uniqueSecretIdentifiers.values()) {
-                await loadSecret(secretIdentifier);
+            for (const entry of uniqueSecretEntries) {
+                await loadSecret(entry);
             }
         }
     }

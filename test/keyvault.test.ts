@@ -269,20 +269,21 @@ describe("key vault reference deduplication", function () {
     });
 
     it("should re-fetch once per unique secret on a key-value change reload", async () => {
-        const sentinelEtag = "sentinel-etag";
-        const kvs = [
-            ...["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"].map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
-            createMockedKeyValue({ key: "sentinel", value: "v1", etag: sentinelEtag })
+        const secretKeys = ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"];
+        // Mutable page so the sentinel can change without re-stubbing (which would tear down the fake clock).
+        const kvPage = [
+            ...secretKeys.map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
+            createMockedKeyValue({ key: "sentinel", value: "v1", etag: "sentinel-etag-1" })
         ];
-        mockAppConfigurationClientListConfigurationSettings([kvs]);
-        mockAppConfigurationClientGetConfigurationSetting(kvs);
+        mockAppConfigurationClientListConfigurationSettings([kvPage]);
+        mockAppConfigurationClientGetConfigurationSetting(kvPage);
 
         const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        let secretValue = "SecretValue-initial";
         let callCount = 0;
         sinon.stub(client, "getSecret").callsFake(async () => {
             callCount++;
-            await sleepInMs(100);
-            return { value: `SecretValue-${callCount}` } as KeyVaultSecret;
+            return { value: secretValue } as KeyVaultSecret;
         });
 
         const settings = await load(createMockedConnectionString(), {
@@ -299,30 +300,26 @@ describe("key vault reference deduplication", function () {
         // Initial load resolves the duplicates with a single request.
         expect(callCount).eq(1);
 
-        // Wait past the min secret refresh interval so the key-value change reload re-fetches secrets.
-        await sleepInMs(60_000 + 100);
+        // Install the fake clock seeded with the current time so the refresh timers (created during load) stay consistent.
+        const clock = sinon.useFakeTimers({ now: Date.now() });
+        try {
+            // Advance past the min secret refresh interval so the key-value change reload clears the cache.
+            await clock.tickAsync(60_000 + 100);
 
-        // Trigger a key-value change reload by changing the sentinel.
-        const updatedKvs = [
-            ...["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"].map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
-            createMockedKeyValue({ key: "sentinel", value: "v2", etag: "sentinel-etag-2" })
-        ];
-        restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings([updatedKvs]);
-        mockAppConfigurationClientGetConfigurationSetting(updatedKvs);
-        let reloadCallCount = 0;
-        sinon.stub(client, "getSecret").callsFake(async () => {
-            reloadCallCount++;
-            await sleepInMs(100);
-            return { value: "SecretValue-reloaded" } as KeyVaultSecret;
-        });
+            // Change the watched sentinel (new etag) and the secret value in place to trigger a reload.
+            kvPage[kvPage.length - 1] = createMockedKeyValue({ key: "sentinel", value: "v2", etag: "sentinel-etag-2" });
+            secretValue = "SecretValue-reloaded";
+            const callCountBeforeReload = callCount;
 
-        await settings.refresh();
+            await settings.refresh();
 
-        // The key-value change reload clears the cache and re-fetches, but only once for the unique secret.
-        expect(reloadCallCount).eq(1);
-        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
-            expect(settings.get(key)).eq("SecretValue-reloaded");
+            // The key-value change reload clears the cache and re-fetches, but only once for the unique secret.
+            expect(callCount - callCountBeforeReload).eq(1);
+            for (const key of secretKeys) {
+                expect(settings.get(key)).eq("SecretValue-reloaded");
+            }
+        } finally {
+            clock.restore();
         }
     });
 
@@ -332,7 +329,6 @@ describe("key vault reference deduplication", function () {
         let callCount = 0;
         sinon.stub(client, "getSecret").callsFake(async () => {
             callCount++;
-            await sleepInMs(100);
             return { value: `SecretValue-${callCount}` } as KeyVaultSecret;
         });
 
@@ -347,9 +343,14 @@ describe("key vault reference deduplication", function () {
         expect(callCount).eq(1);
         expect(settings.get("TestKey1")).eq("SecretValue-1");
 
-        // After the secret refresh interval elapses, the refresh round re-fetches once.
-        await sleepInMs(60_000 + 100);
-        await settings.refresh();
+        // Advance past the secret refresh interval using a fake clock so the refresh round re-fetches once.
+        const clock = sinon.useFakeTimers({ now: Date.now() });
+        try {
+            await clock.tickAsync(60_000 + 100);
+            await settings.refresh();
+        } finally {
+            clock.restore();
+        }
         expect(callCount).eq(2);
         expect(settings.get("TestKey1")).eq("SecretValue-2");
     });

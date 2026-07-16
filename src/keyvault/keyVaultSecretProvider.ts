@@ -42,15 +42,9 @@ export class AzureKeyVaultSecretProvider {
         this.#cachedSecretValues.set(identifierKey, await this.#getSecretValueFromKeyVault(secretIdentifier));
     }
 
-    async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
-        const identifierKey = secretIdentifier.sourceId;
-        if (this.#cachedSecretValues.has(identifierKey)) {
-            return this.#cachedSecretValues.get(identifierKey);
-        }
-
-        // Fallback for secrets that preload skipped or failed to fetch. loadSecretValue populates the cache.
-        await this.loadSecretValue(secretIdentifier);
-        return this.#cachedSecretValues.get(identifierKey);
+    // Reads a secret value that was fetched into the cache during preload. All network I/O happens in preload.
+    getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): unknown {
+        return this.#cachedSecretValues.get(secretIdentifier.sourceId);
     }
 
     clearCache(): void {
