@@ -43,11 +43,7 @@ export class JsonKeyValueAdapter implements IKeyValueAdapter {
         return [setting.key, parsedValue];
     }
 
-    async onChangeDetected(): Promise<void> {
-        return;
-    }
-
-        #tryParseJson(value: string): { success: true; result: unknown } | { success: false } {
+    #tryParseJson(value: string): { success: true; result: unknown } | { success: false } {
         try {
             return { success: true, result: JSON.parse(value) };
         } catch (error) {

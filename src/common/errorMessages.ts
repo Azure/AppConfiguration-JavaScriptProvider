@@ -3,6 +3,7 @@
 
 import { MIN_REFRESH_INTERVAL_IN_MS } from "../refresh/refreshOptions.js";
 import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "../keyvault/keyVaultOptions.js";
+import { ConfigurationSetting } from "@azure/app-configuration";
 
 export const enum ErrorMessages {
     INVALID_WATCHED_SETTINGS_KEY = "The characters '*' and ',' are not supported in key of watched settings.",
@@ -25,4 +26,15 @@ export const enum ErrorMessages {
 export const enum KeyVaultReferenceErrorMessages {
     KEY_VAULT_OPTIONS_UNDEFINED = "Failed to process the Key Vault reference because Key Vault options are not configured.",
     KEY_VAULT_REFERENCE_UNRESOLVABLE = "Failed to resolve the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret."
+}
+
+export function buildKeyVaultReferenceErrorMessage(message: string, secretIdentifier?: string, setting?: ConfigurationSetting): string {
+    let errorMessage = message;
+    if (secretIdentifier) {
+        errorMessage += ` SecretIdentifier: '${secretIdentifier}'`;
+    }
+    if (setting) {
+        errorMessage += ` Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}'`;
+    }
+    return errorMessage;
 }
