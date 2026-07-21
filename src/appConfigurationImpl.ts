@@ -60,6 +60,7 @@ import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationT
 import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
+import { getStatusCode } from "./common/utils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
 
@@ -654,7 +655,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
                 const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
-                const isChanged = response && Number(response.statusCode) === 200 && watcher.etag !== response.etag; // etag changed
+                const isChanged = response && getStatusCode(response.statusCode) === 200 && watcher.etag !== response.etag; // etag changed
                 if (isDeleted || isChanged) {
                     changedSentinel = watchedSetting;
                     changedSentinelWatcher = { etag: isChanged ? response.etag : undefined };
@@ -752,7 +753,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 for await (const page of pageIterator) {
                     // when conditional request is sent, the response will be 304 if not changed
-                    if (Number(page._response.status) === 200) { // created or changed
+                    if (getStatusCode(page._response.status) === 200) { // created or changed
                         return true;
                     }
                 }
@@ -781,7 +782,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
-            if (isRestError(error) && Number(error.statusCode) === 404) {
+            if (isRestError(error) && getStatusCode(error.statusCode) === 404) {
                 response = undefined;
             } else {
                 throw error;
@@ -824,7 +825,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
-            if (isRestError(error) && Number(error.statusCode) === 404) {
+            if (isRestError(error) && getStatusCode(error.statusCode) === 404) {
                 response = undefined;
             } else {
                 throw error;
