@@ -788,7 +788,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         isResponseFresh = serverResponseTime > lastServerResponseTime;
                     }
                     if (isResponseFresh &&
-                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        getStatusCode(page._response.status) === 200 && // conditional request returns 304 if not changed
                         page.etag !== pageWatchers[i].etag) {
                         return true;
                     }

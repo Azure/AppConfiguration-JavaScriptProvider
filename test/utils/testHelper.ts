@@ -128,21 +128,21 @@ function getCachedIterator(pages: Array<{
         byPage(): AsyncIterableIterator<any> {
             return {
                 [Symbol.asyncIterator](): AsyncIterableIterator<any> { return this; },
-                next() {
+                async next() {
                     const page = pages.shift();
                     if (!page) {
-                        return Promise.resolve({ done: true, value: undefined });
+                        return { done: true, value: undefined };
                     }
-                    const etag = _sha256(JSON.stringify(page.items));
+                    const etag = await _sha256(JSON.stringify(page.items));
 
-                    return Promise.resolve({
+                    return {
                         done: false,
                         value: {
                             items: page.items,
                             etag,
                             _response: page.response
                         }
-                    });
+                    };
                 }
             };
         }
@@ -150,7 +150,7 @@ function getCachedIterator(pages: Array<{
     return iterator as any;
 }
 
-function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any) {
+function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any, useStringStatus: boolean = false) {
     const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
         [Symbol.asyncIterator](): AsyncIterableIterator<any> {
             return this;
@@ -180,7 +180,7 @@ function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any
                             value: {
                                 items: [], // HEAD request returns no items
                                 etag,
-                                _response: { status: statusCode }
+                                _response: { status: useStringStatus ? `${statusCode}` : statusCode }
                             }
                         };
                     }
@@ -228,6 +228,14 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
 
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions, true);
+    });
+
+    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+
+        return getMockedHeadIterator(pages, listOptions, true);
     });
 }
 
