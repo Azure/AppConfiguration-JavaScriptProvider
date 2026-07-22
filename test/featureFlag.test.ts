@@ -341,6 +341,66 @@ describe("feature flags", function () {
         expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/kv/.appconfig.featureflag/Telemetry_2?label=Test`);
     });
 
+    it("should not populate allocation id", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { keyFilter: "*" } ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+
+        const NoPercentileAndSeed = (featureFlags as any[]).find(item => item.id === "NoPercentileAndSeed");
+        expect(NoPercentileAndSeed).not.undefined;
+        expect(NoPercentileAndSeed?.telemetry.metadata.AllocationId).to.be.undefined;
+    });
+
+    it("should populate allocation id", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [ { keyFilter: "*" } ]
+            }
+        });
+        expect(settings).not.undefined;
+        expect(settings.get("feature_management")).not.undefined;
+        const featureFlags = settings.get<any>("feature_management").feature_flags;
+        expect(featureFlags).not.undefined;
+
+        const SeedOnly = (featureFlags as any[]).find(item => item.id === "SeedOnly");
+        expect(SeedOnly).not.undefined;
+        expect(SeedOnly?.telemetry.metadata.AllocationId).equals("qZApcKdfXscxpgn_8CMf");
+
+        const DefaultWhenEnabledOnly = (featureFlags as any[]).find(item => item.id === "DefaultWhenEnabledOnly");
+        expect(DefaultWhenEnabledOnly).not.undefined;
+        expect(DefaultWhenEnabledOnly?.telemetry.metadata.AllocationId).equals("k486zJjud_HkKaL1C4qB");
+
+        const PercentileOnly = (featureFlags as any[]).find(item => item.id === "PercentileOnly");
+        expect(PercentileOnly).not.undefined;
+        expect(PercentileOnly?.telemetry.metadata.AllocationId).equals("5YUbmP0P5s47zagO_LvI");
+
+        const SimpleConfigurationValue = (featureFlags as any[]).find(item => item.id === "SimpleConfigurationValue");
+        expect(SimpleConfigurationValue).not.undefined;
+        expect(SimpleConfigurationValue?.telemetry.metadata.AllocationId).equals("QIOEOTQJr2AXo4dkFFqy");
+
+        const ComplexConfigurationValue = (featureFlags as any[]).find(item => item.id === "ComplexConfigurationValue");
+        expect(ComplexConfigurationValue).not.undefined;
+        expect(ComplexConfigurationValue?.telemetry.metadata.AllocationId).equals("4Bes0AlwuO8kYX-YkBWs");
+
+        const TelemetryVariantPercentile = (featureFlags as any[]).find(item => item.id === "TelemetryVariantPercentile");
+        expect(TelemetryVariantPercentile).not.undefined;
+        expect(TelemetryVariantPercentile?.telemetry.metadata.AllocationId).equals("YsdJ4pQpmhYa8KEhRLUn");
+
+        const Complete = (featureFlags as any[]).find(item => item.id === "Complete");
+        expect(Complete).not.undefined;
+        expect(Complete?.telemetry.metadata.AllocationId).equals("DER2rF-ZYog95c4CBZoi");
+    });
+
     it("should load feature flags using tag filters", async () => {
         const connectionString = createMockedConnectionString();
 
