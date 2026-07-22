@@ -142,6 +142,220 @@ describe("key vault reference", function () {
     });
 });
 
+describe("key vault reference deduplication", function () {
+    afterEach(() => {
+        restoreMocks();
+    });
+
+    // 5 settings all referencing the same secret URI (same sourceId).
+    const sameSecretUri = "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName";
+    function mockDuplicateReferences() {
+        const kvs = ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]
+            .map((key) => createMockedKeyVaultReference(key, sameSecretUri));
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+    }
+
+    it("should resolve duplicate references with a single Key Vault request in parallel mode", async () => {
+        mockDuplicateReferences();
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const stub = sinon.stub(client, "getSecret").callsFake(async () => {
+            // Introduce a delay so that all references start before the first one resolves.
+            await sleepInMs(100);
+            return { value: "SecretValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(stub.callCount).eq(1);
+        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
+            expect(settings.get(key)).eq("SecretValue");
+        }
+    });
+
+    it("should resolve duplicate references with a single Key Vault request in sequential mode", async () => {
+        mockDuplicateReferences();
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const stub = sinon.stub(client, "getSecret").callsFake(async () => {
+            return { value: "SecretValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client]
+            }
+        });
+
+        expect(stub.callCount).eq(1);
+        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
+            expect(settings.get(key)).eq("SecretValue");
+        }
+    });
+
+    it("should invoke secret resolver only once for duplicate references", async () => {
+        mockDuplicateReferences();
+        const resolver = sinon.stub().callsFake(async () => {
+            await sleepInMs(100);
+            return "ResolvedSecretValue";
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretResolver: resolver,
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(resolver.callCount).eq(1);
+        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
+            expect(settings.get(key)).eq("ResolvedSecretValue");
+        }
+    });
+
+    it("should fetch different versions of the same secret independently", async () => {
+        const versionedUri = "https://fake-vault-name.vault.azure.net/secrets/fakeSecretName/741a0fc52610449baffd6e1c55b9d459";
+        const kvs = [
+            createMockedKeyVaultReference("TestKey", sameSecretUri),
+            createMockedKeyVaultReference("TestKeyVersioned", versionedUri)
+        ];
+        mockAppConfigurationClientListConfigurationSettings([kvs]);
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const stub = sinon.stub(client, "getSecret").callsFake(async (_name, options) => {
+            await sleepInMs(100);
+            return { value: options?.version ? "VersionedValue" : "LatestValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        expect(stub.callCount).eq(2);
+        expect(settings.get("TestKey")).eq("LatestValue");
+        expect(settings.get("TestKeyVersioned")).eq("VersionedValue");
+    });
+
+    it("should recover and not cache the failure when preload fails to fetch a secret", async () => {
+        mockDuplicateReferences();
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        const stub = sinon.stub(client, "getSecret");
+        // The preload fetch (best-effort) rejects and must not be cached; the on-demand resolution then
+        // recovers by re-fetching successfully.
+        stub.onCall(0).callsFake(async () => {
+            await sleepInMs(100);
+            throw new Error("Key Vault unavailable");
+        });
+        stub.callsFake(async () => {
+            return { value: "SecretValue" } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+
+        // The failed preload is not cached, so all references still resolve successfully.
+        for (const key of ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"]) {
+            expect(settings.get(key)).eq("SecretValue");
+        }
+    });
+
+    it("should re-fetch once per unique secret on a key-value change reload", async () => {
+        const secretKeys = ["TestKey1", "TestKey2", "TestKey3", "TestKey4", "TestKey5"];
+        // Mutable page so the sentinel can change without re-stubbing (which would tear down the fake clock).
+        const kvPage = [
+            ...secretKeys.map((key) => createMockedKeyVaultReference(key, sameSecretUri)),
+            createMockedKeyValue({ key: "sentinel", value: "v1", etag: "sentinel-etag-1" })
+        ];
+        mockAppConfigurationClientListConfigurationSettings([kvPage]);
+        mockAppConfigurationClientGetConfigurationSetting(kvPage);
+
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        let secretValue = "SecretValue-initial";
+        let callCount = 0;
+        sinon.stub(client, "getSecret").callsFake(async () => {
+            callCount++;
+            return { value: secretValue } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 1000,
+                watchedSettings: [{ key: "sentinel" }]
+            },
+            keyVaultOptions: {
+                secretClients: [client],
+                parallelSecretResolutionEnabled: true
+            }
+        });
+        // Initial load resolves the duplicates with a single request.
+        expect(callCount).eq(1);
+
+        // Install the fake clock seeded with the current time so the refresh timers (created during load) stay consistent.
+        const clock = sinon.useFakeTimers({ now: Date.now() });
+        try {
+            // Advance past the min secret refresh interval so the key-value change reload clears the cache.
+            await clock.tickAsync(60_000 + 100);
+
+            // Change the watched sentinel (new etag) and the secret value in place to trigger a reload.
+            kvPage[kvPage.length - 1] = createMockedKeyValue({ key: "sentinel", value: "v2", etag: "sentinel-etag-2" });
+            secretValue = "SecretValue-reloaded";
+            const callCountBeforeReload = callCount;
+
+            await settings.refresh();
+
+            // The key-value change reload clears the cache and re-fetches, but only once for the unique secret.
+            expect(callCount - callCountBeforeReload).eq(1);
+            for (const key of secretKeys) {
+                expect(settings.get(key)).eq("SecretValue-reloaded");
+            }
+        } finally {
+            clock.restore();
+        }
+    });
+
+    it("should re-fetch once per unique secret on each refresh round", async () => {
+        mockDuplicateReferences();
+        const client = new SecretClient("https://fake-vault-name.vault.azure.net", createMockedTokenCredential());
+        let callCount = 0;
+        sinon.stub(client, "getSecret").callsFake(async () => {
+            callCount++;
+            return { value: `SecretValue-${callCount}` } as KeyVaultSecret;
+        });
+
+        const settings = await load(createMockedConnectionString(), {
+            keyVaultOptions: {
+                secretClients: [client],
+                secretRefreshIntervalInMs: 60_000,
+                parallelSecretResolutionEnabled: true
+            }
+        });
+        // Initial load resolves duplicates with a single request.
+        expect(callCount).eq(1);
+        expect(settings.get("TestKey1")).eq("SecretValue-1");
+
+        // Advance past the secret refresh interval using a fake clock so the refresh round re-fetches once.
+        const clock = sinon.useFakeTimers({ now: Date.now() });
+        try {
+            await clock.tickAsync(60_000 + 100);
+            await settings.refresh();
+        } finally {
+            clock.restore();
+        }
+        expect(callCount).eq(2);
+        expect(settings.get("TestKey1")).eq("SecretValue-2");
+    });
+});
+
 describe("key vault secret refresh", function () {
 
     beforeEach(() => {

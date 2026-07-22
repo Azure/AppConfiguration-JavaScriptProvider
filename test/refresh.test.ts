@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientListConfigurationSettingsWithStringStatus, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -513,6 +513,54 @@ describe("dynamic refresh", function () {
         // Verify changes are reflected
         expect(settings.get("TestTagKey")).eq("newValue");
     });
+
+    it("should refresh key values when page response status is string", async () => {
+        restoreMocks(); // restore the mock set up in beforeEach
+        const initialKVs = [
+            { value: "red", key: "app.settings.fontColor" },
+            { value: "40", key: "app.settings.fontSize" }
+        ].map(createMockedKeyValue);
+        mockAppConfigurationClientListConfigurationSettingsWithStringStatus([initialKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(initialKVs, getKvCallback);
+
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            refreshOptions: {
+                enabled: true,
+                refreshIntervalInMs: 2000
+            }
+        });
+        expect(listKvRequestCount).eq(1);
+        expect(settings).not.undefined;
+        expect(settings.get("app.settings.fontColor")).eq("red");
+
+        let refreshSuccessfulCount = 0;
+        settings.onRefresh(() => {
+            refreshSuccessfulCount++;
+        });
+
+        // no change yet, the page response status is "304"
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(listKvRequestCount).eq(2); // one more conditional request to detect change
+        expect(refreshSuccessfulCount).eq(0); // no change in key values, because page etags are the same.
+
+        // change key value
+        restoreMocks();
+        const changedKVs = [
+            { value: "blue", key: "app.settings.fontColor" },
+            { value: "40", key: "app.settings.fontSize" }
+        ].map(createMockedKeyValue);
+        mockAppConfigurationClientListConfigurationSettingsWithStringStatus([changedKVs], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting(changedKVs, getKvCallback);
+
+        // the page response status is "200" when changed
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(listKvRequestCount).eq(4); // 2 + 2 more requests: one conditional request to detect change and one request to reload all key values
+        expect(refreshSuccessfulCount).eq(1); // change in key values, because page etags are different.
+        expect(settings.get("app.settings.fontColor")).eq("blue");
+    });
 });
 
 describe("dynamic refresh feature flags", function () {
@@ -671,6 +719,61 @@ describe("dynamic refresh feature flags", function () {
         const updatedFeatureManagement = settings.get<any>("feature_management");
         expect(updatedFeatureManagement.feature_flags[0].id).eq("DevFeature");
         expect(updatedFeatureManagement.feature_flags[0].enabled).eq(false);
+    });
+
+    it("should refresh feature flags when page response status is string", async () => {
+        // mock multiple pages of feature flags
+        const page1 = [
+            createMockedFeatureFlag("Alpha_1", { enabled: true }),
+            createMockedFeatureFlag("Alpha_2", { enabled: true }),
+        ];
+        const page2 = [
+            createMockedFeatureFlag("Beta_1", { enabled: true }),
+            createMockedFeatureFlag("Beta_2", { enabled: true }),
+        ];
+        mockAppConfigurationClientListConfigurationSettingsWithStringStatus([page1, page2], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
+
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            featureFlagOptions: {
+                enabled: true,
+                selectors: [{
+                    keyFilter: "*"
+                }],
+                refresh: {
+                    enabled: true,
+                    refreshIntervalInMs: 2000 // 2 seconds for quick test.
+                }
+            }
+        });
+        expect(listKvRequestCount).eq(2);
+        expect(getKvRequestCount).eq(0);
+
+        let refreshSuccessfulCount = 0;
+        settings.onRefresh(() => {
+            refreshSuccessfulCount++;
+        });
+
+        // no change yet, the page response status is "304"
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(listKvRequestCount).eq(3); // one conditional request to detect change
+        expect(getKvRequestCount).eq(0);
+        expect(refreshSuccessfulCount).eq(0); // no change in feature flags, because page etags are the same.
+
+        // change feature flag Beta_1 to false
+        page2[0] = createMockedFeatureFlag("Beta_1", { enabled: false });
+        restoreMocks();
+        mockAppConfigurationClientListConfigurationSettingsWithStringStatus([page1, page2], listKvCallback);
+        mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
+
+        // the page response status is "200" when changed
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(listKvRequestCount).eq(5); // 3 + 2 more requests: one conditional request to detect change and one request to reload all feature flags
+        expect(getKvRequestCount).eq(0);
+        expect(refreshSuccessfulCount).eq(1); // change in feature flags, because page etags are different.
     });
 });
 /* eslint-enable @typescript-eslint/no-unused-expressions */

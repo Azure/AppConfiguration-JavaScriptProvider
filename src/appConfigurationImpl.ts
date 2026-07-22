@@ -70,6 +70,7 @@ import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationT
 import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
 import { ConfigurationClientManager } from "./configurationClientManager.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
+import { getStatusCode } from "./common/utils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
 import { ErrorMessages } from "./common/errorMessages.js";
 import { X_MS_DATE_HEADER } from "./afd/constants.js";
@@ -109,19 +110,18 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #sentinels: Map<WatchedSetting, SettingWatcher> = new Map();
     #watchAll: boolean = false;
     #kvRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
-    #kvRefreshTimer: RefreshTimer;
+    #kvRefreshTimer: RefreshTimer | undefined = undefined;
 
     // Feature flags
     #featureFlagEnabled: boolean = false;
     #featureFlagRefreshEnabled: boolean = false;
     #ffRefreshInterval: number = DEFAULT_REFRESH_INTERVAL_IN_MS;
-    #ffRefreshTimer: RefreshTimer;
+    #ffRefreshTimer: RefreshTimer | undefined = undefined;
 
     // Key Vault references
     #secretRefreshEnabled: boolean = false;
     #secretReferences: ConfigurationSetting[] = []; // cached key vault references
-    #secretRefreshTimer: RefreshTimer;
-    #resolveSecretsInParallel: boolean = false;
+    #secretRefreshTimer: RefreshTimer | undefined = undefined;
 
     /**
      * Selectors of key-values obtained from @see AzureAppConfigurationOptions.selectors
@@ -218,7 +218,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 this.#secretRefreshEnabled = true;
                 this.#secretRefreshTimer = new RefreshTimer(secretRefreshIntervalInMs);
             }
-            this.#resolveSecretsInParallel = options.keyVaultOptions.parallelSecretResolutionEnabled ?? false;
         }
         this.#adapters.push(new AzureKeyVaultKeyValueAdapter(options?.keyVaultOptions, this.#secretRefreshTimer));
         this.#adapters.push(new JsonKeyValueAdapter());
@@ -350,8 +349,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             if (current[lastSegment] !== undefined) {
                 throw new InvalidOperationError(`Ambiguity occurs when constructing configuration object from key '${key}', value '${value}'. The key should not be part of another key.`);
             }
-            // set value to the last segment
-            current[lastSegment] = value;
+            // Deep copy object values to avoid mutating the original objects in #configMap via shared references.
+            current[lastSegment] = typeof value === "object" && value !== null ? structuredClone(value) : value;
         }
         return data;
     }
@@ -432,7 +431,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         postAttempts += 1;
                         backoffDuration = getExponentialBackoffDuration(postAttempts);
                     }
-                    console.warn(`Failed to load. Error message: ${error.message}. Retrying in ${backoffDuration} ms.`);
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    console.warn(`Failed to load. Error message: ${errorMessage}. Retrying in ${backoffDuration} ms.`);
                     await new Promise(resolve => setTimeout(resolve, backoffDuration));
                 }
             } while (!abortSignal.aborted);
@@ -509,10 +509,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         // Use a Map to deduplicate configuration settings by key. When multiple selectors return settings with the same key,
         // the configuration setting loaded by the later selector in the iteration order will override the one from the earlier selector.
         const loadedSettings: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
-        // deep copy selectors to avoid modification if current client fails
-        const selectorsToUpdate: PagedSettingsWatcher[] = JSON.parse(
-            JSON.stringify(selectors)
-        );
+        // Deep copy selectors to avoid modification if current client fails.
+        const selectorsToUpdate: PagedSettingsWatcher[] = structuredClone(selectors);
 
         for (const selector of selectorsToUpdate) {
             let settings: ConfigurationSetting[] = [];
@@ -577,20 +575,17 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             this.#aiConfigurationTracing.reset();
         }
 
+        for (const adapter of this.#adapters) {
+            await adapter.preload?.(loadedSettings.filter(s => adapter.canProcess(s))); // dedup and warm the secret cache
+        }
+
         for (const setting of loadedSettings) {
             if (isSecretReference(setting)) {
                 this.#secretReferences.push(setting); // cache secret references for resolve/refresh secret separately
-                continue;
             }
             // adapt configuration settings to key-values
             const [key, value] = await this.#processKeyValue(setting);
             keyValues.push([key, value]);
-        }
-
-        if (this.#secretReferences.length > 0) {
-            await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
-                keyValues.push([key, value]);
-            });
         }
 
         this.#clearLoadedKeyValues(); // clear existing key-values in case of configuration setting deletion
@@ -678,7 +673,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
                 const watcher: SettingWatcher = this.#sentinels.get(watchedSetting)!; // watcher should always exist for sentinels
                 const isDeleted = response === undefined && watcher.etag !== undefined; // previously existed, now deleted
-                const isChanged = response && response.statusCode === 200 && watcher.etag !== response.etag; // etag changed
+                const isChanged = response && getStatusCode(response.statusCode) === 200 && watcher.etag !== response.etag; // etag changed
                 if (isDeleted || isChanged) {
                     changedSentinel = watchedSetting;
                     changedSentinelWatcher = { etag: isChanged ? response.etag : undefined };
@@ -690,7 +685,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         if (needRefresh) {
             for (const adapter of this.#adapters) {
-                await adapter.onChangeDetected();
+                await adapter.onChangeDetected?.();
             }
             await this.#loadSelectedKeyValues();
 
@@ -710,7 +705,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     async #refreshFeatureFlags(): Promise<boolean> {
         // if still within refresh interval/backoff, return
-        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer.canRefresh()) {
+        if (this.#ffRefreshInterval === undefined || !this.#ffRefreshTimer!.canRefresh()) {
             return Promise.resolve(false);
         }
 
@@ -721,7 +716,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             await this.#loadFeatureFlags();
         }
 
-        this.#ffRefreshTimer.reset();
+        this.#ffRefreshTimer!.reset();
         return Promise.resolve(needRefresh);
     }
 
@@ -736,9 +731,16 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        await this.#resolveSecretReferences(this.#secretReferences, (key, value) => {
+        const keyVaultRefAdapter = this.#adapters.find(adapter => adapter instanceof AzureKeyVaultKeyValueAdapter) as AzureKeyVaultKeyValueAdapter | undefined;
+        if (keyVaultRefAdapter) {
+            // dedup and warm the secret cache
+            await keyVaultRefAdapter.preload(this.#secretReferences);
+        }
+
+        for (const setting of this.#secretReferences) {
+            const [key, value] = await this.#processKeyValue(setting);
             this.#configMap.set(key, value);
-        });
+        }
 
         this.#secretRefreshTimer.reset();
         return Promise.resolve(true);
@@ -750,7 +752,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @returns true if key-value collection has changed, false otherwise.
      */
     async #checkConfigurationSettingsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
@@ -786,7 +788,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                         isResponseFresh = serverResponseTime > lastServerResponseTime;
                     }
                     if (isResponseFresh &&
-                        page._response.status === 200 && // conditional request returns 304 if not changed
+                        getStatusCode(page._response.status) === 200 && // conditional request returns 304 if not changed
                         page.etag !== pageWatchers[i].etag) {
                         return true;
                     }
@@ -804,7 +806,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return getConfigurationSettingWithTrace(
                 this.#requestTraceOptions,
                 client,
@@ -817,7 +819,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
-            if (isRestError(error) && error.statusCode === 404) {
+            if (isRestError(error) && getStatusCode(error.statusCode) === 404) {
                 response = undefined;
             } else {
                 throw error;
@@ -827,7 +829,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettings(listOptions: ListConfigurationSettingsOptions): Promise<{ items: ConfigurationSetting[]; pageWatchers: SettingWatcher[] }> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageWatchers: SettingWatcher[] = [];
             const pageIterator = listConfigurationSettingsWithTrace(
                 this.#requestTraceOptions,
@@ -847,7 +849,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #getSnapshot(snapshotName: string, getOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return getSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,
@@ -860,7 +862,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         try {
             response = await this.#executeWithFailoverPolicy(funcToExecute);
         } catch (error) {
-            if (isRestError(error) && error.statusCode === 404) {
+            if (isRestError(error) && getStatusCode(error.statusCode) === 404) {
                 response = undefined;
             } else {
                 throw error;
@@ -870,7 +872,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettingsForSnapshot(snapshotName: string, listOptions?: ListConfigurationSettingsForSnapshotOptions): Promise<ConfigurationSetting[]> {
-        const funcToExecute = async (client) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageIterator = listConfigurationSettingsForSnapshotWithTrace(
                 this.#requestTraceOptions,
                 client,
@@ -929,27 +931,6 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
         this.#clientManager.refreshClients();
         throw new Error(ErrorMessages.ALL_FALLBACK_CLIENTS_FAILED);
-    }
-
-    async #resolveSecretReferences(secretReferences: ConfigurationSetting[], resultHandler: (key: string, value: unknown) => void): Promise<void> {
-        if (this.#resolveSecretsInParallel) {
-            const secretResolutionPromises: Promise<void>[] = [];
-            for (const setting of secretReferences) {
-                const secretResolutionPromise = this.#processKeyValue(setting)
-                    .then(([key, value]) => {
-                        resultHandler(key, value);
-                    });
-                secretResolutionPromises.push(secretResolutionPromise);
-            }
-
-            // Wait for all secret resolution promises to be resolved
-            await Promise.all(secretResolutionPromises);
-        } else {
-            for (const setting of secretReferences) {
-                const [key, value] = await this.#processKeyValue(setting);
-                resultHandler(key, value);
-            }
-        }
     }
 
     async #processKeyValue(setting: ConfigurationSetting<string>): Promise<[string, unknown]> {

@@ -8,7 +8,7 @@ export type ContentType = {
     parameters: Record<string, string>;
 }
 
-export function parseContentType(contentTypeValue: string | undefined): ContentType | undefined {
+export function parseContentType(contentTypeValue?: string): ContentType | undefined {
     if (!contentTypeValue) {
         return undefined;
     }
@@ -27,7 +27,7 @@ export function parseContentType(contentTypeValue: string | undefined): ContentT
 
 // Determine whether a content type string is a valid JSON content type.
 // https://docs.microsoft.com/en-us/azure/azure-app-configuration/howto-leverage-json-content-type
-export function isJsonContentType(contentType: ContentType | undefined): boolean {
+export function isJsonContentType(contentType?: ContentType): boolean {
     const mediaType = contentType?.mediaType;
     if (!mediaType) {
         return false;
@@ -45,7 +45,7 @@ export function isJsonContentType(contentType: ContentType | undefined): boolean
     return typeParts[1].split("+").includes("json");
 }
 
-export function isFeatureFlagContentType(contentType: ContentType | undefined): boolean {
+export function isFeatureFlagContentType(contentType?: ContentType): boolean {
     const mediaType = contentType?.mediaType;
     if (!mediaType) {
         return false;
@@ -53,7 +53,7 @@ export function isFeatureFlagContentType(contentType: ContentType | undefined): 
     return mediaType === featureFlagContentType;
 }
 
-export function isSecretReferenceContentType(contentType: ContentType | undefined): boolean {
+export function isSecretReferenceContentType(contentType?: ContentType): boolean {
     const mediaType = contentType?.mediaType;
     if (!mediaType) {
         return false;
