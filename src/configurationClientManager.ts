@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
+import { AppConfigurationClient, AppConfigurationClientOptions, FeatureFlagClient } from "@azure/app-configuration";
+import { AppConfigClient } from "./appConfigClient.js";
 import { ConfigurationClientWrapper } from "./configurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
@@ -49,7 +50,8 @@ export class ConfigurationClientManager {
         credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
         appConfigOptions?: AzureAppConfigurationOptions
     ) {
-        let staticClient: AppConfigurationClient;
+        let staticConfigurationClient: AppConfigurationClient;
+        let staticFeatureFlagClient: FeatureFlagClient;
         const credentialPassed = instanceOfTokenCredential(credentialOrOptions);
 
         if (typeof connectionStringOrEndpoint === "string" && !credentialPassed) {
@@ -66,7 +68,8 @@ export class ConfigurationClientManager {
             } else {
                 throw new ArgumentError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
-            staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
+            staticConfigurationClient = new AppConfigurationClient(connectionString, this.#clientOptions);
+            staticFeatureFlagClient = new FeatureFlagClient(connectionString, this.#clientOptions);
         } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
@@ -79,12 +82,13 @@ export class ConfigurationClientManager {
             this.#clientOptions = getClientOptions(this.#appConfigOptions);
             this.endpoint = endpoint;
             this.#credential = credential;
-            staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
+            staticConfigurationClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
+            staticFeatureFlagClient = new FeatureFlagClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
             throw new ArgumentError(ErrorMessages.CONNECTION_STRING_OR_ENDPOINT_MISSED);
         }
 
-        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
+        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, new AppConfigClient(this.endpoint.origin, staticConfigurationClient, staticFeatureFlagClient))];
         this.#validDomain = getValidDomain(this.endpoint.hostname.toLowerCase());
     }
 
@@ -166,10 +170,13 @@ export class ConfigurationClientManager {
                 if (host.toLowerCase() === this.endpoint.hostname.toLowerCase()) {
                     continue;
                 }
-                const client = this.#credential ?
+                const configurationClient = this.#credential ?
                     new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
                     new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
-                newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
+                const featureFlagClient = this.#credential ?
+                    new FeatureFlagClient(targetEndpoint, this.#credential, this.#clientOptions) :
+                    new FeatureFlagClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
+                newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, new AppConfigClient(targetEndpoint, configurationClient, featureFlagClient)));
             }
         }
 

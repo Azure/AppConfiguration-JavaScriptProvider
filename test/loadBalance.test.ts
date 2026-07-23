@@ -7,8 +7,9 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
 import { restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
-import { AppConfigurationClient } from "@azure/app-configuration";
+import { AppConfigurationClient, FeatureFlagClient } from "@azure/app-configuration";
 import { ConfigurationClientWrapper } from "../src/configurationClientWrapper.js";
+import { AppConfigClient } from "../src/appConfigClient.js";
 
 const mockedKVs = [
     { value: "red", key: "app.settings.fontColor" },
@@ -17,8 +18,8 @@ const mockedKVs = [
 ].map(createMockedKeyValue);
 const fakeEndpoint_1 = createMockedEndpoint("fake_1");
 const fakeEndpoint_2 = createMockedEndpoint("fake_2");
-const fakeClientWrapper_1 = new ConfigurationClientWrapper(fakeEndpoint_1, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_1)));
-const fakeClientWrapper_2 = new ConfigurationClientWrapper(fakeEndpoint_2, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_2)));
+const fakeClientWrapper_1 = new ConfigurationClientWrapper(fakeEndpoint_1, new AppConfigClient(fakeEndpoint_1, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_1)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint_1))));
+const fakeClientWrapper_2 = new ConfigurationClientWrapper(fakeEndpoint_2, new AppConfigClient(fakeEndpoint_2, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_2)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint_2))));
 const clientRequestCounter_1 = {count: 0};
 const clientRequestCounter_2 = {count: 0};
 
@@ -50,20 +51,20 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one request for feature flags
-        expect(clientRequestCounter_1.count).eq(1);
-        expect(clientRequestCounter_2.count).eq(1);
-
-        await sleepInMs(2 * 1000 + 1);
-        await settings.refresh();
-        // refresh request for feature flags
+        // one request for key values, one for classic feature flags, one for the new feature flag endpoint
         expect(clientRequestCounter_1.count).eq(2);
         expect(clientRequestCounter_2.count).eq(1);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        expect(clientRequestCounter_1.count).eq(2);
+        // refresh: one request to check classic feature flags, one to check the new feature flag endpoint
+        expect(clientRequestCounter_1.count).eq(3);
         expect(clientRequestCounter_2.count).eq(2);
+
+        await sleepInMs(2 * 1000 + 1);
+        await settings.refresh();
+        expect(clientRequestCounter_1.count).eq(4);
+        expect(clientRequestCounter_2.count).eq(3);
     });
 
     it("should not load balance the request when loadBalance disabled", async () => {
@@ -87,14 +88,14 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one request for feature flags
-        expect(clientRequestCounter_1.count).eq(2);
+        // one request for key values, one for classic feature flags, one for the new feature flag endpoint
+        expect(clientRequestCounter_1.count).eq(3);
         expect(clientRequestCounter_2.count).eq(0);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        // refresh request for feature flags
-        expect(clientRequestCounter_1.count).eq(3);
+        // refresh: check classic feature flags + check the new feature flag endpoint, all to the first client
+        expect(clientRequestCounter_1.count).eq(5);
         expect(clientRequestCounter_2.count).eq(0);
     });
 });

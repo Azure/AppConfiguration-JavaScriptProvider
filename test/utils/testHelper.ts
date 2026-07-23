@@ -2,13 +2,14 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
+import { AppConfigurationClient, ConfigurationSetting, FeatureFlagClient, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
 import { RestError, PipelineRequest, PipelineResponse, SendRequest } from "@azure/core-rest-pipeline";
 import { ConfigurationClientManager } from "../../src/configurationClientManager.js";
 import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
+import { AppConfigClient } from "../../src/appConfigClient.js";
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -192,6 +193,100 @@ function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any
     return mockIterator as any;
 }
 
+function _filterFeatureFlags(featureFlags: any[], listOptions: any): any[] {
+    const nameFilter: string | undefined = listOptions?.nameFilter;
+    const labelFilter: string | undefined = listOptions?.labelFilter;
+    const tagsFilter: string[] = listOptions?.tagsFilter ?? [];
+
+    return featureFlags.filter((ff) => {
+        // name filter: "*"/undefined matches all, trailing "*" is a prefix wildcard, otherwise exact match
+        let nameMatched = true;
+        if (nameFilter !== undefined && nameFilter !== "*") {
+            if (nameFilter.endsWith("*")) {
+                nameMatched = ff.name.startsWith(nameFilter.slice(0, -1));
+            } else {
+                nameMatched = ff.name === nameFilter;
+            }
+        }
+
+        // label filter: "\0" (LabelFilter.Null) matches feature flags without a label
+        let labelMatched = true;
+        if (labelFilter !== undefined) {
+            if (labelFilter === "\0") {
+                labelMatched = ff.label === undefined || ff.label === "";
+            } else {
+                labelMatched = ff.label === labelFilter;
+            }
+        }
+
+        // tag filters: every "key=value" must match
+        let tagsMatched = true;
+        tagsFilter.forEach((tagFilter: string) => {
+            const [tagName, tagValue] = tagFilter.split("=");
+            if (!ff.tags || ff.tags[tagName] !== tagValue) {
+                tagsMatched = false;
+            }
+        });
+
+        return nameMatched && labelMatched && tagsMatched;
+    });
+}
+
+function getMockedFeatureFlagIterator(pages: any[][], listOptions: any, useStringStatus: boolean = false) {
+    const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+        [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+            return this;
+        },
+        next() {
+            return Promise.resolve({ done: true, value: undefined });
+        },
+        byPage(): AsyncIterableIterator<any> {
+            let remainingPages: any[][];
+            const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined;
+            return {
+                [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                    remainingPages = [...pages];
+                    return this;
+                },
+                async next() {
+                    const pageItems = remainingPages.shift();
+                    const pageEtag = pageEtags?.shift();
+                    if (pageItems === undefined) {
+                        return { done: true, value: undefined };
+                    } else {
+                        const items = _filterFeatureFlags(pageItems ?? [], listOptions);
+                        const etag = await _sha256(JSON.stringify(items));
+                        const statusCode = pageEtag === etag ? 304 : 200;
+                        return {
+                            done: false,
+                            value: {
+                                items,
+                                etag,
+                                _response: { status: useStringStatus ? `${statusCode}` : statusCode }
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    };
+
+    return mockIterator as any;
+}
+
+/**
+ * Mocks the listFeatureFlags method of FeatureFlagClient to return the provided pages of feature flags.
+ * @param pages List of pages, each page is a list of typed feature flags (see createMockedNewFeatureFlag).
+ */
+function mockAppConfigurationClientListFeatureFlags(pages: any[][], customCallback?: (listOptions: any) => any) {
+    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+        return getMockedFeatureFlagIterator(pages, listOptions);
+    });
+}
+
 /**
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
@@ -199,7 +294,7 @@ function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any
  *
  * @param pages List of pages, each page is a list of ConfigurationSetting
  */
-function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
+function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any, featureFlagPages: any[][] = []) {
 
     sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
@@ -216,6 +311,11 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         }
 
         return getMockedHeadIterator(pages, listOptions);
+    });
+
+    // The dedicated feature flag endpoint is queried in addition to classic feature flags; default to an empty result set.
+    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
+        return getMockedFeatureFlagIterator(featureFlagPages, listOptions);
     });
 }
 
@@ -237,6 +337,11 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
 
         return getMockedHeadIterator(pages, listOptions, true);
     });
+
+    // The dedicated feature flag endpoint is queried in addition to classic feature flags; default to an empty result set.
+    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
+        return getMockedFeatureFlagIterator([], listOptions, true);
+    });
 }
 
 function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
@@ -249,6 +354,10 @@ function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[]
         countObject.count += 1;
         return getMockedHeadIterator(pages, listOptions);
     });
+    sinon.stub(clientWrapper.client, "listFeatureFlags").callsFake((listOptions) => {
+        countObject.count += 1;
+        return getMockedFeatureFlagIterator([], listOptions);
+    });
 }
 
 function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
@@ -259,11 +368,14 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         }
         const clients: ConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
-        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
+        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigClient(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint))));
         sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
         sinon.stub(fakeStaticClientWrapper.client, "checkConfigurationSettings").callsFake(() => {
+            throw new RestError("Internal Server Error", { statusCode: 500 });
+        });
+        sinon.stub(fakeStaticClientWrapper.client, "listFeatureFlags").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
         clients.push(fakeStaticClientWrapper);
@@ -273,7 +385,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         }
 
         const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
-        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
+        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigClient(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)), new FeatureFlagClient(createMockedConnectionString(fakeReplicaEndpoint))));
         clients.push(fakeDynamicClientWrapper);
         sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
             const kvs = _filterKVs(pages.flat(), listOptions);
@@ -281,6 +393,9 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         });
         sinon.stub(fakeDynamicClientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
             return getMockedHeadIterator(pages, listOptions);
+        });
+        sinon.stub(fakeDynamicClientWrapper.client, "listFeatureFlags").callsFake((listOptions) => {
+            return getMockedFeatureFlagIterator([], listOptions);
         });
         return clients;
     });
@@ -431,6 +546,15 @@ const createMockedSnapshotReference = (key: string, snapshotName: string): Confi
     isReadOnly: false,
 });
 
+// Creates a strongly-typed feature flag as returned by the dedicated feature flag endpoint (FeatureFlagClient.listFeatureFlags).
+const createMockedNewFeatureFlag = (name: string, props?: any) => Object.assign({
+    name,
+    enabled: true,
+    conditions: { filters: [] },
+    lastModified: new Date(),
+    etag: uuid.v4()
+}, props);
+
 class HttpRequestHeadersPolicy {
     headers: any;
     name: string;
@@ -449,6 +573,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientListConfigurationSettingsWithStringStatus,
+    mockAppConfigurationClientListFeatureFlags,
     mockAppConfigurationClientGetConfigurationSetting,
     mockAppConfigurationClientGetSnapshot,
     mockAppConfigurationClientListConfigurationSettingsForSnapshot,
@@ -466,6 +591,7 @@ export {
     createMockedJsonKeyValue,
     createMockedKeyValue,
     createMockedFeatureFlag,
+    createMockedNewFeatureFlag,
     createMockedSnapshotReference,
 
     sleepInMs,

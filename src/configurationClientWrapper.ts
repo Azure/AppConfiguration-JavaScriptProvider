@@ -1,16 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient } from "@azure/app-configuration";
+import { IAppConfigurationClient } from "./appConfigClient.js";
 import { getExponentialBackoffDuration } from "./common/backoffUtils.js";
 
 export class ConfigurationClientWrapper {
     endpoint: string;
-    client: AppConfigurationClient;
+    client: IAppConfigurationClient;
     backoffEndTime: number = 0; // Timestamp
     #failedAttempts: number = 0;
 
-    constructor(endpoint: string, client: AppConfigurationClient) {
+    constructor(endpoint: string, client: IAppConfigurationClient) {
         this.endpoint = endpoint;
         this.client = client;
     }
