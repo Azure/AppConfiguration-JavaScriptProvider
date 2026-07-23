@@ -1,4 +1,4 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-export const VERSION = "2.5.1";
+export const VERSION = "2.6.0";
