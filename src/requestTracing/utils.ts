@@ -35,7 +35,8 @@ import {
     DELIMITER,
     AI_CONFIGURATION_TAG,
     AI_CHAT_COMPLETION_CONFIGURATION_TAG,
-    SNAPSHOT_REFERENCE_TAG
+    SNAPSHOT_REFERENCE_TAG,
+    ENHANCED_FEATURE_FLAG_TAG
 } from "./constants.js";
 
 export interface RequestTracingOptions {
@@ -49,6 +50,7 @@ export interface RequestTracingOptions {
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     useSnapshotReference: boolean;
+    useEnhancedFeatureFlag: boolean;
 }
 
 // Utils
@@ -160,6 +162,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.useSnapshotReference) {
         tags.push(SNAPSHOT_REFERENCE_TAG);
+    }
+    if (requestTracingOptions.useEnhancedFeatureFlag) {
+        tags.push(ENHANCED_FEATURE_FLAG_TAG);
     }
     return tags.join(DELIMITER);
 }

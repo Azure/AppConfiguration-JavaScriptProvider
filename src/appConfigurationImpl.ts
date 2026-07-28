@@ -97,6 +97,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #fmVersion: string | undefined;
     #aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     #useSnapshotReference: boolean = false;
+    #useEnhancedFeatureFlag: boolean = false;
 
     // Refresh
     #refreshInProgress: boolean = false;
@@ -240,7 +241,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             fmVersion: this.#fmVersion,
             aiConfigurationTracing: this.#aiConfigurationTracing,
             isAfdUsed: this.#isAfdUsed,
-            useSnapshotReference: this.#useSnapshotReference
+            useSnapshotReference: this.#useSnapshotReference,
+            useEnhancedFeatureFlag: this.#useEnhancedFeatureFlag
         };
     }
 
@@ -674,6 +676,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
             this.#featureFlagTracing.reset();
         }
+
+        // Track whether enhanced feature flags were loaded.
+        this.#useEnhancedFeatureFlag = featureFlags.length > 0;
 
         // Exclude any classic feature flags that are superseded by a standalone feature flag with the same name.
         const ineligibleClassicFfKeys = new Set(featureFlags.map(ff => featureFlagPrefix + ff.name));
