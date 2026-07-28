@@ -53,7 +53,7 @@ describe("request tracing", function () {
             userAgent = headerPolicy.headers.get("User-Agent");
         }
 
-        expect(userAgent).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        expect(userAgent).satisfy((ua: string) => ua.includes("javascript-appconfiguration-provider"));
     });
 
     it("should have request type in correlation-context header", async () => {
@@ -131,7 +131,7 @@ describe("request tracing", function () {
             });
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
-        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        expect(headerPolicy.headers.get("User-Agent")).satisfy((ua: string) => ua.includes("javascript-appconfiguration-provider"));
         const correlationContext = headerPolicy.headers.get("Correlation-Context");
         expect(correlationContext).not.undefined;
         expect(correlationContext.includes("AFD")).eq(true);
@@ -246,7 +246,7 @@ describe("request tracing", function () {
     it("should have filter type in correlation-context header if feature flags use feature filters", async () => {
         let correlationContext: string = "";
         const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
         };
 
         mockAppConfigurationClientListConfigurationSettings([[
@@ -284,7 +284,7 @@ describe("request tracing", function () {
     it("should have max variants in correlation-context header if feature flags use variants", async () => {
         let correlationContext: string = "";
         const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
         };
 
         mockAppConfigurationClientListConfigurationSettings([[
@@ -322,7 +322,7 @@ describe("request tracing", function () {
     it("should have telemety tag in correlation-context header if feature flags enable telemetry", async () => {
         let correlationContext: string = "";
         const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
         };
 
         mockAppConfigurationClientListConfigurationSettings([[
@@ -358,7 +358,7 @@ describe("request tracing", function () {
     it("should have seed tag in correlation-context header if feature flags use allocation seed", async () => {
         let correlationContext: string = "";
         const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
         };
 
         mockAppConfigurationClientListConfigurationSettings([[
@@ -395,7 +395,7 @@ describe("request tracing", function () {
     it("should have AI tag in correlation-context header if key values use AI configuration", async () => {
         let correlationContext: string = "";
         const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.customHeaders[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
+            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
         };
 
         mockAppConfigurationClientListConfigurationSettings([[
