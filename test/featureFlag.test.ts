@@ -6,7 +6,7 @@ import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedNewFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -501,17 +501,17 @@ describe("feature flags", function () {
     });
 });
 
-describe("feature flags from the new endpoint", function () {
+describe("enhanced feature flags", function () {
 
     afterEach(() => {
         restoreMocks();
     });
 
     it("should load feature flags from the dedicated feature flag endpoint", async () => {
-        // no classic feature flags; two feature flags returned by the new endpoint
+        // no feature flags; two enhanced feature flags returned by the dedicated endpoint
         mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
-            createMockedNewFeatureFlag("NewAlpha", { enabled: true }),
-            createMockedNewFeatureFlag("NewBeta", { enabled: false })
+            createMockedEnhancedFeatureFlag("NewAlpha", { enabled: true }),
+            createMockedEnhancedFeatureFlag("NewBeta", { enabled: false })
         ]]);
 
         const settings = await load(createMockedConnectionString(), {
@@ -524,14 +524,14 @@ describe("feature flags from the new endpoint", function () {
         expect(featureFlags.find(ff => ff.id === "NewBeta").enabled).equals(false);
     });
 
-    it("should let a new feature flag supersede a classic feature flag with the same name", async () => {
-        // classic "Shared" is enabled and "ClassicOnly" exists; the new endpoint returns "Shared" disabled
-        const classicFeatureFlags = [
+    it("should let an enhanced feature flag supersede a feature flag with the same name", async () => {
+        // "Shared" is enabled and "ClassicOnly" exists; the dedicated endpoint returns "Shared" disabled
+        const featureFlagSettings = [
             createMockedFeatureFlag("Shared", { enabled: true }),
             createMockedFeatureFlag("ClassicOnly", { enabled: true })
         ];
-        mockAppConfigurationClientListConfigurationSettings([classicFeatureFlags], undefined, [[
-            createMockedNewFeatureFlag("Shared", { enabled: false })
+        mockAppConfigurationClientListConfigurationSettings([featureFlagSettings], undefined, [[
+            createMockedEnhancedFeatureFlag("Shared", { enabled: false })
         ]]);
 
         const settings = await load(createMockedConnectionString(), {
@@ -539,15 +539,15 @@ describe("feature flags from the new endpoint", function () {
         });
 
         const featureFlags = settings.get<any>("feature_management").feature_flags as any[];
-        // "Shared" appears once (from the new endpoint, disabled); "ClassicOnly" remains
+        // "Shared" appears once (from the dedicated endpoint, disabled); "ClassicOnly" remains
         expect(featureFlags.length).equals(2);
         expect(featureFlags.filter(ff => ff.id === "Shared").length).equals(1);
         expect(featureFlags.find(ff => ff.id === "Shared").enabled).equals(false);
         expect(featureFlags.find(ff => ff.id === "ClassicOnly").enabled).equals(true);
     });
 
-    it("should convert a new feature flag into the feature management schema", async () => {
-        const newFeatureFlag = createMockedNewFeatureFlag("Variant", {
+    it("should convert an enhanced feature flag into the feature management schema", async () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("Variant", {
             conditions: {
                 requirementType: "All",
                 filters: [{ name: "Microsoft.TimeWindow", parameters: { Start: "Mon, 01 Jan 2024 00:00:00 GMT" } }]
@@ -564,7 +564,7 @@ describe("feature flags from the new endpoint", function () {
             },
             telemetry: { enabled: true }
         });
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[newFeatureFlag]]);
+        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[enhancedFeatureFlag]]);
 
         const settings = await load(createMockedConnectionString(), {
             featureFlagOptions: { enabled: true }
@@ -586,9 +586,9 @@ describe("feature flags from the new endpoint", function () {
         expect(featureFlag.telemetry.metadata.AllocationId).not.undefined;
     });
 
-    it("should refresh feature flags when the new endpoint changes", async () => {
+    it("should refresh feature flags when the dedicated endpoint changes", async () => {
         mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
-            createMockedNewFeatureFlag("NewFlag", { enabled: true })
+            createMockedEnhancedFeatureFlag("NewFlag", { enabled: true })
         ]]);
 
         const settings = await load(createMockedConnectionString(), {
@@ -601,10 +601,10 @@ describe("feature flags from the new endpoint", function () {
         let featureFlag = (settings.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "NewFlag");
         expect(featureFlag.enabled).equals(true);
 
-        // the feature flag on the new endpoint changes
+        // the enhanced feature flag on the dedicated endpoint changes
         restoreMocks();
         mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
-            createMockedNewFeatureFlag("NewFlag", { enabled: false })
+            createMockedEnhancedFeatureFlag("NewFlag", { enabled: false })
         ]]);
 
         await sleepInMs(1000 + 1);

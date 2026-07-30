@@ -276,7 +276,7 @@ function getMockedFeatureFlagIterator(pages: any[][], listOptions: any, useStrin
 
 /**
  * Mocks the listFeatureFlags method of FeatureFlagClient to return the provided pages of feature flags.
- * @param pages List of pages, each page is a list of typed feature flags (see createMockedNewFeatureFlag).
+ * @param pages List of pages, each page is a list of typed feature flags (see createMockedEnhancedFeatureFlag).
  */
 function mockAppConfigurationClientListFeatureFlags(pages: any[][], customCallback?: (listOptions: any) => any) {
     sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
@@ -313,7 +313,7 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         return getMockedHeadIterator(pages, listOptions);
     });
 
-    // The dedicated feature flag endpoint is queried in addition to classic feature flags; default to an empty result set.
+    // The dedicated feature flag endpoint is queried in addition to feature flags; default to an empty result set.
     sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
         return getMockedFeatureFlagIterator(featureFlagPages, listOptions);
     });
@@ -338,7 +338,7 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
         return getMockedHeadIterator(pages, listOptions, true);
     });
 
-    // The dedicated feature flag endpoint is queried in addition to classic feature flags; default to an empty result set.
+    // The dedicated feature flag endpoint is queried in addition to feature flags; default to an empty result set.
     sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
         return getMockedFeatureFlagIterator([], listOptions, true);
     });
@@ -546,8 +546,8 @@ const createMockedSnapshotReference = (key: string, snapshotName: string): Confi
     isReadOnly: false,
 });
 
-// Creates a strongly-typed feature flag as returned by the dedicated feature flag endpoint (FeatureFlagClient.listFeatureFlags).
-const createMockedNewFeatureFlag = (name: string, props?: any) => Object.assign({
+// Creates an enhanced feature flag as returned by the dedicated feature flag endpoint (FeatureFlagClient.listFeatureFlags).
+const createMockedEnhancedFeatureFlag = (name: string, props?: any) => Object.assign({
     name,
     enabled: true,
     conditions: { filters: [] },
@@ -591,7 +591,7 @@ export {
     createMockedJsonKeyValue,
     createMockedKeyValue,
     createMockedFeatureFlag,
-    createMockedNewFeatureFlag,
+    createMockedEnhancedFeatureFlag,
     createMockedSnapshotReference,
 
     sleepInMs,

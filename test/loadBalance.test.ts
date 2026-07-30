@@ -51,13 +51,13 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one for classic feature flags, one for the new feature flag endpoint
+        // one request for key values, one for feature flags, one for the dedicated feature flag endpoint
         expect(clientRequestCounter_1.count).eq(2);
         expect(clientRequestCounter_2.count).eq(1);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        // refresh: one request to check classic feature flags, one to check the new feature flag endpoint
+        // refresh: one request to check feature flags, one to check the dedicated feature flag endpoint
         expect(clientRequestCounter_1.count).eq(3);
         expect(clientRequestCounter_2.count).eq(2);
 
@@ -88,13 +88,13 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one for classic feature flags, one for the new feature flag endpoint
+        // one request for key values, one for feature flags, one for the dedicated feature flag endpoint
         expect(clientRequestCounter_1.count).eq(3);
         expect(clientRequestCounter_2.count).eq(0);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        // refresh: check classic feature flags + check the new feature flag endpoint, all to the first client
+        // refresh: check feature flags + check the dedicated feature flag endpoint, all to the first client
         expect(clientRequestCounter_1.count).eq(5);
         expect(clientRequestCounter_2.count).eq(0);
     });

@@ -128,15 +128,15 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #kvPageWatchers: PagedSettingsWatcher[] = [];
     /**
-     * Page watchers for classic feature flags, derived from
+     * Page watchers for feature flags, derived from
      * @see AzureAppConfigurationOptions.featureFlagOptions.selectors with each key filter prefixed by `.appconfig.featureflag/`.
      */
-    #classicFfPageWatchers: PagedSettingsWatcher[] = [];
+    #ffPageWatchers: PagedSettingsWatcher[] = [];
     /**
-     * Page watchers for feature flags loaded from feature flag endpoint, derived from
+     * Page watchers for enhanced feature flags loaded from the dedicated feature flag endpoint, derived from
      * @see AzureAppConfigurationOptions.featureFlagOptions.selectors.
      */
-    #ffPageWatchers: PagedSettingsWatcher[] = [];
+    #enhancedFfPageWatchers: PagedSettingsWatcher[] = [];
 
     // Load balancing
     #lastSuccessfulEndpoint: string = "";
@@ -198,8 +198,8 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (options?.featureFlagOptions?.enabled === true) {
             this.#featureFlagEnabled = true;
             // validate feature flag selectors, only load feature flags when enabled
-            this.#classicFfPageWatchers = getClassicFeatureFlagPageWatchers(options.featureFlagOptions.selectors);
-            this.#ffPageWatchers = getPageWatchers(options.featureFlagOptions.selectors);
+            this.#ffPageWatchers = getFeatureFlagPageWatchers(options.featureFlagOptions.selectors);
+            this.#enhancedFfPageWatchers = getPageWatchers(options.featureFlagOptions.selectors);
 
             if (options.featureFlagOptions.refresh?.enabled === true) {
                 this.#featureFlagRefreshEnabled = true;
@@ -419,9 +419,9 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     await this.#loadSelectedKeyValues();
 
                     if (this.#featureFlagEnabled) {
-                        const classicFeatureFlags: ConfigurationSetting[] = await this.#loadClassicFeatureFlags();
-                        const featureFlags: FeatureFlag[] = await this.#loadFeatureFlags();
-                        await this.#setFeatureFlags(classicFeatureFlags, featureFlags);
+                        const featureFlags: ConfigurationSetting[] = await this.#loadFeatureFlags();
+                        const enhancedFeatureFlags: FeatureFlag[] = await this.#loadEnhancedFeatureFlags();
+                        await this.#setFeatureFlags(featureFlags, enhancedFeatureFlags);
                     }
                     this.#isInitialLoadCompleted = true;
                     break;
@@ -614,10 +614,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         }
     }
 
-    async #loadClassicFeatureFlags(): Promise<ConfigurationSetting[]> {
-        const classicFeatureFlags: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
+    async #loadFeatureFlags(): Promise<ConfigurationSetting[]> {
+        const featureFlags: Map<string, ConfigurationSetting> = new Map<string, ConfigurationSetting>();
         // Deep copy selectors to avoid modification if current client fails.
-        const watchersToUpdate: PagedSettingsWatcher[] = structuredClone(this.#classicFfPageWatchers);
+        const watchersToUpdate: PagedSettingsWatcher[] = structuredClone(this.#ffPageWatchers);
 
         for (const selector of watchersToUpdate) {
             let settings: ConfigurationSetting[] = [];
@@ -637,19 +637,19 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
 
             for (const setting of settings) {
                 if (isFeatureFlag(setting)) {
-                    classicFeatureFlags.set(setting.key, setting);
+                    featureFlags.set(setting.key, setting);
                 }
             }
         }
 
-        this.#classicFfPageWatchers = watchersToUpdate;
-        return Array.from(classicFeatureFlags.values());
+        this.#ffPageWatchers = watchersToUpdate;
+        return Array.from(featureFlags.values());
     }
 
-    async #loadFeatureFlags(): Promise<FeatureFlag[]> {
+    async #loadEnhancedFeatureFlags(): Promise<FeatureFlag[]> {
         const loadedFeatureFlags: Map<string, FeatureFlag> = new Map<string, FeatureFlag>();
         // Deep copy selectors to avoid modification if current client fails.
-        const watchersToUpdate: PagedSettingsWatcher[] = structuredClone(this.#ffPageWatchers);
+        const watchersToUpdate: PagedSettingsWatcher[] = structuredClone(this.#enhancedFfPageWatchers);
 
         for (const selector of watchersToUpdate) {
             if (selector.snapshotName) {
@@ -660,39 +660,39 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                 labelFilter: selector.labelFilter,
                 tagsFilter: selector.tagFilters
             };
-            const { items, pageWatchers } = await this.#listFeatureFlags(listOptions);
+            const { items, pageWatchers } = await this.#listEnhancedFeatureFlags(listOptions);
             selector.pageWatchers = pageWatchers;
             for (const featureFlag of items) {
                 loadedFeatureFlags.set(featureFlag.name, featureFlag);
             }
         }
 
-        this.#ffPageWatchers = watchersToUpdate;
+        this.#enhancedFfPageWatchers = watchersToUpdate;
         return Array.from(loadedFeatureFlags.values());
     }
 
-    async #setFeatureFlags(classicFeatureFlags: ConfigurationSetting[], featureFlags: FeatureFlag[]): Promise<void> {
+    async #setFeatureFlags(featureFlags: ConfigurationSetting[], enhancedFeatureFlags: FeatureFlag[]): Promise<void> {
         if (this.#requestTracingEnabled && this.#featureFlagTracing !== undefined) {
             // Reset old feature flag tracing in order to track the information present in the current response from server.
             this.#featureFlagTracing.reset();
         }
 
         // Track whether enhanced feature flags were loaded.
-        this.#useEnhancedFeatureFlag = featureFlags.length > 0;
+        this.#useEnhancedFeatureFlag = enhancedFeatureFlags.length > 0;
 
-        // Exclude any classic feature flags that are superseded by a standalone feature flag with the same name.
-        const ineligibleClassicFfKeys = new Set(featureFlags.map(ff => featureFlagPrefix + ff.name));
-        const eligibleClassicFeatureFlags = await Promise.all(
-            classicFeatureFlags
-                .filter(setting => !ineligibleClassicFfKeys.has(setting.key))
-                .map(setting => this.#parseClassicFeatureFlag(setting))
+        // Exclude any feature flags that are superseded by an enhanced feature flag with the same name.
+        const ineligibleFeatureFlagKeys = new Set(enhancedFeatureFlags.map(ff => featureFlagPrefix + ff.name));
+        const eligibleFeatureFlags = await Promise.all(
+            featureFlags
+                .filter(setting => !ineligibleFeatureFlagKeys.has(setting.key))
+                .map(setting => this.#parseFeatureFlag(setting))
         );
-        const parsedFeatureFlags = await Promise.all(
-            featureFlags.map(ff => this.#parseFeatureFlag(ff))
+        const parsedEnhancedFeatureFlags = await Promise.all(
+            enhancedFeatureFlags.map(ff => this.#parseEnhancedFeatureFlag(ff))
         );
 
         // feature_management is a reserved key, and feature_flags is an array of feature flags
-        this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: [...eligibleClassicFeatureFlags, ...parsedFeatureFlags] });
+        this.#configMap.set(FEATURE_MANAGEMENT_KEY_NAME, { [FEATURE_FLAGS_KEY_NAME]: [...eligibleFeatureFlags, ...parsedEnhancedFeatureFlags] });
     }
 
     /**
@@ -755,13 +755,13 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
             return Promise.resolve(false);
         }
 
-        const needRefresh = await this.#checkConfigurationSettingsChange(this.#classicFfPageWatchers) ||
-            await this.#checkFeatureFlagsChange(this.#ffPageWatchers);
+        const needRefresh = await this.#checkConfigurationSettingsChange(this.#ffPageWatchers) ||
+            await this.#checkEnhancedFeatureFlagsChange(this.#enhancedFfPageWatchers);
 
         if (needRefresh) {
-            const classicFeatureFlags: ConfigurationSetting[] = await this.#loadClassicFeatureFlags();
-            const featureFlags: FeatureFlag[] = await this.#loadFeatureFlags();
-            await this.#setFeatureFlags(classicFeatureFlags, featureFlags);
+            const featureFlags: ConfigurationSetting[] = await this.#loadFeatureFlags();
+            const enhancedFeatureFlags: FeatureFlag[] = await this.#loadEnhancedFeatureFlags();
+            await this.#setFeatureFlags(featureFlags, enhancedFeatureFlags);
         }
 
         this.#ffRefreshTimer!.reset();
@@ -850,11 +850,11 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     /**
-     * Checks whether the feature flag collection from the dedicated feature flag endpoint has changed.
-     * @param selectors - The @see PagedSettingsWatcher of the feature flag collection.
-     * @returns true if the feature flag collection has changed, false otherwise.
+     * Checks whether the enhanced feature flag collection from the dedicated feature flag endpoint has changed.
+     * @param selectors - The @see PagedSettingsWatcher of the enhanced feature flag collection.
+     * @returns true if the enhanced feature flag collection has changed, false otherwise.
      */
-    async #checkFeatureFlagsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
+    async #checkEnhancedFeatureFlagsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
         const funcToExecute = async (client: IAppConfigurationClient) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) {
@@ -948,7 +948,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return await this.#executeWithFailoverPolicy(funcToExecute);
     }
 
-    async #listFeatureFlags(listOptions: ListFeatureFlagsOptions): Promise<{ items: FeatureFlag[]; pageWatchers: SettingWatcher[] }> {
+    async #listEnhancedFeatureFlags(listOptions: ListFeatureFlagsOptions): Promise<{ items: FeatureFlag[]; pageWatchers: SettingWatcher[] }> {
         const funcToExecute = async (client: IAppConfigurationClient) => {
             const pageWatchers: SettingWatcher[] = [];
             const pageIterator = client.listFeatureFlags(
@@ -1099,7 +1099,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return key;
     }
 
-    async #parseClassicFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
+    async #parseFeatureFlag(setting: ConfigurationSetting<string>): Promise<any> {
         const rawFlag = setting.value;
         if (rawFlag === undefined) {
             throw new ArgumentError(ErrorMessages.CONFIGURATION_SETTING_VALUE_UNDEFINED);
@@ -1117,7 +1117,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         return featureFlag;
     }
 
-    async #parseFeatureFlag(featureFlag: FeatureFlag): Promise<any> {
+    async #parseEnhancedFeatureFlag(featureFlag: FeatureFlag): Promise<any> {
         const parsedFeatureFlag = convertToMicrosoftSchema(featureFlag);
 
         let featureFlagReference = `${this.#clientManager.endpoint.origin}/ff/${featureFlagPrefix}${featureFlag.name}`;
@@ -1365,7 +1365,7 @@ function getPageWatchers(selectors?: SettingSelector[]): PagedSettingsWatcher[] 
     return getValidSettingSelectors(selectors);
 }
 
-function getClassicFeatureFlagPageWatchers(selectors?: SettingSelector[]): PagedSettingsWatcher[] {
+function getFeatureFlagPageWatchers(selectors?: SettingSelector[]): PagedSettingsWatcher[] {
     if (selectors === undefined || selectors.length === 0) {
         // Default selector: key/name: *, label: \0
         return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
