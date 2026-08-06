@@ -524,6 +524,65 @@ describe("enhanced feature flags", function () {
         expect(featureFlags.find(ff => ff.id === "NewBeta").enabled).equals(false);
     });
 
+    it("should load an enhanced feature flag with null optional fields", async () => {
+        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+            createMockedEnhancedFeatureFlag("Minimal", {
+                description: null,
+                conditions: null,
+                variants: null,
+                allocation: null,
+                telemetry: null
+            })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlag = (settings.get<any>("feature_management").feature_flags as any[])
+            .find(ff => ff.id === "Minimal");
+        expect(featureFlag).not.undefined;
+        expect(featureFlag.conditions.client_filters).deep.equals([]);
+        expect(featureFlag).not.have.property("description");
+        expect(featureFlag).not.have.property("variants");
+        expect(featureFlag).not.have.property("allocation");
+        expect(featureFlag).not.have.property("telemetry");
+    });
+
+    it("should parse enhanced feature flag filter parameters", async () => {
+        const audience = {
+            Users: ["test@contoso.com"],
+            Groups: [{ Name: "contoso.com", RolloutPercentage: 50 }],
+            DefaultRolloutPercentage: 0
+        };
+        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+            createMockedEnhancedFeatureFlag("Targeted", {
+                conditions: {
+                    requirementType: "Any",
+                    filters: [{
+                        name: "Microsoft.Targeting",
+                        parameters: {
+                            Audience: JSON.stringify(audience),
+                            PlainText: "not-json",
+                            Percentage: "50"
+                        }
+                    }]
+                }
+            })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlag = (settings.get<any>("feature_management").feature_flags as any[])
+            .find(ff => ff.id === "Targeted");
+        const parameters = featureFlag.conditions.client_filters[0].parameters;
+        expect(parameters.Audience).deep.equals(audience);
+        expect(parameters.PlainText).equals("not-json");
+        expect(parameters.Percentage).equals(50);
+    });
+
     it("should let an enhanced feature flag supersede a feature flag with the same name", async () => {
         // "Shared" is enabled and "ClassicOnly" exists; the dedicated endpoint returns "Shared" disabled
         const featureFlagSettings = [

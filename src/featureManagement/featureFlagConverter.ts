@@ -15,7 +15,7 @@ export function convertToMicrosoftSchema(featureFlag: FeatureFlag): any {
         enabled: featureFlag.enabled
     };
 
-    if (featureFlag.description !== undefined) {
+    if (featureFlag.description != null) {
         result.description = featureFlag.description;
     }
 
@@ -23,25 +23,26 @@ export function convertToMicrosoftSchema(featureFlag: FeatureFlag): any {
     const conditions: any = {
         client_filters: (featureFlag.conditions?.filters ?? []).map(filter => {
             const clientFilter: any = { name: filter.name };
-            if (filter.parameters !== undefined) {
-                clientFilter.parameters = filter.parameters;
+            if (filter.parameters != null) {
+                clientFilter.parameters = Object.fromEntries(
+                    Object.entries(filter.parameters).map(([name, value]) => [name, JSON.parse(value)]));
             }
             return clientFilter;
         })
     };
-    if (featureFlag.conditions?.requirementType !== undefined) {
+    if (featureFlag.conditions?.requirementType != null) {
         conditions.requirement_type = featureFlag.conditions.requirementType;
     }
     result.conditions = conditions;
 
     // variants: value -> configuration_value, statusOverride -> status_override
-    if (featureFlag.variants !== undefined) {
+    if (featureFlag.variants != null) {
         result.variants = featureFlag.variants.map(variant => {
             const result_variant: any = { name: variant.name };
             if (variant.value !== undefined) {
                 result_variant.configuration_value = variant.value;
             }
-            if (variant.statusOverride !== undefined) {
+            if (variant.statusOverride != null) {
                 result_variant.status_override = variant.statusOverride;
             }
             return result_variant;
@@ -49,34 +50,34 @@ export function convertToMicrosoftSchema(featureFlag: FeatureFlag): any {
     }
 
     // allocation: camelCase -> snake_case
-    if (featureFlag.allocation !== undefined) {
+    if (featureFlag.allocation != null) {
         const allocation: any = {};
         const sourceAllocation = featureFlag.allocation;
-        if (sourceAllocation.defaultWhenDisabled !== undefined) {
+        if (sourceAllocation.defaultWhenDisabled != null) {
             allocation.default_when_disabled = sourceAllocation.defaultWhenDisabled;
         }
-        if (sourceAllocation.defaultWhenEnabled !== undefined) {
+        if (sourceAllocation.defaultWhenEnabled != null) {
             allocation.default_when_enabled = sourceAllocation.defaultWhenEnabled;
         }
-        if (sourceAllocation.percentile !== undefined) {
+        if (sourceAllocation.percentile != null) {
             allocation.percentile = sourceAllocation.percentile.map(p => ({ variant: p.variant, from: p.from, to: p.to }));
         }
-        if (sourceAllocation.user !== undefined) {
+        if (sourceAllocation.user != null) {
             allocation.user = sourceAllocation.user.map(u => ({ variant: u.variant, users: u.users }));
         }
-        if (sourceAllocation.group !== undefined) {
+        if (sourceAllocation.group != null) {
             allocation.group = sourceAllocation.group.map(g => ({ variant: g.variant, groups: g.groups }));
         }
-        if (sourceAllocation.seed !== undefined) {
+        if (sourceAllocation.seed != null) {
             allocation.seed = sourceAllocation.seed;
         }
         result.allocation = allocation;
     }
 
     // telemetry: metadata is (re)populated later by the provider with ETag/FeatureFlagReference/AllocationId
-    if (featureFlag.telemetry !== undefined) {
+    if (featureFlag.telemetry != null) {
         const telemetry: any = { enabled: featureFlag.telemetry.enabled };
-        if (featureFlag.telemetry.metadata !== undefined) {
+        if (featureFlag.telemetry.metadata != null) {
             telemetry.metadata = featureFlag.telemetry.metadata;
         }
         result.telemetry = telemetry;
