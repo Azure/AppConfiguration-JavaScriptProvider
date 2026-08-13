@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { OperationOptions } from "@azure/core-client";
+import { OperationOptions } from "@azure-rest/core-client";
 import {
     AppConfigurationClient,
     ConfigurationSettingId,
@@ -101,7 +101,9 @@ function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: 
     const actualOptions = { ...operationOptions };
     if (requestTracingOptions.enabled) {
         actualOptions.requestOptions = {
-            customHeaders: {
+            ...actualOptions.requestOptions,
+            headers: {
+                ...actualOptions.requestOptions?.headers,
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
