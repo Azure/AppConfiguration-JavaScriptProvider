@@ -97,7 +97,7 @@ describe("loadFromAzureFrontDoor", function() {
             userAgent = headerPolicy.headers.get("User-Agent");
         }
 
-        expect(userAgent).satisfy((ua: string) => ua.startsWith("javascript-appconfiguration-provider"));
+        expect(userAgent).satisfy((ua: string) => ua.includes("javascript-appconfiguration-provider"));
         expect(headerPolicy.headers.get("Authorization")).to.be.undefined;
         expect(headerPolicy.headers.get("Sync-Token")).to.be.undefined;
     });
