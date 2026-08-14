@@ -6,7 +6,7 @@ import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, mockFeatureFlagClientListFeatureFlags, restoreMocks, sleepInMs } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -207,6 +207,7 @@ describe("feature flags", function () {
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
+        mockFeatureFlagClientListFeatureFlags([]);
     });
 
     after(() => {
@@ -509,7 +510,8 @@ describe("enhanced feature flags", function () {
 
     it("should load feature flags from the dedicated feature flag endpoint", async () => {
         // no feature flags; two enhanced feature flags returned by the dedicated endpoint
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("NewAlpha", { enabled: true }),
             createMockedEnhancedFeatureFlag("NewBeta", { enabled: false })
         ]]);
@@ -525,7 +527,8 @@ describe("enhanced feature flags", function () {
     });
 
     it("should load an enhanced feature flag with null optional fields", async () => {
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("Minimal", {
                 description: null,
                 conditions: null,
@@ -555,7 +558,8 @@ describe("enhanced feature flags", function () {
             Groups: [{ Name: "contoso.com", RolloutPercentage: 50 }],
             DefaultRolloutPercentage: 0
         };
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("Targeted", {
                 conditions: {
                     requirementType: "Any",
@@ -589,7 +593,8 @@ describe("enhanced feature flags", function () {
             createMockedFeatureFlag("Shared", { enabled: true }),
             createMockedFeatureFlag("ClassicOnly", { enabled: true })
         ];
-        mockAppConfigurationClientListConfigurationSettings([featureFlagSettings], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([featureFlagSettings]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("Shared", { enabled: false })
         ]]);
 
@@ -623,7 +628,8 @@ describe("enhanced feature flags", function () {
             },
             telemetry: { enabled: true }
         });
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[enhancedFeatureFlag]]);
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[enhancedFeatureFlag]]);
 
         const settings = await load(createMockedConnectionString(), {
             featureFlagOptions: { enabled: true }
@@ -646,7 +652,8 @@ describe("enhanced feature flags", function () {
     });
 
     it("should refresh feature flags when the dedicated endpoint changes", async () => {
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("NewFlag", { enabled: true })
         ]]);
 
@@ -662,7 +669,8 @@ describe("enhanced feature flags", function () {
 
         // the enhanced feature flag on the dedicated endpoint changes
         restoreMocks();
-        mockAppConfigurationClientListConfigurationSettings([[]], undefined, [[
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
             createMockedEnhancedFeatureFlag("NewFlag", { enabled: false })
         ]]);
 

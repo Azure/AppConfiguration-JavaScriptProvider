@@ -10,7 +10,7 @@ const expect = chai.expect;
 import { AppConfigurationClient } from "@azure/app-configuration";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { ErrorMessages } from "../src/common/errorMessages.js";
-import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs, mockAppConfigurationClientListFeatureFlags } from "./utils/testHelper.js";
+import { createMockedKeyValue, createMockedFeatureFlag, HttpRequestHeadersPolicy, getCachedIterator, sinon, restoreMocks, createMockedConnectionString, createMockedAzureFrontDoorEndpoint, sleepInMs, mockFeatureFlagClientListFeatureFlags } from "./utils/testHelper.js";
 import { X_MS_DATE_HEADER } from "../src/afd/constants.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
@@ -116,7 +116,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [ff], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:00Z") } }
         ]));
         // the dedicated feature flag endpoint returns no feature flags
-        mockAppConfigurationClientListFeatureFlags([]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             selectors: [{ keyFilter: "app.*" }],
@@ -218,7 +218,7 @@ describe("loadFromAzureFrontDoor", function() {
             { items: [ff_updated], response: { status: 200, headers: createTimestampHeaders("2025-09-07T00:00:03Z") } }
         ]));
         // the dedicated feature flag endpoint returns no feature flags
-        mockAppConfigurationClientListFeatureFlags([]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const appConfig = await loadFromAzureFrontDoor(createMockedAzureFrontDoorEndpoint(), {
             featureFlagOptions: {

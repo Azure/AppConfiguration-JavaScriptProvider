@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, AppConfigurationClientOptions, FeatureFlagClient } from "@azure/app-configuration";
-import { AppConfigClient } from "./appConfigClient.js";
-import { ConfigurationClientWrapper } from "./configurationClientWrapper.js";
+import { AppConfigurationClientOptions as ConfigurationClientOptions } from "@azure/app-configuration";
+import { AppConfigurationClient } from "./appConfigurationClient.js";
+import { AppConfigurationClientWrapper } from "./appConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
@@ -29,18 +29,18 @@ const DNS_RESOLVER_TIMEOUT_IN_MS = 3_000;
 const DNS_RESOLVER_TRIES = 2;
 const MAX_ALTNATIVE_SRV_COUNT = 10;
 
-export class ConfigurationClientManager {
+export class AppConfigurationClientManager {
     readonly endpoint: URL; // primary endpoint, which is the one specified in the connection string or passed in as a parameter
     #isFailoverable: boolean;
     #dns: any;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
-    #clientOptions: AppConfigurationClientOptions | undefined;
+    #clientOptions: ConfigurationClientOptions | undefined;
     #appConfigOptions: AzureAppConfigurationOptions | undefined;
     #validDomain: string; // valid domain for the primary endpoint, which is used to discover replicas
-    #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
-    #dynamicClients: ConfigurationClientWrapper[];
+    #staticClients: AppConfigurationClientWrapper[]; // there should always be only one static client
+    #dynamicClients: AppConfigurationClientWrapper[];
     #replicaCount: number = 0;
     #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
     #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
@@ -50,8 +50,7 @@ export class ConfigurationClientManager {
         credentialOrOptions?: TokenCredential | AzureAppConfigurationOptions,
         appConfigOptions?: AzureAppConfigurationOptions
     ) {
-        let staticConfigurationClient: AppConfigurationClient;
-        let staticFeatureFlagClient: FeatureFlagClient;
+        let staticClient: AppConfigurationClient;
         const credentialPassed = instanceOfTokenCredential(credentialOrOptions);
 
         if (typeof connectionStringOrEndpoint === "string" && !credentialPassed) {
@@ -68,8 +67,7 @@ export class ConfigurationClientManager {
             } else {
                 throw new ArgumentError(`Invalid connection string. Valid connection strings should match the regex '${ConnectionStringRegex.source}'.`);
             }
-            staticConfigurationClient = new AppConfigurationClient(connectionString, this.#clientOptions);
-            staticFeatureFlagClient = new FeatureFlagClient(connectionString, this.#clientOptions);
+            staticClient = new AppConfigurationClient(connectionString, this.#clientOptions);
         } else if ((connectionStringOrEndpoint instanceof URL || typeof connectionStringOrEndpoint === "string") && credentialPassed) {
             let endpoint = connectionStringOrEndpoint;
             // ensure string is a valid URL.
@@ -82,13 +80,12 @@ export class ConfigurationClientManager {
             this.#clientOptions = getClientOptions(this.#appConfigOptions);
             this.endpoint = endpoint;
             this.#credential = credential;
-            staticConfigurationClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
-            staticFeatureFlagClient = new FeatureFlagClient(this.endpoint.origin, this.#credential, this.#clientOptions);
+            staticClient = new AppConfigurationClient(this.endpoint.origin, this.#credential, this.#clientOptions);
         } else {
             throw new ArgumentError(ErrorMessages.CONNECTION_STRING_OR_ENDPOINT_MISSED);
         }
 
-        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, new AppConfigClient(this.endpoint.origin, staticConfigurationClient, staticFeatureFlagClient))];
+        this.#staticClients = [new AppConfigurationClientWrapper(this.endpoint.origin, staticClient)];
         this.#validDomain = getValidDomain(this.endpoint.hostname.toLowerCase());
     }
 
@@ -117,7 +114,7 @@ export class ConfigurationClientManager {
         return this.#replicaCount;
     }
 
-    async getClients(): Promise<ConfigurationClientWrapper[]> {
+    async getClients(): Promise<AppConfigurationClientWrapper[]> {
         if (!this.#isFailoverable) {
             return this.#staticClients;
         }
@@ -163,20 +160,17 @@ export class ConfigurationClientManager {
         }
 
         const srvTargetHosts = shuffleList(result);
-        const newDynamicClients: ConfigurationClientWrapper[] = [];
+        const newDynamicClients: AppConfigurationClientWrapper[] = [];
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
                 const targetEndpoint = `https://${host}`;
                 if (host.toLowerCase() === this.endpoint.hostname.toLowerCase()) {
                     continue;
                 }
-                const configurationClient = this.#credential ?
+                const appConfigurationClient = this.#credential ?
                     new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
                     new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
-                const featureFlagClient = this.#credential ?
-                    new FeatureFlagClient(targetEndpoint, this.#credential, this.#clientOptions) :
-                    new FeatureFlagClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
-                newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, new AppConfigClient(targetEndpoint, configurationClient, featureFlagClient)));
+                newDynamicClients.push(new AppConfigurationClientWrapper(targetEndpoint, appConfigurationClient));
             }
         }
 
@@ -263,7 +257,7 @@ export function isValidEndpoint(host: string, validDomain: string): boolean {
     return host.toLowerCase().endsWith(validDomain.toLowerCase());
 }
 
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
+export function getClientOptions(options?: AzureAppConfigurationOptions): ConfigurationClientOptions {
     // user-agent
     let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
     const userAgentOptions = options?.clientOptions?.userAgentOptions;

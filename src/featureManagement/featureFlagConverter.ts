@@ -4,12 +4,12 @@
 import { FeatureFlag } from "@azure/app-configuration";
 
 /**
- * Converts @see FeatureFlag returned by the feature flag endpoint into the
- * Microsoft Feature Management schema object (snake_case) used within the `feature_management.feature_flags`
+ * Converts @see FeatureFlag into the
+ * Microsoft Feature Flag schema object used within the `feature_management.feature_flags`
  * array. This mirrors the shape produced by parsing a classic feature flag key-value, so that downstream
  * feature management parsing and the provider's telemetry/tracing logic are unchanged.
  */
-export function convertToMicrosoftSchema(featureFlag: FeatureFlag): any {
+export function convert(featureFlag: FeatureFlag): any {
     const result: any = {
         id: featureFlag.name,
         enabled: featureFlag.enabled

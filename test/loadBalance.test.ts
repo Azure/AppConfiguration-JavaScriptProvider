@@ -7,9 +7,8 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
 import { restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedEndpoint, mockConfigurationManagerGetClients, mockAppConfigurationClientLoadBalanceMode } from "./utils/testHelper.js";
-import { AppConfigurationClient, FeatureFlagClient } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "../src/configurationClientWrapper.js";
-import { AppConfigClient } from "../src/appConfigClient.js";
+import { AppConfigurationClientWrapper } from "../src/appConfigurationClientWrapper.js";
+import { AppConfigurationClient } from "../src/appConfigurationClient.js";
 
 const mockedKVs = [
     { value: "red", key: "app.settings.fontColor" },
@@ -18,14 +17,18 @@ const mockedKVs = [
 ].map(createMockedKeyValue);
 const fakeEndpoint_1 = createMockedEndpoint("fake_1");
 const fakeEndpoint_2 = createMockedEndpoint("fake_2");
-const fakeClientWrapper_1 = new ConfigurationClientWrapper(fakeEndpoint_1, new AppConfigClient(fakeEndpoint_1, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_1)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint_1))));
-const fakeClientWrapper_2 = new ConfigurationClientWrapper(fakeEndpoint_2, new AppConfigClient(fakeEndpoint_2, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_2)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint_2))));
-const clientRequestCounter_1 = {count: 0};
-const clientRequestCounter_2 = {count: 0};
+const fakeClientWrapper_1 = new AppConfigurationClientWrapper(fakeEndpoint_1, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_1)));
+const fakeClientWrapper_2 = new AppConfigurationClientWrapper(fakeEndpoint_2, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint_2)));
+const clientCallCounts_1 = { configurationSettings: 0, enhancedFeatureFlags: 0 };
+const clientCallCounts_2 = { configurationSettings: 0, enhancedFeatureFlags: 0 };
 
 describe("load balance", function () {
 
     beforeEach(() => {
+        clientCallCounts_1.configurationSettings = 0;
+        clientCallCounts_1.enhancedFeatureFlags = 0;
+        clientCallCounts_2.configurationSettings = 0;
+        clientCallCounts_2.enhancedFeatureFlags = 0;
     });
 
     afterEach(() => {
@@ -34,8 +37,8 @@ describe("load balance", function () {
 
     it("should load balance the request when loadBalancingEnabled", async () => {
         mockConfigurationManagerGetClients([fakeClientWrapper_1, fakeClientWrapper_2], false);
-        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientRequestCounter_1);
-        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientRequestCounter_2);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientCallCounts_1);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientCallCounts_2);
 
         const connectionString = createMockedConnectionString();
         const settings = await load(connectionString, {
@@ -51,28 +54,31 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one for feature flags, one for the dedicated feature flag endpoint
-        expect(clientRequestCounter_1.count).eq(2);
-        expect(clientRequestCounter_2.count).eq(1);
+        // Configuration-setting requests are split between clients; the dedicated feature-flag request rotates back to client 1.
+        expect(clientCallCounts_1.configurationSettings).eq(1);
+        expect(clientCallCounts_1.enhancedFeatureFlags).eq(1);
+        expect(clientCallCounts_2.configurationSettings).eq(1);
+        expect(clientCallCounts_2.enhancedFeatureFlags).eq(0);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        // refresh: one request to check feature flags, one to check the dedicated feature flag endpoint
-        expect(clientRequestCounter_1.count).eq(3);
-        expect(clientRequestCounter_2.count).eq(2);
+        expect(clientCallCounts_1.configurationSettings).eq(1);
+        expect(clientCallCounts_1.enhancedFeatureFlags).eq(2);
+        expect(clientCallCounts_2.configurationSettings).eq(2);
+        expect(clientCallCounts_2.enhancedFeatureFlags).eq(0);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        expect(clientRequestCounter_1.count).eq(4);
-        expect(clientRequestCounter_2.count).eq(3);
+        expect(clientCallCounts_1.configurationSettings).eq(1);
+        expect(clientCallCounts_1.enhancedFeatureFlags).eq(3);
+        expect(clientCallCounts_2.configurationSettings).eq(3);
+        expect(clientCallCounts_2.enhancedFeatureFlags).eq(0);
     });
 
     it("should not load balance the request when loadBalance disabled", async () => {
-        clientRequestCounter_1.count = 0;
-        clientRequestCounter_2.count = 0;
         mockConfigurationManagerGetClients([fakeClientWrapper_1, fakeClientWrapper_2], false);
-        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientRequestCounter_1);
-        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientRequestCounter_2);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_1, clientCallCounts_1);
+        mockAppConfigurationClientLoadBalanceMode([mockedKVs], fakeClientWrapper_2, clientCallCounts_2);
 
         const connectionString = createMockedConnectionString();
         // loadBalancingEnabled is default to false
@@ -88,14 +94,16 @@ describe("load balance", function () {
                 }
             }
         });
-        // one request for key values, one for feature flags, one for the dedicated feature flag endpoint
-        expect(clientRequestCounter_1.count).eq(3);
-        expect(clientRequestCounter_2.count).eq(0);
+        expect(clientCallCounts_1.configurationSettings).eq(2);
+        expect(clientCallCounts_1.enhancedFeatureFlags).eq(1);
+        expect(clientCallCounts_2.configurationSettings).eq(0);
+        expect(clientCallCounts_2.enhancedFeatureFlags).eq(0);
 
         await sleepInMs(2 * 1000 + 1);
         await settings.refresh();
-        // refresh: check feature flags + check the dedicated feature flag endpoint, all to the first client
-        expect(clientRequestCounter_1.count).eq(5);
-        expect(clientRequestCounter_2.count).eq(0);
+        expect(clientCallCounts_1.configurationSettings).eq(3);
+        expect(clientCallCounts_1.enhancedFeatureFlags).eq(2);
+        expect(clientCallCounts_2.configurationSettings).eq(0);
+        expect(clientCallCounts_2.enhancedFeatureFlags).eq(0);
     });
 });

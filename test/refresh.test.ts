@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientListConfigurationSettingsWithStringStatus, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
+import { mockAppConfigurationClientListConfigurationSettings, mockAppConfigurationClientListConfigurationSettingsWithStringStatus, mockFeatureFlagClientListFeatureFlags, mockAppConfigurationClientGetConfigurationSetting, restoreMocks, createMockedConnectionString, createMockedKeyValue, sleepInMs, createMockedFeatureFlag } from "./utils/testHelper.js";
 import * as uuid from "uuid";
 
 let mockedKVs: any[] = [];
@@ -579,6 +579,7 @@ describe("dynamic refresh feature flags", function () {
             createMockedFeatureFlag("Beta", { enabled: true })
         ];
         mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
 
         const connectionString = createMockedConnectionString();
@@ -633,6 +634,7 @@ describe("dynamic refresh feature flags", function () {
             createMockedFeatureFlag("Beta_2", { enabled: true }),
         ];
         mockAppConfigurationClientListConfigurationSettings([page1, page2], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         const connectionString = createMockedConnectionString();
@@ -666,6 +668,7 @@ describe("dynamic refresh feature flags", function () {
         page2[0] = createMockedFeatureFlag("Beta_1", { enabled: false });
         restoreMocks();
         mockAppConfigurationClientListConfigurationSettings([page1, page2], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         await sleepInMs(2 * 1000 + 1);
@@ -681,6 +684,7 @@ describe("dynamic refresh feature flags", function () {
             createMockedFeatureFlag("ProdFeature", { enabled: false }, { tags: { "env": "prod" } })
         ];
         mockAppConfigurationClientListConfigurationSettings([mockedKVs], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting(mockedKVs, getKvCallback);
 
         const connectionString = createMockedConnectionString();
@@ -732,6 +736,7 @@ describe("dynamic refresh feature flags", function () {
             createMockedFeatureFlag("Beta_2", { enabled: true }),
         ];
         mockAppConfigurationClientListConfigurationSettingsWithStringStatus([page1, page2], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         const connectionString = createMockedConnectionString();
@@ -766,6 +771,7 @@ describe("dynamic refresh feature flags", function () {
         page2[0] = createMockedFeatureFlag("Beta_1", { enabled: false });
         restoreMocks();
         mockAppConfigurationClientListConfigurationSettingsWithStringStatus([page1, page2], listKvCallback);
+        mockFeatureFlagClientListFeatureFlags([]);
         mockAppConfigurationClientGetConfigurationSetting([...page1, ...page2], getKvCallback);
 
         // the page response status is "200" when changed

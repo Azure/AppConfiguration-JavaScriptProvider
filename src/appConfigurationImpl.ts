@@ -65,9 +65,9 @@ import {
 import { FeatureFlagTracingOptions } from "./requestTracing/featureFlagTracingOptions.js";
 import { AIConfigurationTracingOptions } from "./requestTracing/aiConfigurationTracingOptions.js";
 import { KeyFilter, LabelFilter, SettingWatcher, SettingSelector, PagedSettingsWatcher, WatchedSetting } from "./types.js";
-import { ConfigurationClientManager } from "./configurationClientManager.js";
-import { IAppConfigurationClient } from "./appConfigClient.js";
-import { convertToMicrosoftSchema } from "./featureManagement/featureFlagConverter.js";
+import { AppConfigurationClientManager } from "./appConfigurationClientManager.js";
+import { AppConfigurationClient } from "./appConfigurationClient.js";
+import { convert } from "./featureManagement/featureFlagConverter.js";
 import { getFixedBackoffDuration, getExponentialBackoffDuration } from "./common/backoffUtils.js";
 import { getStatusCode } from "./common/utils.js";
 import { InvalidOperationError, ArgumentError, isFailoverableError, isInputError, SnapshotReferenceError } from "./common/errors.js";
@@ -89,7 +89,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      */
     #sortedTrimKeyPrefixes: string[] | undefined;
     readonly #requestTracingEnabled: boolean;
-    #clientManager: ConfigurationClientManager;
+    #clientManager: AppConfigurationClientManager;
     #options: AzureAppConfigurationOptions | undefined;
     #isInitialLoadCompleted: boolean = false;
     #isFailoverRequest: boolean = false;
@@ -145,7 +145,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     #isAfdUsed: boolean = false;
 
     constructor(
-        clientManager: ConfigurationClientManager,
+        clientManager: AppConfigurationClientManager,
         options: AzureAppConfigurationOptions | undefined,
         isAfdUsed: boolean
     ) {
@@ -800,7 +800,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @returns true if key-value collection has changed, false otherwise.
      */
     async #checkConfigurationSettingsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) { // skip snapshot selector
                     continue;
@@ -855,7 +855,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * @returns true if the enhanced feature flag collection has changed, false otherwise.
      */
     async #checkEnhancedFeatureFlagsChange(selectors: PagedSettingsWatcher[]): Promise<boolean> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             for (const selector of selectors) {
                 if (selector.snapshotName) {
                     continue;
@@ -908,7 +908,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
      * Gets a configuration setting by key and label. If the setting is not found, return undefined instead of throwing an error.
      */
     async #getConfigurationSetting(configurationSettingId: ConfigurationSettingId, getOptions?: GetConfigurationSettingOptions): Promise<GetConfigurationSettingResponse | undefined> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return client.getConfigurationSetting(
                 configurationSettingId,
                 getOptions,
@@ -930,7 +930,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettings(listOptions: ListConfigurationSettingsOptions): Promise<{ items: ConfigurationSetting[]; pageWatchers: SettingWatcher[] }> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageWatchers: SettingWatcher[] = [];
             const pageIterator = client.listConfigurationSettings(
                 listOptions,
@@ -949,7 +949,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listEnhancedFeatureFlags(listOptions: ListFeatureFlagsOptions): Promise<{ items: FeatureFlag[]; pageWatchers: SettingWatcher[] }> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageWatchers: SettingWatcher[] = [];
             const pageIterator = client.listFeatureFlags(
                 listOptions,
@@ -968,7 +968,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #getSnapshot(snapshotName: string, getOptions?: GetSnapshotOptions): Promise<GetSnapshotResponse | undefined> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             return client.getSnapshot(
                 snapshotName,
                 getOptions,
@@ -990,7 +990,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     async #listConfigurationSettingsForSnapshot(snapshotName: string, listOptions?: ListConfigurationSettingsForSnapshotOptions): Promise<ConfigurationSetting[]> {
-        const funcToExecute = async (client: IAppConfigurationClient) => {
+        const funcToExecute = async (client: AppConfigurationClient) => {
             const pageIterator = client.listConfigurationSettingsForSnapshot(
                 snapshotName,
                 listOptions,
@@ -1008,7 +1008,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     }
 
     // Only operations related to Azure App Configuration should be executed with failover policy.
-    async #executeWithFailoverPolicy(funcToExecute: (client: IAppConfigurationClient) => Promise<any>): Promise<any> {
+    async #executeWithFailoverPolicy(funcToExecute: (client: AppConfigurationClient) => Promise<any>): Promise<any> {
         let clientWrappers = await this.#clientManager.getClients();
         if (this.#options?.loadBalancingEnabled && this.#lastSuccessfulEndpoint !== "" && clientWrappers.length > 1) {
             let nextClientIndex = 0;
@@ -1104,21 +1104,21 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
         if (rawFlag === undefined) {
             throw new ArgumentError(ErrorMessages.CONFIGURATION_SETTING_VALUE_UNDEFINED);
         }
-        const featureFlag = JSON.parse(rawFlag);
+        const parsedFeatureFlag = JSON.parse(rawFlag);
 
         let featureFlagReference = `${this.#clientManager.endpoint.origin}/kv/${setting.key}`;
         if (setting.label && setting.label.trim().length !== 0) {
             featureFlagReference += `?label=${setting.label}`;
         }
 
-        await this.#injectFeatureFlagTelemetry(featureFlag, setting.etag, featureFlagReference);
-        this.#setFeatureFlagTracing(featureFlag);
+        await this.#injectFeatureFlagTelemetry(parsedFeatureFlag, setting.etag, featureFlagReference);
+        this.#setFeatureFlagTracing(parsedFeatureFlag);
 
-        return featureFlag;
+        return parsedFeatureFlag;
     }
 
     async #parseEnhancedFeatureFlag(featureFlag: FeatureFlag): Promise<any> {
-        const parsedFeatureFlag = convertToMicrosoftSchema(featureFlag);
+        const parsedFeatureFlag = convert(featureFlag);
 
         let featureFlagReference = `${this.#clientManager.endpoint.origin}/ff/${featureFlagPrefix}${featureFlag.name}`;
         if (featureFlag.label && featureFlag.label.trim().length !== 0) {

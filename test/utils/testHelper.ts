@@ -2,14 +2,14 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting, FeatureFlagClient, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
+import { AppConfigurationClient as ConfigurationClient, ConfigurationSetting, FeatureFlagClient, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
 import { RestError, PipelineRequest, PipelineResponse, SendRequest } from "@azure/core-rest-pipeline";
-import { ConfigurationClientManager } from "../../src/configurationClientManager.js";
-import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
-import { AppConfigClient } from "../../src/appConfigClient.js";
+import { AppConfigurationClientManager } from "../../src/appConfigurationClientManager.js";
+import { AppConfigurationClientWrapper } from "../../src/appConfigurationClientWrapper.js";
+import { AppConfigurationClient } from "../../src/appConfigurationClient.js";
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -278,7 +278,7 @@ function getMockedFeatureFlagIterator(pages: any[][], listOptions: any, useStrin
  * Mocks the listFeatureFlags method of FeatureFlagClient to return the provided pages of feature flags.
  * @param pages List of pages, each page is a list of typed feature flags (see createMockedEnhancedFeatureFlag).
  */
-function mockAppConfigurationClientListFeatureFlags(pages: any[][], customCallback?: (listOptions: any) => any) {
+function mockFeatureFlagClientListFeatureFlags(pages: any[][], customCallback?: (listOptions: any) => any) {
     sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
@@ -294,9 +294,9 @@ function mockAppConfigurationClientListFeatureFlags(pages: any[][], customCallba
  *
  * @param pages List of pages, each page is a list of ConfigurationSetting
  */
-function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any, featureFlagPages: any[][] = []) {
+function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
 
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -305,7 +305,7 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         return getMockedIterator(pages, kvs, listOptions);
     });
 
-    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -313,15 +313,11 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         return getMockedHeadIterator(pages, listOptions);
     });
 
-    // The dedicated feature flag endpoint is queried in addition to feature flags; default to an empty result set.
-    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
-        return getMockedFeatureFlagIterator(featureFlagPages, listOptions);
-    });
 }
 
 function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
 
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -330,7 +326,7 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
         return getMockedIterator(pages, kvs, listOptions, true);
     });
 
-    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -338,37 +334,37 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
         return getMockedHeadIterator(pages, listOptions, true);
     });
 
-    // The dedicated feature flag endpoint is queried in addition to feature flags; default to an empty result set.
-    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
-        return getMockedFeatureFlagIterator([], listOptions, true);
-    });
 }
 
-function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
+function mockAppConfigurationClientLoadBalanceMode(
+    pages: ConfigurationSetting[][],
+    clientWrapper: AppConfigurationClientWrapper,
+    callCounts: { configurationSettings: number; enhancedFeatureFlags: number }
+) {
     sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
-        countObject.count += 1;
+        callCounts.configurationSettings += 1;
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
     });
     sinon.stub(clientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
-        countObject.count += 1;
+        callCounts.configurationSettings += 1;
         return getMockedHeadIterator(pages, listOptions);
     });
     sinon.stub(clientWrapper.client, "listFeatureFlags").callsFake((listOptions) => {
-        countObject.count += 1;
+        callCounts.enhancedFeatureFlags += 1;
         return getMockedFeatureFlagIterator([], listOptions);
     });
 }
 
-function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
+function mockConfigurationManagerGetClients(fakeClientWrappers: AppConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
     // Stub the getClients method on the class prototype
-    sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+    sinon.stub(AppConfigurationClientManager.prototype, "getClients").callsFake(async () => {
         if (fakeClientWrappers?.length > 0) {
             return fakeClientWrappers;
         }
-        const clients: ConfigurationClientWrapper[] = [];
+        const clients: AppConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
-        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigClient(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)), new FeatureFlagClient(createMockedConnectionString(fakeEndpoint))));
+        const fakeStaticClientWrapper = new AppConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
         sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
@@ -385,7 +381,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         }
 
         const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
-        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigClient(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)), new FeatureFlagClient(createMockedConnectionString(fakeReplicaEndpoint))));
+        const fakeDynamicClientWrapper = new AppConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
         clients.push(fakeDynamicClientWrapper);
         sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
             const kvs = _filterKVs(pages.flat(), listOptions);
@@ -402,7 +398,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
 }
 
 function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
+    sinon.stub(ConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         if (customCallback) {
             customCallback(options);
         }
@@ -421,7 +417,7 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], custom
 }
 
 function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
+    sinon.stub(ConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
         if (customCallback) {
             customCallback(options);
         }
@@ -435,7 +431,7 @@ function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, an
 }
 
 function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -573,7 +569,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientListConfigurationSettingsWithStringStatus,
-    mockAppConfigurationClientListFeatureFlags,
+    mockFeatureFlagClientListFeatureFlags,
     mockAppConfigurationClientGetConfigurationSetting,
     mockAppConfigurationClientGetSnapshot,
     mockAppConfigurationClientListConfigurationSettingsForSnapshot,
