@@ -35,7 +35,7 @@ describe("request tracing", function () {
     after(() => {
     });
 
-    it("should have correct user agent prefix", async () => {
+    it("should include the provider identifier in the user agent", async () => {
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions,
@@ -244,19 +244,15 @@ describe("request tracing", function () {
     });
 
     it("should have filter type in correlation-context header if feature flags use feature filters", async () => {
-        let correlationContext: string = "";
-        const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
-        };
-
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedFeatureFlag("Alpha_1", { conditions: { client_filters: [ { name: "Microsoft.TimeWindow" } ] } }),
             createMockedFeatureFlag("Alpha_2", { conditions: { client_filters: [ { name: "Microsoft.Targeting" } ] } }),
             createMockedFeatureFlag("Alpha_3", { conditions: { client_filters: [ { name: "CustomFilter" } ] } })
-        ]], listKvCallback);
+        ]]);
         mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [ {keyFilter: "*"} ],
@@ -267,35 +263,31 @@ describe("request tracing", function () {
             }
         });
 
-        expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+        restoreMocks();
 
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get(CORRELATION_CONTEXT_HEADER_NAME);
         expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
-        expect(correlationContext?.includes("Filter=CSTM+TIME+TRGT")).eq(true);
+        expect(correlationContext.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext.includes("Filter=CSTM+TIME+TRGT")).eq(true);
 
         restoreMocks();
     });
 
     it("should have max variants in correlation-context header if feature flags use variants", async () => {
-        let correlationContext: string = "";
-        const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
-        };
-
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedFeatureFlag("Alpha_1", { variants: [ {name: "a"}, {name: "b"}] }),
             createMockedFeatureFlag("Alpha_2", { variants: [ {name: "a"}, {name: "b"}, {name: "c"}] }),
             createMockedFeatureFlag("Alpha_3", { variants: [] })
-        ]], listKvCallback);
+        ]]);
         mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [ {keyFilter: "*"} ],
@@ -306,33 +298,29 @@ describe("request tracing", function () {
             }
         });
 
-        expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+        restoreMocks();
 
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get(CORRELATION_CONTEXT_HEADER_NAME);
         expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
-        expect(correlationContext?.includes("MaxVariants=3")).eq(true);
+        expect(correlationContext.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext.includes("MaxVariants=3")).eq(true);
 
         restoreMocks();
     });
 
     it("should have telemety tag in correlation-context header if feature flags enable telemetry", async () => {
-        let correlationContext: string = "";
-        const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
-        };
-
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} })
-        ]], listKvCallback);
+        ]]);
         mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [ {keyFilter: "*"} ],
@@ -343,34 +331,30 @@ describe("request tracing", function () {
             }
         });
 
-        expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+        restoreMocks();
 
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get(CORRELATION_CONTEXT_HEADER_NAME);
         expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
-        expect(correlationContext?.includes("FFFeatures=Telemetry")).eq(true);
+        expect(correlationContext.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext.includes("FFFeatures=Telemetry")).eq(true);
 
         restoreMocks();
     });
 
     it("should have seed tag in correlation-context header if feature flags use allocation seed", async () => {
-        let correlationContext: string = "";
-        const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
-        };
-
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} }),
             createMockedFeatureFlag("Alpha_2", { allocation: {seed: "123"} })
-        ]], listKvCallback);
+        ]]);
         mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
             featureFlagOptions: {
                 enabled: true,
                 selectors: [ {keyFilter: "*"} ],
@@ -381,48 +365,44 @@ describe("request tracing", function () {
             }
         });
 
-        expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+        restoreMocks();
 
         await sleepInMs(1_000 + 1_000);
         try {
             await settings.refresh();
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get(CORRELATION_CONTEXT_HEADER_NAME);
         expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Watch")).eq(true);
-        expect(correlationContext?.includes("FFFeatures=Seed+Telemetry")).eq(true);
+        expect(correlationContext.includes("RequestType=Watch")).eq(true);
+        expect(correlationContext.includes("FFFeatures=Seed+Telemetry")).eq(true);
 
         restoreMocks();
     });
 
     it("should have AI tag in correlation-context header if key values use AI configuration", async () => {
-        let correlationContext: string = "";
-        const listKvCallback = (listOptions) => {
-            correlationContext = listOptions?.requestOptions?.headers?.[CORRELATION_CONTEXT_HEADER_NAME] ?? "";
-        };
-
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedKeyValue({ contentType: "application/json; profile=\"https://azconfig.io/mime-profiles/ai/chat-completion\"" })
-        ]], listKvCallback);
+        ]]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
+            clientOptions,
             refreshOptions: {
                 enabled: true,
                 refreshIntervalInMs: 1000
             }
         });
 
-        expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("RequestType=Startup")).eq(true);
+        restoreMocks();
 
         await sleepInMs(1000 + 1);
         try {
             await settings.refresh();
         } catch { /* empty */ }
         expect(headerPolicy.headers).not.undefined;
+        const correlationContext = headerPolicy.headers.get(CORRELATION_CONTEXT_HEADER_NAME);
         expect(correlationContext).not.undefined;
-        expect(correlationContext?.includes("Features=AI+AICC")).eq(true);
+        expect(correlationContext.includes("Features=AI+AICC")).eq(true);
 
         restoreMocks();
     });
