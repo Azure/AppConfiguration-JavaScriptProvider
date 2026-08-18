@@ -1,7 +1,14 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { FeatureFlag } from "@azure/app-configuration";
+import type { FeatureFlag as AzAppConfigFeatureFlag } from "@azure/app-configuration";
+import type {
+    FeatureFilter,
+    FeatureFlag,
+    FeatureFlagAllocation,
+    FeatureFlagTelemetry,
+    FeatureFlagVariant
+} from "./featureFlags.js";
 
 /**
  * Converts @see FeatureFlag into the
@@ -9,49 +16,47 @@ import { FeatureFlag } from "@azure/app-configuration";
  * array. This mirrors the shape produced by parsing a classic feature flag key-value, so that downstream
  * feature management parsing and the provider's telemetry/tracing logic are unchanged.
  */
-export function convert(featureFlag: FeatureFlag): any {
-    const result: any = {
+export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
+    const result: FeatureFlag = {
         id: featureFlag.name,
-        enabled: featureFlag.enabled
+        enabled: featureFlag.enabled,
+        conditions: {
+            client_filters: (featureFlag.conditions?.filters ?? []).map(filter => {
+                const clientFilter: FeatureFilter = { name: filter.name };
+                if (filter.parameters != null) {
+                    clientFilter.parameters = Object.fromEntries(
+                        Object.entries(filter.parameters).map(([name, value]): [string, unknown] => [name, JSON.parse(value) as unknown]));
+                }
+                return clientFilter;
+            })
+        }
     };
 
     if (featureFlag.description != null) {
         result.description = featureFlag.description;
     }
 
-    // conditions: filters -> client_filters, requirementType -> requirement_type
-    const conditions: any = {
-        client_filters: (featureFlag.conditions?.filters ?? []).map(filter => {
-            const clientFilter: any = { name: filter.name };
-            if (filter.parameters != null) {
-                clientFilter.parameters = Object.fromEntries(
-                    Object.entries(filter.parameters).map(([name, value]) => [name, JSON.parse(value)]));
-            }
-            return clientFilter;
-        })
-    };
     if (featureFlag.conditions?.requirementType != null) {
-        conditions.requirement_type = featureFlag.conditions.requirementType;
+        result.conditions.requirement_type = featureFlag.conditions.requirementType;
     }
-    result.conditions = conditions;
 
     // variants: value -> configuration_value, statusOverride -> status_override
     if (featureFlag.variants != null) {
         result.variants = featureFlag.variants.map(variant => {
-            const result_variant: any = { name: variant.name };
+            const resultVariant: FeatureFlagVariant = { name: variant.name };
             if (variant.value !== undefined) {
-                result_variant.configuration_value = variant.value;
+                resultVariant.configuration_value = variant.value;
             }
             if (variant.statusOverride != null) {
-                result_variant.status_override = variant.statusOverride;
+                resultVariant.status_override = variant.statusOverride;
             }
-            return result_variant;
+            return resultVariant;
         });
     }
 
     // allocation: camelCase -> snake_case
     if (featureFlag.allocation != null) {
-        const allocation: any = {};
+        const allocation: FeatureFlagAllocation = {};
         const sourceAllocation = featureFlag.allocation;
         if (sourceAllocation.defaultWhenDisabled != null) {
             allocation.default_when_disabled = sourceAllocation.defaultWhenDisabled;
@@ -76,7 +81,7 @@ export function convert(featureFlag: FeatureFlag): any {
 
     // telemetry: metadata is (re)populated later by the provider with ETag/FeatureFlagReference/AllocationId
     if (featureFlag.telemetry != null) {
-        const telemetry: any = { enabled: featureFlag.telemetry.enabled };
+        const telemetry: FeatureFlagTelemetry = { enabled: featureFlag.telemetry.enabled };
         if (featureFlag.telemetry.metadata != null) {
             telemetry.metadata = featureFlag.telemetry.metadata;
         }

@@ -841,6 +841,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     }
                     i++;
                 }
+
+                if (i < pageWatchers.length) {
+                    return true;
+                }
             }
             return false;
         };
@@ -887,7 +891,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     const lastServerResponseTime = pageWatchers[i].lastServerResponseTime;
                     let isResponseFresh = false;
                     if (lastServerResponseTime !== undefined) {
-                        isResponseFresh = serverResponseTime > lastServerResponseTime;
+                        isResponseFresh = serverResponseTime >= lastServerResponseTime;
                     }
                     if (isResponseFresh &&
                         getStatusCode(page._response.status) === 200 && // conditional request returns 304 if not changed
@@ -1370,14 +1374,14 @@ function getFeatureFlagPageWatchers(selectors?: SettingSelector[]): PagedSetting
         // Default selector: key/name: *, label: \0
         return [{ keyFilter: `${featureFlagPrefix}${KeyFilter.Any}`, labelFilter: LabelFilter.Null }];
     }
-    // Deep clone so the caller's option objects are never mutated.
-    const clonedSelectors = structuredClone(selectors);
-    clonedSelectors.forEach(selector => {
-        if (selector.keyFilter) {
-            selector.keyFilter = `${featureFlagPrefix}${selector.keyFilter}`;
-        }
-    });
-    return getValidSettingSelectors(clonedSelectors);
+    // Create prefixed copies because the original selectors are also used as unprefixed selectors for enhanced feature flags.
+    const prefixedSelectors = selectors.map(selector => ({
+        ...selector,
+        keyFilter: selector.keyFilter
+            ? `${featureFlagPrefix}${selector.keyFilter}`
+             : selector.keyFilter
+    }));
+    return getValidSettingSelectors(prefixedSelectors);
 }
 
 function validateTagFilters(tagFilters: string[]): void {
