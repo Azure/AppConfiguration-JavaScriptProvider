@@ -569,7 +569,7 @@ describe("enhanced feature flags", function () {
                         parameters: {
                             Audience: JSON.stringify(audience),
                             JsonArray: "  [\"one\",\"two\"]  ",
-                            PlainText: "not-json",
+                            PlainText: JSON.stringify("not-json"),
                             Percentage: "50"
                         }
                     }]
@@ -587,7 +587,7 @@ describe("enhanced feature flags", function () {
         expect(parameters.Audience).deep.equals(audience);
         expect(parameters.JsonArray).deep.equals(["one", "two"]);
         expect(parameters.PlainText).equals("not-json");
-        expect(parameters.Percentage).equals("50");
+        expect(parameters.Percentage).equals(50);
     });
 
     it("should throw for invalid JSON in enhanced feature flag filter parameters", () => {
@@ -651,7 +651,7 @@ describe("enhanced feature flags", function () {
         const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("Variant", {
             conditions: {
                 requirementType: "All",
-                filters: [{ name: "Microsoft.TimeWindow", parameters: { Start: "Mon, 01 Jan 2024 00:00:00 GMT" } }]
+                filters: [{ name: "Microsoft.TimeWindow", parameters: { Start: JSON.stringify("Mon, 01 Jan 2024 00:00:00 GMT") } }]
             },
             variants: [
                 { name: "Off", value: false, statusOverride: "Disabled" },
