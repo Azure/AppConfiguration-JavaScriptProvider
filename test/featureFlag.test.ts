@@ -6,7 +6,8 @@ import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, mockFeatureFlagClientListFeatureFlags, restoreMocks, sleepInMs } from "./utils/testHelper.js";
+import { convert } from "../src/featureManagement/featureFlagConverter.js";
+import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, mockFeatureFlagClientListFeatureFlags, restoreMocks, sleepInMs, expectEnhancedFeatureFlagJsonError } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -567,6 +568,7 @@ describe("enhanced feature flags", function () {
                         name: "Microsoft.Targeting",
                         parameters: {
                             Audience: JSON.stringify(audience),
+                            JsonArray: "  [\"one\",\"two\"]  ",
                             PlainText: "not-json",
                             Percentage: "50"
                         }
@@ -583,8 +585,43 @@ describe("enhanced feature flags", function () {
             .find(ff => ff.id === "Targeted");
         const parameters = featureFlag.conditions.client_filters[0].parameters;
         expect(parameters.Audience).deep.equals(audience);
+        expect(parameters.JsonArray).deep.equals(["one", "two"]);
         expect(parameters.PlainText).equals("not-json");
-        expect(parameters.Percentage).equals(50);
+        expect(parameters.Percentage).equals("50");
+    });
+
+    it("should throw for invalid JSON in enhanced feature flag filter parameters", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("InvalidParameter", {
+            conditions: {
+                filters: [{
+                    name: "CustomFilter",
+                    parameters: { Value: "{not-json}" }
+                }]
+            }
+        });
+
+        expectEnhancedFeatureFlagJsonError(() => convert(enhancedFeatureFlag), "InvalidParameter");
+    });
+
+    it("should parse enhanced feature flag variants based on content type", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("VariantContentType", {
+            variants: [
+                { name: "Json", value: "{\"color\":\"blue\"}", contentType: "application/json" },
+                { name: "Text", value: "{\"color\":\"blue\"}", contentType: "text/plain" }
+            ]
+        });
+
+        const featureFlag = convert(enhancedFeatureFlag);
+        expect(featureFlag.variants?.[0].configuration_value).deep.equals({ color: "blue" });
+        expect(featureFlag.variants?.[1].configuration_value).equals("{\"color\":\"blue\"}");
+    });
+
+    it("should throw for invalid JSON in an enhanced feature flag variant", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("InvalidVariant", {
+            variants: [{ name: "Json", value: "{not-json}", contentType: "application/json" }]
+        });
+
+        expectEnhancedFeatureFlagJsonError(() => convert(enhancedFeatureFlag), "InvalidVariant");
     });
 
     it("should let an enhanced feature flag supersede a feature flag with the same name", async () => {
@@ -647,7 +684,7 @@ describe("enhanced feature flags", function () {
         expect(featureFlag.allocation.percentile[0].variant).equals("On");
         // telemetry enabled => metadata populated with the feature flag reference and allocation id
         expect(featureFlag.telemetry.metadata).not.undefined;
-        expect(featureFlag.telemetry.metadata.FeatureFlagReference).contains(".appconfig.featureflag/Variant");
+        expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/ff/Variant`);
         expect(featureFlag.telemetry.metadata.AllocationId).not.undefined;
     });
 

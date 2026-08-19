@@ -25,7 +25,7 @@ export interface FeatureFlagConditions {
 
 export interface FeatureFlagVariant {
     name: AzAppConfigFeatureFlagVariantDefinition["name"];
-    configuration_value?: AzAppConfigFeatureFlagVariantDefinition["value"];
+    configuration_value?: unknown;
     status_override?: AzAppConfigFeatureFlagVariantDefinition["statusOverride"];
 }
 

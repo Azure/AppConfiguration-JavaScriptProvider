@@ -143,6 +143,7 @@ export function requestTracingEnabled(): boolean {
 function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
     return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
         (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false) ||
+        requestTracingOptions.useEnhancedFeatureFlag ||
         requestTracingOptions.isAfdUsed;
 }
 

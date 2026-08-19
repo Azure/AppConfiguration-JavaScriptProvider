@@ -9,6 +9,7 @@ import type {
     FeatureFlagTelemetry,
     FeatureFlagVariant
 } from "./featureFlags.js";
+import { isJsonContentType, parseContentType } from "../common/contentType.js";
 
 /**
  * Converts @see FeatureFlag into the
@@ -25,7 +26,7 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
                 const clientFilter: FeatureFilter = { name: filter.name };
                 if (filter.parameters != null) {
                     clientFilter.parameters = Object.fromEntries(
-                        Object.entries(filter.parameters).map(([name, value]): [string, unknown] => [name, JSON.parse(value) as unknown]));
+                        Object.entries(filter.parameters).map(([name, value]) => [name, parseParameterValue(value, featureFlag.name)]));
                 }
                 return clientFilter;
             })
@@ -45,7 +46,9 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
         result.variants = featureFlag.variants.map(variant => {
             const resultVariant: FeatureFlagVariant = { name: variant.name };
             if (variant.value !== undefined) {
-                resultVariant.configuration_value = variant.value;
+                resultVariant.configuration_value = isJsonContentType(parseContentType(variant.contentType))
+                    ? parseJsonValue(variant.value, featureFlag.name)
+                    : variant.value;
             }
             if (variant.statusOverride != null) {
                 resultVariant.status_override = variant.statusOverride;
@@ -89,4 +92,22 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
     }
 
     return result;
+}
+
+function parseParameterValue(value: string, featureFlagName: string): unknown {
+    const trimmedValue = value.trim();
+    if (trimmedValue.length > 0 && (trimmedValue[0] === "{" || trimmedValue[0] === "[")) {
+        return parseJsonValue(value, featureFlagName);
+    }
+
+    return value;
+}
+
+function parseJsonValue(value: string, featureFlagName: string): unknown {
+    try {
+        return JSON.parse(value) as unknown;
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new SyntaxError(`Enhanced feature flag '${featureFlagName}': ${errorMessage}`, { cause: error });
+    }
 }

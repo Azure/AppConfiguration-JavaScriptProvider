@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
+import * as chai from "chai";
 import { AppConfigurationClient as ConfigurationClient, ConfigurationSetting, FeatureFlagClient, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
@@ -12,6 +13,21 @@ import { AppConfigurationClientWrapper } from "../../src/appConfigurationClientW
 import { AppConfigurationClient } from "../../src/appConfigurationClient.js";
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function expectEnhancedFeatureFlagJsonError(action: () => unknown, featureFlagName: string): void {
+    let thrownError: unknown;
+    try {
+        action();
+    } catch (error) {
+        thrownError = error;
+    }
+
+    chai.expect(thrownError).instanceOf(SyntaxError);
+    const syntaxError = thrownError as SyntaxError;
+    chai.expect(syntaxError.message).contains(`Enhanced feature flag '${featureFlagName}':`);
+    chai.expect(syntaxError.cause).instanceOf(SyntaxError);
+    chai.expect(syntaxError.message).contains((syntaxError.cause as SyntaxError).message);
+}
 
 // Async, browser-safe SHA-256 using native crypto.subtle when available; falls back to tiny FNV-1a for Node without subtle.
 async function _sha256(input: string): Promise<string> {
@@ -589,6 +605,7 @@ export {
     createMockedFeatureFlag,
     createMockedEnhancedFeatureFlag,
     createMockedSnapshotReference,
+    expectEnhancedFeatureFlagJsonError,
 
     sleepInMs,
     HttpRequestHeadersPolicy

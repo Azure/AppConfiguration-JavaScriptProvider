@@ -1124,7 +1124,7 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
     async #parseEnhancedFeatureFlag(featureFlag: FeatureFlag): Promise<any> {
         const parsedFeatureFlag = convert(featureFlag);
 
-        let featureFlagReference = `${this.#clientManager.endpoint.origin}/ff/${featureFlagPrefix}${featureFlag.name}`;
+        let featureFlagReference = `${this.#clientManager.endpoint.origin}/ff/${featureFlag.name}`;
         if (featureFlag.label && featureFlag.label.trim().length !== 0) {
             featureFlagReference += `?label=${featureFlag.label}`;
         }
