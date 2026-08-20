@@ -569,7 +569,7 @@ describe("enhanced feature flags", function () {
                         parameters: {
                             Audience: JSON.stringify(audience),
                             JsonArray: "  [\"one\",\"two\"]  ",
-                            PlainText: JSON.stringify("not-json"),
+                            PlainText: "not-json",
                             Percentage: "50"
                         }
                     }]
@@ -587,10 +587,10 @@ describe("enhanced feature flags", function () {
         expect(parameters.Audience).deep.equals(audience);
         expect(parameters.JsonArray).deep.equals(["one", "two"]);
         expect(parameters.PlainText).equals("not-json");
-        expect(parameters.Percentage).equals(50);
+        expect(parameters.Percentage).equals("50");
     });
 
-    it("should throw for invalid JSON in enhanced feature flag filter parameters", () => {
+    it("should preserve invalid JSON in enhanced feature flag filter parameters as a string", () => {
         const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("InvalidParameter", {
             conditions: {
                 filters: [{
@@ -600,7 +600,8 @@ describe("enhanced feature flags", function () {
             }
         });
 
-        expectEnhancedFeatureFlagJsonError(() => convert(enhancedFeatureFlag), "InvalidParameter");
+        const featureFlag = convert(enhancedFeatureFlag);
+        expect(featureFlag.conditions.client_filters[0].parameters?.Value).equals("{not-json}");
     });
 
     it("should parse enhanced feature flag variants based on content type", () => {

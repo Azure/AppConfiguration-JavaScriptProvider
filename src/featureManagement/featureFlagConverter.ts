@@ -26,7 +26,7 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
                 const clientFilter: FeatureFilter = { name: filter.name };
                 if (filter.parameters != null) {
                     clientFilter.parameters = Object.fromEntries(
-                        Object.entries(filter.parameters).map(([name, value]) => [name, parseJsonValue(value, featureFlag.name)]));
+                        Object.entries(filter.parameters).map(([name, value]) => [name, parseParameterValue(value)]));
                 }
                 return clientFilter;
             })
@@ -92,6 +92,19 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
     }
 
     return result;
+}
+
+function parseParameterValue(value: string): unknown {
+    const trimmedValue = value.trim();
+    if (trimmedValue.length > 0 && (trimmedValue[0] === "{" || trimmedValue[0] === "[")) {
+        try {
+            return JSON.parse(value) as unknown;
+        } catch {
+            // The value may intentionally be a string that resembles JSON.
+        }
+    }
+
+    return value;
 }
 
 function parseJsonValue(value: string, featureFlagName: string): unknown {
