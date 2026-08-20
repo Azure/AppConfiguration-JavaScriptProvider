@@ -94,7 +94,14 @@ export function convert(featureFlag: AzAppConfigFeatureFlag): FeatureFlag {
     return result;
 }
 
-function parseParameterValue(value: string): unknown {
+function parseParameterValue(value: unknown): unknown {
+    if (value === undefined || value === null) {
+        return value;
+    }
+    if (typeof value !== "string") {
+        return value;
+    }
+
     const trimmedValue = value.trim();
     if (trimmedValue.length > 0 && (trimmedValue[0] === "{" || trimmedValue[0] === "[")) {
         try {

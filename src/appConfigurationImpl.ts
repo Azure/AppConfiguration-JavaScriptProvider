@@ -900,6 +900,10 @@ export class AzureAppConfigurationImpl implements AzureAppConfiguration {
                     }
                     i++;
                 }
+
+                if (i < pageWatchers.length) {
+                    return true;
+                }
             }
             return false;
         };

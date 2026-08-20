@@ -570,7 +570,9 @@ describe("enhanced feature flags", function () {
                             Audience: JSON.stringify(audience),
                             JsonArray: "  [\"one\",\"two\"]  ",
                             PlainText: "not-json",
-                            Percentage: "50"
+                            Percentage: "50",
+                            NullValue: null,
+                            UndefinedValue: undefined
                         }
                     }]
                 }
@@ -588,6 +590,8 @@ describe("enhanced feature flags", function () {
         expect(parameters.JsonArray).deep.equals(["one", "two"]);
         expect(parameters.PlainText).equals("not-json");
         expect(parameters.Percentage).equals("50");
+        expect(parameters.NullValue).equals(null);
+        expect(parameters).has.property("UndefinedValue", undefined);
     });
 
     it("should preserve invalid JSON in enhanced feature flag filter parameters as a string", () => {
