@@ -10,12 +10,15 @@ import {
     FeatureFlagClientOptions,
     GetConfigurationSettingOptions,
     GetSnapshotOptions,
+    KnownAppConfigurationApiVersion,
     ListConfigurationSettingsForSnapshotOptions,
     ListConfigurationSettingsOptions,
     ListFeatureFlagsOptions
 } from "@azure/app-configuration";
 import { TokenCredential } from "@azure/identity";
 import { instanceOfTokenCredential } from "./common/utils.js";
+import { ArgumentError } from "./common/errors.js";
+import { ErrorMessages } from "./common/errorMessages.js";
 import { RequestTracingOptions, applyRequestTracing } from "./requestTracing/utils.js";
 
 /**
@@ -77,6 +80,10 @@ export class AppConfigurationClient {
 export function getFeatureFlagClientOptions(options?: ConfigurationClientOptions): FeatureFlagClientOptions | undefined {
     if (options === undefined) {
         return undefined;
+    }
+    if (options.apiVersion !== undefined &&
+        options.apiVersion !== KnownAppConfigurationApiVersion.V20260501Preview) {
+        throw new ArgumentError(ErrorMessages.API_VERSION_NOT_SUPPORTED);
     }
 
     return {

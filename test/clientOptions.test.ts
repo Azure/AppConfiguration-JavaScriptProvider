@@ -7,9 +7,11 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { createMockedConnectionString } from "./utils/testHelper.js";
-import { getClientOptions } from "../src/appConfigurationClientManager.js";
+import { createMockedConnectionString, createMockedTokenCredential } from "./utils/testHelper.js";
+import { AppConfigurationClientManager, getClientOptions } from "../src/appConfigurationClientManager.js";
 import { getFeatureFlagClientOptions } from "../src/appConfigurationClient.js";
+import { KnownAppConfigurationApiVersion } from "@azure/app-configuration";
+import { ErrorMessages } from "../src/common/errorMessages.js";
 import nock from "nock";
 
 class HttpRequestCountPolicy {
@@ -39,6 +41,16 @@ describe("custom client options", function () {
 
     afterEach(() => {
         nock.restore();
+    });
+
+    it("should reject an unsupported API version", () => {
+        const createClientManager = () => new AppConfigurationClientManager(createMockedConnectionString(fakeEndpoint), {
+            clientOptions: {
+                apiVersion: KnownAppConfigurationApiVersion.V20260401
+            }
+        });
+
+        expect(createClientManager).throws(ErrorMessages.API_VERSION_NOT_SUPPORTED);
     });
 
     it("should use equivalent options for configuration and feature flag clients", () => {
