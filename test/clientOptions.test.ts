@@ -7,7 +7,7 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
-import { createMockedConnectionString, createMockedTokenCredential } from "./utils/testHelper.js";
+import { createMockedConnectionString } from "./utils/testHelper.js";
 import { AppConfigurationClientManager, getClientOptions } from "../src/appConfigurationClientManager.js";
 import { getFeatureFlagClientOptions } from "../src/appConfigurationClient.js";
 import { KnownAppConfigurationApiVersion } from "@azure/app-configuration";
