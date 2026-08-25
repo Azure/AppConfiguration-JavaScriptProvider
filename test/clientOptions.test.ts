@@ -53,6 +53,22 @@ describe("custom client options", function () {
         expect(createClientManager).throws(ErrorMessages.API_VERSION_NOT_SUPPORTED);
     });
 
+    it("should reject a malformed API version", () => {
+        const createFeatureFlagClientOptions = () => getFeatureFlagClientOptions({
+            apiVersion: "2026-13-01-preview"
+        });
+
+        expect(createFeatureFlagClientOptions).throws(ErrorMessages.API_VERSION_NOT_SUPPORTED);
+    });
+
+    it("should allow the stable API version with the minimum date", () => {
+        expect(() => getFeatureFlagClientOptions({ apiVersion: "2026-05-01" })).not.throws();
+    });
+
+    it("should allow an API version later than the minimum", () => {
+        expect(() => getFeatureFlagClientOptions({ apiVersion: "2026-06-01-preview" })).not.throws();
+    });
+
     it("should use equivalent options for configuration and feature flag clients", () => {
         const countPolicy = new HttpRequestCountPolicy();
         const configurationClientOptions = getClientOptions({

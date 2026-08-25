@@ -81,8 +81,7 @@ export function getFeatureFlagClientOptions(options?: ConfigurationClientOptions
     if (options === undefined) {
         return undefined;
     }
-    if (options.apiVersion !== undefined &&
-        options.apiVersion !== KnownAppConfigurationApiVersion.V20260501Preview) {
+    if (options.apiVersion !== undefined && !isSupportedApiVersion(options.apiVersion)) {
         throw new ArgumentError(ErrorMessages.API_VERSION_NOT_SUPPORTED);
     }
 
@@ -95,4 +94,24 @@ export function getFeatureFlagClientOptions(options?: ConfigurationClientOptions
         ...(options.telemetryOptions && { telemetryOptions: { ...options.telemetryOptions } }),
         ...(options.additionalPolicies && { additionalPolicies: [...options.additionalPolicies] })
     };
+}
+
+function isSupportedApiVersion(apiVersion: string): boolean {
+    const apiVersionDate = parseApiVersionDate(apiVersion);
+    const minimumApiVersionDate = parseApiVersionDate(KnownAppConfigurationApiVersion.V20260501Preview)!;
+    return apiVersionDate !== undefined && apiVersionDate >= minimumApiVersionDate;
+}
+
+function parseApiVersionDate(apiVersion: string): number | undefined {
+    const match = /^(\d{4}-\d{2}-\d{2})(?:-[0-9A-Za-z.-]+)?$/.exec(apiVersion);
+    if (match === null) {
+        return undefined;
+    }
+
+    const date = new Date(`${match[1]}T00:00:00Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) {
+        return undefined;
+    }
+
+    return date.getTime();
 }

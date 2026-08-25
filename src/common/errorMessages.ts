@@ -20,7 +20,7 @@ export const enum ErrorMessages {
     INVALID_KEY_FILTER = "Key filter cannot be null or empty.",
     INVALID_LABEL_FILTER = "The characters '*' and ',' are not supported in label filters.",
     INVALID_TAG_FILTER = "Tag filter must follow the format 'tagName=tagValue'",
-    API_VERSION_NOT_SUPPORTED = "The App Configuration provider requires API version '2026-05-01-preview'.",
+    API_VERSION_NOT_SUPPORTED = "The App Configuration provider requires API version '2026-05-01-preview' or later.",
     CONNECTION_STRING_OR_ENDPOINT_MISSED = "A connection string or an endpoint with credential must be specified to create a client.",
     REPLICA_DISCOVERY_NOT_SUPPORTED = "Replica discovery is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
     LOAD_BALANCING_NOT_SUPPORTED = "Load balancing is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
