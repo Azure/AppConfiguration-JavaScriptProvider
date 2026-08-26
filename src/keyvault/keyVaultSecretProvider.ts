@@ -3,9 +3,11 @@
 
 import { KeyVaultOptions, MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "./keyVaultOptions.js";
 import { RefreshTimer } from "../refresh/refreshTimer.js";
-import { ArgumentError } from "../common/errors.js";
+import { ArgumentError, KeyVaultReferenceError } from "../common/errors.js";
 import { SecretClient, KeyVaultSecretIdentifier } from "@azure/keyvault-secrets";
-import { KeyVaultReferenceErrorMessages } from "../common/errorMessages.js";
+import { KeyVaultReferenceErrorMessages, buildKeyVaultReferenceErrorMessage } from "../common/errorMessages.js";
+import { isRestError } from "@azure/core-rest-pipeline";
+import { AuthenticationError } from "@azure/identity";
 
 export class AzureKeyVaultSecretProvider {
     #keyVaultOptions: KeyVaultOptions | undefined;
@@ -14,7 +16,7 @@ export class AzureKeyVaultSecretProvider {
     #secretClients: Map<string, SecretClient>; // map key vault hostname to corresponding secret client
     #cachedSecretValues: Map<string, any> = new Map<string, any>(); // map secret identifier to secret value
 
-    constructor(keyVaultOptions: KeyVaultOptions | undefined, refreshTimer?: RefreshTimer) {
+    constructor(keyVaultOptions?: KeyVaultOptions, refreshTimer?: RefreshTimer) {
         if (keyVaultOptions?.secretRefreshIntervalInMs !== undefined) {
             if (refreshTimer === undefined) {
                 throw new ArgumentError("Refresh timer must be specified when Key Vault secret refresh is enabled.");
@@ -33,19 +35,32 @@ export class AzureKeyVaultSecretProvider {
         }
     }
 
-    async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
+    async loadSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
         const identifierKey = secretIdentifier.sourceId;
-
-        // If the refresh interval is not expired, return the cached value if available.
-        if (this.#cachedSecretValues.has(identifierKey) &&
-            (!this.#secretRefreshTimer || !this.#secretRefreshTimer.canRefresh())) {
-                return this.#cachedSecretValues.get(identifierKey);
+        const shouldRefresh = this.#secretRefreshTimer?.canRefresh() ?? false;
+        if (this.#cachedSecretValues.has(identifierKey) && !shouldRefresh) {
+            return this.#cachedSecretValues.get(identifierKey); // already cached and still fresh
         }
-
-        // Fallback to fetching the secret value from Key Vault.
-        const secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+        let secretValue: unknown;
+        try {
+            secretValue = await this.#getSecretValueFromKeyVault(secretIdentifier);
+        } catch (error) {
+            if (isRestError(error) || error instanceof AuthenticationError) {
+                throw new KeyVaultReferenceError(buildKeyVaultReferenceErrorMessage("Failed to resolve Key Vault reference.", secretIdentifier.sourceId), { cause: error });
+            }
+            throw error;
+        }
         this.#cachedSecretValues.set(identifierKey, secretValue);
         return secretValue;
+    }
+
+    // Serves the secret value from cache when available; otherwise loads it from Key Vault on demand.
+    async getSecretValue(secretIdentifier: KeyVaultSecretIdentifier): Promise<unknown> {
+        const identifierKey = secretIdentifier.sourceId;
+        if (this.#cachedSecretValues.has(identifierKey)) {
+            return this.#cachedSecretValues.get(identifierKey); // serve from cache
+        }
+        return this.loadSecretValue(secretIdentifier); // fallback: load on demand
     }
 
     clearCache(): void {

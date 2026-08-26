@@ -53,6 +53,7 @@ export const KEY_VAULT_REFRESH_CONFIGURED_TAG = "RefreshesKeyVault";
 export const FAILOVER_REQUEST_TAG = "Failover";
 export const AFD_USED_TAG = "AFD";
 export const SNAPSHOT_REFERENCE_TAG = "SnapshotRef";
+export const ENHANCED_FEATURE_FLAG_TAG = "EnhFF";
 
 // Compact feature tags
 export const FEATURES_KEY = "Features";

@@ -15,7 +15,12 @@ export interface IKeyValueAdapter {
     processKeyValue(setting: ConfigurationSetting): Promise<[string, unknown]>;
 
     /**
+     * This method deduplicates and warms up Key Vault secret requests so that processKeyValue only reads from cache.
+     */
+    preload?(settings: ConfigurationSetting[]): Promise<void>;
+
+    /**
      * This method is called when a change is detected in the configuration setting.
      */
-    onChangeDetected(): Promise<void>;
+    onChangeDetected?(): Promise<void>;
 }

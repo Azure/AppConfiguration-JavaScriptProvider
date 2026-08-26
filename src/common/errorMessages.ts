@@ -3,6 +3,7 @@
 
 import { MIN_REFRESH_INTERVAL_IN_MS } from "../refresh/refreshOptions.js";
 import { MIN_SECRET_REFRESH_INTERVAL_IN_MS } from "../keyvault/keyVaultOptions.js";
+import { ConfigurationSetting } from "@azure/app-configuration";
 
 export const enum ErrorMessages {
     INVALID_WATCHED_SETTINGS_KEY = "The characters '*' and ',' are not supported in key of watched settings.",
@@ -19,6 +20,7 @@ export const enum ErrorMessages {
     INVALID_KEY_FILTER = "Key filter cannot be null or empty.",
     INVALID_LABEL_FILTER = "The characters '*' and ',' are not supported in label filters.",
     INVALID_TAG_FILTER = "Tag filter must follow the format 'tagName=tagValue'",
+    API_VERSION_NOT_SUPPORTED = "The App Configuration provider requires API version '2026-05-01-preview' or later.",
     CONNECTION_STRING_OR_ENDPOINT_MISSED = "A connection string or an endpoint with credential must be specified to create a client.",
     REPLICA_DISCOVERY_NOT_SUPPORTED = "Replica discovery is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
     LOAD_BALANCING_NOT_SUPPORTED = "Load balancing is not supported when loading from Azure Front Door. For guidance on how to take advantage of geo-replication when Azure Front Door is used, visit https://aka.ms/appconfig/geo-replication-with-afd",
@@ -28,4 +30,15 @@ export const enum ErrorMessages {
 export const enum KeyVaultReferenceErrorMessages {
     KEY_VAULT_OPTIONS_UNDEFINED = "Failed to process the Key Vault reference because Key Vault options are not configured.",
     KEY_VAULT_REFERENCE_UNRESOLVABLE = "Failed to resolve the key vault reference. No key vault secret client, credential or secret resolver callback is available to resolve the secret."
+}
+
+export function buildKeyVaultReferenceErrorMessage(message: string, secretIdentifier?: string, setting?: ConfigurationSetting): string {
+    let errorMessage = message;
+    if (secretIdentifier) {
+        errorMessage += ` SecretIdentifier: '${secretIdentifier}'`;
+    }
+    if (setting) {
+        errorMessage += ` Key: '${setting.key}' Label: '${setting.label ?? ""}' ETag: '${setting.etag ?? ""}'`;
+    }
+    return errorMessage;
 }

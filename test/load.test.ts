@@ -101,6 +101,18 @@ const mockedKVs = [{
     key: "keyWithEmptyTag",
     value: "valueWithEmptyTag",
     tags: {"emptyTag": ""}
+}, {
+    key: "app6_markets",
+    value: JSON.stringify({ gb: { url: "https://example.com/gb" }, dk: { url: "https://example.com/dk" } }),
+    contentType: "application/json"
+}, {
+    key: "app6_markets.markets.dk",
+    value: JSON.stringify({ currency: "DKK" }),
+    contentType: "application/json"
+}, {
+    key: "app6_markets.markets.gb",
+    value: JSON.stringify({ currency: "GBP" }),
+    contentType: "application/json"
 }
 ].map(createMockedKeyValue);
 
@@ -577,6 +589,33 @@ describe("load", function () {
             // @ts-ignore
             settings.constructConfigurationObject({ separator: "%" });
         }).to.throw("Invalid separator '%'. Supported values: '.', ',', ';', '-', '_', '__', '/', ':'.");
+    });
+
+    it("should call constructConfigurationObject twice without throwing for JSON content-type keys with overlapping hierarchy", async () => {
+        const connectionString = createMockedConnectionString();
+        const settings = await load(connectionString, {
+            selectors: [{
+                keyFilter: "app6_*"
+            }],
+            trimKeyPrefixes: ["app6_"]
+        });
+        expect(settings).not.undefined;
+
+        // First call should succeed
+        const data1 = settings.constructConfigurationObject({ separator: "." });
+        expect(data1).not.undefined;
+        expect(data1.markets.gb.url).eq("https://example.com/gb");
+        expect(data1.markets.dk.url).eq("https://example.com/dk");
+        expect(data1.markets.markets.dk.currency).eq("DKK");
+        expect(data1.markets.markets.gb.currency).eq("GBP");
+
+        // Second call should also succeed (idempotent)
+        const data2 = settings.constructConfigurationObject({ separator: "." });
+        expect(data2).not.undefined;
+        expect(data2.markets.gb.url).eq("https://example.com/gb");
+        expect(data2.markets.dk.url).eq("https://example.com/dk");
+        expect(data2.markets.markets.dk.currency).eq("DKK");
+        expect(data2.markets.markets.gb.currency).eq("GBP");
     });
 
     it("should load key values from snapshot", async () => {

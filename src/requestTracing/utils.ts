@@ -1,16 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { OperationOptions } from "@azure/core-client";
-import {
-    AppConfigurationClient,
-    ConfigurationSettingId,
-    GetConfigurationSettingOptions,
-    ListConfigurationSettingsOptions,
-    CheckConfigurationSettingsOptions,
-    GetSnapshotOptions,
-    ListConfigurationSettingsForSnapshotOptions
-} from "@azure/app-configuration";
+import { OperationOptions } from "@azure-rest/core-client";
 import { AzureAppConfigurationOptions } from "../appConfigurationOptions.js";
 import { FeatureFlagTracingOptions } from "./featureFlagTracingOptions.js";
 import { AIConfigurationTracingOptions } from "./aiConfigurationTracingOptions.js";
@@ -44,7 +35,8 @@ import {
     DELIMITER,
     AI_CONFIGURATION_TAG,
     AI_CHAT_COMPLETION_CONFIGURATION_TAG,
-    SNAPSHOT_REFERENCE_TAG
+    SNAPSHOT_REFERENCE_TAG,
+    ENHANCED_FEATURE_FLAG_TAG
 } from "./constants.js";
 
 export interface RequestTracingOptions {
@@ -58,64 +50,17 @@ export interface RequestTracingOptions {
     fmVersion: string | undefined;
     aiConfigurationTracing: AIConfigurationTracingOptions | undefined;
     useSnapshotReference: boolean;
+    useEnhancedFeatureFlag: boolean;
 }
 
 // Utils
-export function listConfigurationSettingsWithTrace(
-    requestTracingOptions: RequestTracingOptions,
-    client: AppConfigurationClient,
-    listOptions: ListConfigurationSettingsOptions
-) {
-    const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
-    return client.listConfigurationSettings(actualListOptions);
-}
-
-export function checkConfigurationSettingsWithTrace(
-    requestTracingOptions: RequestTracingOptions,
-    client: AppConfigurationClient,
-    checkOptions: CheckConfigurationSettingsOptions
-) {
-    const actualCheckOptions = applyRequestTracing(requestTracingOptions, checkOptions);
-    return client.checkConfigurationSettings(actualCheckOptions);
-}
-
-export function getConfigurationSettingWithTrace(
-    requestTracingOptions: RequestTracingOptions,
-    client: AppConfigurationClient,
-    configurationSettingId: ConfigurationSettingId,
-    getOptions?: GetConfigurationSettingOptions,
-) {
-    const actualGetOptions = applyRequestTracing(requestTracingOptions, getOptions);
-    return client.getConfigurationSetting(configurationSettingId, actualGetOptions);
-}
-
-export function getSnapshotWithTrace(
-    requestTracingOptions: RequestTracingOptions,
-    client: AppConfigurationClient,
-    snapshotName: string,
-    getOptions?: GetSnapshotOptions
-) {
-    const actualGetOptions = applyRequestTracing(requestTracingOptions, getOptions);
-    return client.getSnapshot(snapshotName, actualGetOptions);
-}
-
-export function listConfigurationSettingsForSnapshotWithTrace(
-    requestTracingOptions: RequestTracingOptions,
-    client: AppConfigurationClient,
-    snapshotName: string,
-    listOptions?: ListConfigurationSettingsForSnapshotOptions
-) {
-    const actualListOptions = applyRequestTracing(requestTracingOptions, listOptions);
-    return client.listConfigurationSettingsForSnapshot(snapshotName, actualListOptions);
-}
-
-function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: RequestTracingOptions, operationOptions?: T) {
+export function applyRequestTracing<T extends OperationOptions>(requestTracingOptions: RequestTracingOptions, operationOptions?: T) {
     const actualOptions = { ...operationOptions };
     if (requestTracingOptions.enabled) {
         actualOptions.requestOptions = {
             ...actualOptions.requestOptions,
-            customHeaders: {
-                ...actualOptions.requestOptions?.customHeaders,
+            headers: {
+                ...actualOptions.requestOptions?.headers,
                 [CORRELATION_CONTEXT_HEADER_NAME]: createCorrelationContextHeader(requestTracingOptions)
             }
         };
@@ -198,6 +143,7 @@ export function requestTracingEnabled(): boolean {
 function usesAnyTracingFeature(requestTracingOptions: RequestTracingOptions): boolean {
     return (requestTracingOptions.appConfigOptions?.loadBalancingEnabled ?? false) ||
         (requestTracingOptions.aiConfigurationTracing?.usesAnyTracingFeature() ?? false) ||
+        requestTracingOptions.useEnhancedFeatureFlag ||
         requestTracingOptions.isAfdUsed;
 }
 
@@ -217,6 +163,9 @@ function createFeaturesString(requestTracingOptions: RequestTracingOptions): str
     }
     if (requestTracingOptions.useSnapshotReference) {
         tags.push(SNAPSHOT_REFERENCE_TAG);
+    }
+    if (requestTracingOptions.useEnhancedFeatureFlag) {
+        tags.push(ENHANCED_FEATURE_FLAG_TAG);
     }
     return tags.join(DELIMITER);
 }
