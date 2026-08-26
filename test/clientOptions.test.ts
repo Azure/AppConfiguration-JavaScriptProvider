@@ -8,6 +8,10 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { load } from "../src/index.js";
 import { createMockedConnectionString } from "./utils/testHelper.js";
+import { AppConfigurationClientManager, getClientOptions } from "../src/appConfigurationClientManager.js";
+import { getFeatureFlagClientOptions } from "../src/appConfigurationClient.js";
+import { KnownAppConfigurationApiVersion } from "@azure/app-configuration";
+import { ErrorMessages } from "../src/common/errorMessages.js";
 import nock from "nock";
 
 class HttpRequestCountPolicy {
@@ -37,6 +41,60 @@ describe("custom client options", function () {
 
     afterEach(() => {
         nock.restore();
+    });
+
+    it("should reject an unsupported API version", () => {
+        const createClientManager = () => new AppConfigurationClientManager(createMockedConnectionString(fakeEndpoint), {
+            clientOptions: {
+                apiVersion: KnownAppConfigurationApiVersion.V20260401
+            }
+        });
+
+        expect(createClientManager).throws(ErrorMessages.API_VERSION_NOT_SUPPORTED);
+    });
+
+    it("should reject a malformed API version", () => {
+        const createFeatureFlagClientOptions = () => getFeatureFlagClientOptions({
+            apiVersion: "2026-13-01-preview"
+        });
+
+        expect(createFeatureFlagClientOptions).throws(ErrorMessages.API_VERSION_NOT_SUPPORTED);
+    });
+
+    it("should allow the stable API version with the minimum date", () => {
+        expect(() => getFeatureFlagClientOptions({ apiVersion: "2026-05-01" })).not.throws();
+    });
+
+    it("should allow an API version later than the minimum", () => {
+        expect(() => getFeatureFlagClientOptions({ apiVersion: "2026-06-01-preview" })).not.throws();
+    });
+
+    it("should use equivalent options for configuration and feature flag clients", () => {
+        const countPolicy = new HttpRequestCountPolicy();
+        const configurationClientOptions = getClientOptions({
+            clientOptions: {
+                apiVersion: "2026-05-01-preview",
+                audience: "https://appconfig.azure.com",
+                allowInsecureConnection: true,
+                additionalPolicies: [{
+                    policy: countPolicy,
+                    position: "perCall"
+                }],
+                retryOptions: {
+                    maxRetries: 4,
+                    maxRetryDelayInMs: 10_000
+                },
+                userAgentOptions: {
+                    userAgentPrefix: "custom-user-agent"
+                }
+            }
+        });
+        const featureFlagClientOptions = getFeatureFlagClientOptions(configurationClientOptions)!;
+
+        expect(featureFlagClientOptions).deep.equals(configurationClientOptions);
+        expect(featureFlagClientOptions).not.equals(configurationClientOptions);
+        expect(featureFlagClientOptions.retryOptions).not.equals(configurationClientOptions.retryOptions);
+        expect(featureFlagClientOptions.userAgentOptions).not.equals(configurationClientOptions.userAgentOptions);
     });
 
     it("should retry 2 times by default", async () => {

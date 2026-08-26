@@ -5,7 +5,7 @@ import { TokenCredential } from "@azure/identity";
 import { AzureAppConfiguration } from "./appConfiguration.js";
 import { AzureAppConfigurationImpl } from "./appConfigurationImpl.js";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
-import { ConfigurationClientManager } from "./configurationClientManager.js";
+import { AppConfigurationClientManager } from "./appConfigurationClientManager.js";
 import { AnonymousRequestPipelinePolicy, RemoveSyncTokenPipelinePolicy } from "./afd/afdRequestPipelinePolicy.js";
 import { instanceOfTokenCredential } from "./common/utils.js";
 import { ArgumentError } from "./common/errors.js";
@@ -40,7 +40,7 @@ export async function load(
 ): Promise<AzureAppConfiguration> {
     const startTimestamp = Date.now();
     let options: AzureAppConfigurationOptions | undefined;
-    const clientManager = new ConfigurationClientManager(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
+    const clientManager = new AppConfigurationClientManager(connectionStringOrEndpoint, credentialOrOptions, appConfigOptions);
     await clientManager.init();
 
     if (!instanceOfTokenCredential(credentialOrOptions)) {

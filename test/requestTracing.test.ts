@@ -7,8 +7,8 @@ import chaiAsPromised from "chai-as-promised";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 import { AppConfigurationClient } from "@azure/app-configuration";
-import { HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
-import { ConfigurationClientManager } from "../src/configurationClientManager.js";
+import { HttpRequestHeadersPolicy, createMockedConnectionString, createMockedKeyValue, createMockedFeatureFlag, createMockedTokenCredential, mockAppConfigurationClientListConfigurationSettings, mockFeatureFlagClientListFeatureFlags, restoreMocks, sinon, sleepInMs } from "./utils/testHelper.js";
+import { AppConfigurationClientManager } from "../src/appConfigurationClientManager.js";
 import { load, loadFromAzureFrontDoor } from "../src/index.js";
 import { isBrowser } from "../src/requestTracing/utils.js";
 
@@ -105,7 +105,7 @@ describe("request tracing", function () {
 
     it("should have replica count in correlation-context header", async () => {
         const replicaCount = 2;
-        sinon.stub(ConfigurationClientManager.prototype, "getReplicaCount").returns(replicaCount);
+        sinon.stub(AppConfigurationClientManager.prototype, "getReplicaCount").returns(replicaCount);
         try {
             await load(createMockedConnectionString(fakeEndpoint), {
                 clientOptions,
@@ -249,6 +249,7 @@ describe("request tracing", function () {
             createMockedFeatureFlag("Alpha_2", { conditions: { client_filters: [ { name: "Microsoft.Targeting" } ] } }),
             createMockedFeatureFlag("Alpha_3", { conditions: { client_filters: [ { name: "CustomFilter" } ] } })
         ]]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,
@@ -283,6 +284,7 @@ describe("request tracing", function () {
             createMockedFeatureFlag("Alpha_2", { variants: [ {name: "a"}, {name: "b"}, {name: "c"}] }),
             createMockedFeatureFlag("Alpha_3", { variants: [] })
         ]]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,
@@ -315,6 +317,7 @@ describe("request tracing", function () {
         mockAppConfigurationClientListConfigurationSettings([[
             createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} })
         ]]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,
@@ -348,6 +351,7 @@ describe("request tracing", function () {
             createMockedFeatureFlag("Alpha_1", { telemetry: {enabled: true} }),
             createMockedFeatureFlag("Alpha_2", { allocation: {seed: "123"} })
         ]]);
+        mockFeatureFlagClientListFeatureFlags([]);
 
         const settings = await load(createMockedConnectionString(fakeEndpoint), {
             clientOptions,

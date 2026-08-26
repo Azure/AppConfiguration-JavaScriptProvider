@@ -6,7 +6,8 @@ import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import { featureFlagContentType } from "@azure/app-configuration";
 import { load } from "../src/index.js";
-import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, restoreMocks } from "./utils/testHelper.js";
+import { convert } from "../src/featureManagement/featureFlagConverter.js";
+import { mockAppConfigurationClientGetSnapshot, mockAppConfigurationClientListConfigurationSettingsForSnapshot, createMockedConnectionString, createMockedEndpoint, createMockedFeatureFlag, createMockedEnhancedFeatureFlag, createMockedKeyValue, mockAppConfigurationClientListConfigurationSettings, mockFeatureFlagClientListFeatureFlags, restoreMocks, sleepInMs, expectEnhancedFeatureFlagJsonError } from "./utils/testHelper.js";
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
@@ -207,6 +208,7 @@ describe("feature flags", function () {
 
     before(() => {
         mockAppConfigurationClientListConfigurationSettings([mockedKVs]);
+        mockFeatureFlagClientListFeatureFlags([]);
     });
 
     after(() => {
@@ -498,6 +500,227 @@ describe("feature flags", function () {
         expect(featureFlag.id).equals("TestFeature");
         expect(featureFlag.enabled).equals(true);
         restoreMocks();
+    });
+});
+
+describe("enhanced feature flags", function () {
+
+    afterEach(() => {
+        restoreMocks();
+    });
+
+    it("should load feature flags from the dedicated feature flag endpoint", async () => {
+        // no feature flags; two enhanced feature flags returned by the dedicated endpoint
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("NewAlpha", { enabled: true }),
+            createMockedEnhancedFeatureFlag("NewBeta", { enabled: false })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlags = settings.get<any>("feature_management").feature_flags as any[];
+        expect(featureFlags.length).equals(2);
+        expect(featureFlags.find(ff => ff.id === "NewAlpha").enabled).equals(true);
+        expect(featureFlags.find(ff => ff.id === "NewBeta").enabled).equals(false);
+    });
+
+    it("should load an enhanced feature flag with null optional fields", async () => {
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("Minimal", {
+                description: null,
+                conditions: null,
+                variants: null,
+                allocation: null,
+                telemetry: null
+            })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlag = (settings.get<any>("feature_management").feature_flags as any[])
+            .find(ff => ff.id === "Minimal");
+        expect(featureFlag).not.undefined;
+        expect(featureFlag.conditions.client_filters).deep.equals([]);
+        expect(featureFlag).not.have.property("description");
+        expect(featureFlag).not.have.property("variants");
+        expect(featureFlag).not.have.property("allocation");
+        expect(featureFlag).not.have.property("telemetry");
+    });
+
+    it("should parse enhanced feature flag filter parameters", async () => {
+        const audience = {
+            Users: ["test@contoso.com"],
+            Groups: [{ Name: "contoso.com", RolloutPercentage: 50 }],
+            DefaultRolloutPercentage: 0
+        };
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("Targeted", {
+                conditions: {
+                    requirementType: "Any",
+                    filters: [{
+                        name: "Microsoft.Targeting",
+                        parameters: {
+                            Audience: JSON.stringify(audience),
+                            JsonArray: "  [\"one\",\"two\"]  ",
+                            PlainText: "not-json",
+                            Percentage: "50",
+                            NullValue: null,
+                            UndefinedValue: undefined
+                        }
+                    }]
+                }
+            })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlag = (settings.get<any>("feature_management").feature_flags as any[])
+            .find(ff => ff.id === "Targeted");
+        const parameters = featureFlag.conditions.client_filters[0].parameters;
+        expect(parameters.Audience).deep.equals(audience);
+        expect(parameters.JsonArray).deep.equals(["one", "two"]);
+        expect(parameters.PlainText).equals("not-json");
+        expect(parameters.Percentage).equals("50");
+        expect(parameters.NullValue).equals(null);
+        expect(parameters).has.property("UndefinedValue", undefined);
+    });
+
+    it("should preserve invalid JSON in enhanced feature flag filter parameters as a string", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("InvalidParameter", {
+            conditions: {
+                filters: [{
+                    name: "CustomFilter",
+                    parameters: { Value: "{not-json}" }
+                }]
+            }
+        });
+
+        const featureFlag = convert(enhancedFeatureFlag);
+        expect(featureFlag.conditions.client_filters[0].parameters?.Value).equals("{not-json}");
+    });
+
+    it("should parse enhanced feature flag variants based on content type", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("VariantContentType", {
+            variants: [
+                { name: "Json", value: "{\"color\":\"blue\"}", contentType: "application/json" },
+                { name: "Text", value: "{\"color\":\"blue\"}", contentType: "text/plain" }
+            ]
+        });
+
+        const featureFlag = convert(enhancedFeatureFlag);
+        expect(featureFlag.variants?.[0].configuration_value).deep.equals({ color: "blue" });
+        expect(featureFlag.variants?.[1].configuration_value).equals("{\"color\":\"blue\"}");
+    });
+
+    it("should throw for invalid JSON in an enhanced feature flag variant", () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("InvalidVariant", {
+            variants: [{ name: "Json", value: "{not-json}", contentType: "application/json" }]
+        });
+
+        expectEnhancedFeatureFlagJsonError(() => convert(enhancedFeatureFlag), "InvalidVariant");
+    });
+
+    it("should let an enhanced feature flag supersede a feature flag with the same name", async () => {
+        // "Shared" is enabled and "ClassicOnly" exists; the dedicated endpoint returns "Shared" disabled
+        const featureFlagSettings = [
+            createMockedFeatureFlag("Shared", { enabled: true }),
+            createMockedFeatureFlag("ClassicOnly", { enabled: true })
+        ];
+        mockAppConfigurationClientListConfigurationSettings([featureFlagSettings]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("Shared", { enabled: false })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlags = settings.get<any>("feature_management").feature_flags as any[];
+        // "Shared" appears once (from the dedicated endpoint, disabled); "ClassicOnly" remains
+        expect(featureFlags.length).equals(2);
+        expect(featureFlags.filter(ff => ff.id === "Shared").length).equals(1);
+        expect(featureFlags.find(ff => ff.id === "Shared").enabled).equals(false);
+        expect(featureFlags.find(ff => ff.id === "ClassicOnly").enabled).equals(true);
+    });
+
+    it("should convert an enhanced feature flag into the feature management schema", async () => {
+        const enhancedFeatureFlag = createMockedEnhancedFeatureFlag("Variant", {
+            conditions: {
+                requirementType: "All",
+                filters: [{ name: "Microsoft.TimeWindow", parameters: { Start: JSON.stringify("Mon, 01 Jan 2024 00:00:00 GMT") } }]
+            },
+            variants: [
+                { name: "Off", value: false, statusOverride: "Disabled" },
+                { name: "On", value: true }
+            ],
+            allocation: {
+                defaultWhenEnabled: "Off",
+                defaultWhenDisabled: "Off",
+                percentile: [{ variant: "On", from: 0, to: 50 }],
+                seed: "seed-value"
+            },
+            telemetry: { enabled: true }
+        });
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[enhancedFeatureFlag]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: { enabled: true }
+        });
+
+        const featureFlag = (settings.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "Variant");
+        expect(featureFlag).not.undefined;
+        expect(featureFlag.enabled).equals(true);
+        expect(featureFlag.conditions.requirement_type).equals("All");
+        expect(featureFlag.conditions.client_filters[0].name).equals("Microsoft.TimeWindow");
+        expect(featureFlag.variants[0].name).equals("Off");
+        expect(featureFlag.variants[0].configuration_value).equals(false);
+        expect(featureFlag.variants[0].status_override).equals("Disabled");
+        expect(featureFlag.allocation.default_when_enabled).equals("Off");
+        expect(featureFlag.allocation.percentile[0].variant).equals("On");
+        // telemetry enabled => metadata populated with the feature flag reference and allocation id
+        expect(featureFlag.telemetry.metadata).not.undefined;
+        expect(featureFlag.telemetry.metadata.FeatureFlagReference).equals(`${createMockedEndpoint()}/ff/Variant`);
+        expect(featureFlag.telemetry.metadata.AllocationId).not.undefined;
+    });
+
+    it("should refresh feature flags when the dedicated endpoint changes", async () => {
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("NewFlag", { enabled: true })
+        ]]);
+
+        const settings = await load(createMockedConnectionString(), {
+            featureFlagOptions: {
+                enabled: true,
+                refresh: { enabled: true, refreshIntervalInMs: 1000 }
+            }
+        });
+
+        let featureFlag = (settings.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "NewFlag");
+        expect(featureFlag.enabled).equals(true);
+
+        // the enhanced feature flag on the dedicated endpoint changes
+        restoreMocks();
+        mockAppConfigurationClientListConfigurationSettings([[]]);
+        mockFeatureFlagClientListFeatureFlags([[
+            createMockedEnhancedFeatureFlag("NewFlag", { enabled: false })
+        ]]);
+
+        await sleepInMs(1000 + 1);
+        await settings.refresh();
+
+        featureFlag = (settings.get<any>("feature_management").feature_flags as any[]).find(ff => ff.id === "NewFlag");
+        expect(featureFlag.enabled).equals(false);
     });
 });
 /* eslint-enable @typescript-eslint/no-unused-expressions */

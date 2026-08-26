@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { AppConfigurationClient, AppConfigurationClientOptions } from "@azure/app-configuration";
-import { ConfigurationClientWrapper } from "./configurationClientWrapper.js";
+import { AppConfigurationClientOptions as ConfigurationClientOptions } from "@azure/app-configuration";
+import { AppConfigurationClient } from "./appConfigurationClient.js";
+import { AppConfigurationClientWrapper } from "./appConfigurationClientWrapper.js";
 import { TokenCredential } from "@azure/identity";
 import { AzureAppConfigurationOptions } from "./appConfigurationOptions.js";
 import { isBrowser, isWebWorker } from "./requestTracing/utils.js";
@@ -28,18 +29,18 @@ const DNS_RESOLVER_TIMEOUT_IN_MS = 3_000;
 const DNS_RESOLVER_TRIES = 2;
 const MAX_ALTNATIVE_SRV_COUNT = 10;
 
-export class ConfigurationClientManager {
+export class AppConfigurationClientManager {
     readonly endpoint: URL; // primary endpoint, which is the one specified in the connection string or passed in as a parameter
     #isFailoverable: boolean;
     #dns: any;
     #secret : string;
     #id : string;
     #credential: TokenCredential;
-    #clientOptions: AppConfigurationClientOptions | undefined;
+    #clientOptions: ConfigurationClientOptions | undefined;
     #appConfigOptions: AzureAppConfigurationOptions | undefined;
     #validDomain: string; // valid domain for the primary endpoint, which is used to discover replicas
-    #staticClients: ConfigurationClientWrapper[]; // there should always be only one static client
-    #dynamicClients: ConfigurationClientWrapper[];
+    #staticClients: AppConfigurationClientWrapper[]; // there should always be only one static client
+    #dynamicClients: AppConfigurationClientWrapper[];
     #replicaCount: number = 0;
     #lastFallbackClientUpdateTime: number = 0; // enforce to discover fallback client when it is expired
     #lastFallbackClientRefreshAttempt: number = 0; // avoid refreshing clients before the minimal refresh interval
@@ -84,7 +85,7 @@ export class ConfigurationClientManager {
             throw new ArgumentError(ErrorMessages.CONNECTION_STRING_OR_ENDPOINT_MISSED);
         }
 
-        this.#staticClients = [new ConfigurationClientWrapper(this.endpoint.origin, staticClient)];
+        this.#staticClients = [new AppConfigurationClientWrapper(this.endpoint.origin, staticClient)];
         this.#validDomain = getValidDomain(this.endpoint.hostname.toLowerCase());
     }
 
@@ -113,7 +114,7 @@ export class ConfigurationClientManager {
         return this.#replicaCount;
     }
 
-    async getClients(): Promise<ConfigurationClientWrapper[]> {
+    async getClients(): Promise<AppConfigurationClientWrapper[]> {
         if (!this.#isFailoverable) {
             return this.#staticClients;
         }
@@ -159,17 +160,17 @@ export class ConfigurationClientManager {
         }
 
         const srvTargetHosts = shuffleList(result);
-        const newDynamicClients: ConfigurationClientWrapper[] = [];
+        const newDynamicClients: AppConfigurationClientWrapper[] = [];
         for (const host of srvTargetHosts) {
             if (isValidEndpoint(host, this.#validDomain)) {
                 const targetEndpoint = `https://${host}`;
                 if (host.toLowerCase() === this.endpoint.hostname.toLowerCase()) {
                     continue;
                 }
-                const client = this.#credential ?
+                const appConfigurationClient = this.#credential ?
                     new AppConfigurationClient(targetEndpoint, this.#credential, this.#clientOptions) :
                     new AppConfigurationClient(buildConnectionString(targetEndpoint, this.#secret, this.#id), this.#clientOptions);
-                newDynamicClients.push(new ConfigurationClientWrapper(targetEndpoint, client));
+                newDynamicClients.push(new AppConfigurationClientWrapper(targetEndpoint, appConfigurationClient));
             }
         }
 
@@ -256,7 +257,7 @@ export function isValidEndpoint(host: string, validDomain: string): boolean {
     return host.toLowerCase().endsWith(validDomain.toLowerCase());
 }
 
-function getClientOptions(options?: AzureAppConfigurationOptions): AppConfigurationClientOptions | undefined {
+export function getClientOptions(options?: AzureAppConfigurationOptions): ConfigurationClientOptions {
     // user-agent
     let userAgentPrefix = RequestTracing.USER_AGENT_PREFIX; // Default UA for JavaScript Provider
     const userAgentOptions = options?.clientOptions?.userAgentOptions;

@@ -2,15 +2,32 @@
 // Licensed under the MIT license.
 
 import * as sinon from "sinon";
-import { AppConfigurationClient, ConfigurationSetting, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
+import * as chai from "chai";
+import { AppConfigurationClient as ConfigurationClient, ConfigurationSetting, FeatureFlagClient, featureFlagContentType, secretReferenceContentType } from "@azure/app-configuration";
 import { ClientSecretCredential } from "@azure/identity";
 import { KeyVaultSecret, SecretClient } from "@azure/keyvault-secrets";
 import * as uuid from "uuid";
 import { RestError, PipelineRequest, PipelineResponse, SendRequest } from "@azure/core-rest-pipeline";
-import { ConfigurationClientManager } from "../../src/configurationClientManager.js";
-import { ConfigurationClientWrapper } from "../../src/configurationClientWrapper.js";
+import { AppConfigurationClientManager } from "../../src/appConfigurationClientManager.js";
+import { AppConfigurationClientWrapper } from "../../src/appConfigurationClientWrapper.js";
+import { AppConfigurationClient } from "../../src/appConfigurationClient.js";
 
 const sleepInMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function expectEnhancedFeatureFlagJsonError(action: () => unknown, featureFlagName: string): void {
+    let thrownError: unknown;
+    try {
+        action();
+    } catch (error) {
+        thrownError = error;
+    }
+
+    chai.expect(thrownError).instanceOf(SyntaxError);
+    const syntaxError = thrownError as SyntaxError;
+    chai.expect(syntaxError.message).contains(`Enhanced feature flag '${featureFlagName}':`);
+    chai.expect(syntaxError.cause).instanceOf(SyntaxError);
+    chai.expect(syntaxError.message).contains((syntaxError.cause as SyntaxError).message);
+}
 
 // Async, browser-safe SHA-256 using native crypto.subtle when available; falls back to tiny FNV-1a for Node without subtle.
 async function _sha256(input: string): Promise<string> {
@@ -192,6 +209,100 @@ function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any
     return mockIterator as any;
 }
 
+function _filterFeatureFlags(featureFlags: any[], listOptions: any): any[] {
+    const nameFilter: string | undefined = listOptions?.nameFilter;
+    const labelFilter: string | undefined = listOptions?.labelFilter;
+    const tagsFilter: string[] = listOptions?.tagsFilter ?? [];
+
+    return featureFlags.filter((ff) => {
+        // name filter: "*"/undefined matches all, trailing "*" is a prefix wildcard, otherwise exact match
+        let nameMatched = true;
+        if (nameFilter !== undefined && nameFilter !== "*") {
+            if (nameFilter.endsWith("*")) {
+                nameMatched = ff.name.startsWith(nameFilter.slice(0, -1));
+            } else {
+                nameMatched = ff.name === nameFilter;
+            }
+        }
+
+        // label filter: "\0" (LabelFilter.Null) matches feature flags without a label
+        let labelMatched = true;
+        if (labelFilter !== undefined) {
+            if (labelFilter === "\0") {
+                labelMatched = ff.label === undefined || ff.label === "";
+            } else {
+                labelMatched = ff.label === labelFilter;
+            }
+        }
+
+        // tag filters: every "key=value" must match
+        let tagsMatched = true;
+        tagsFilter.forEach((tagFilter: string) => {
+            const [tagName, tagValue] = tagFilter.split("=");
+            if (!ff.tags || ff.tags[tagName] !== tagValue) {
+                tagsMatched = false;
+            }
+        });
+
+        return nameMatched && labelMatched && tagsMatched;
+    });
+}
+
+function getMockedFeatureFlagIterator(pages: any[][], listOptions: any, useStringStatus: boolean = false) {
+    const mockIterator: AsyncIterableIterator<any> & { byPage(): AsyncIterableIterator<any> } = {
+        [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+            return this;
+        },
+        next() {
+            return Promise.resolve({ done: true, value: undefined });
+        },
+        byPage(): AsyncIterableIterator<any> {
+            let remainingPages: any[][];
+            const pageEtags = listOptions?.pageEtags ? [...listOptions.pageEtags] : undefined;
+            return {
+                [Symbol.asyncIterator](): AsyncIterableIterator<any> {
+                    remainingPages = [...pages];
+                    return this;
+                },
+                async next() {
+                    const pageItems = remainingPages.shift();
+                    const pageEtag = pageEtags?.shift();
+                    if (pageItems === undefined) {
+                        return { done: true, value: undefined };
+                    } else {
+                        const items = _filterFeatureFlags(pageItems ?? [], listOptions);
+                        const etag = await _sha256(JSON.stringify(items));
+                        const statusCode = pageEtag === etag ? 304 : 200;
+                        return {
+                            done: false,
+                            value: {
+                                items,
+                                etag,
+                                _response: { status: useStringStatus ? `${statusCode}` : statusCode }
+                            }
+                        };
+                    }
+                }
+            };
+        }
+    };
+
+    return mockIterator as any;
+}
+
+/**
+ * Mocks the listFeatureFlags method of FeatureFlagClient to return the provided pages of feature flags.
+ * @param pages List of pages, each page is a list of typed feature flags (see createMockedEnhancedFeatureFlag).
+ */
+function mockFeatureFlagClientListFeatureFlags(pages: any[][], customCallback?: (listOptions: any) => any) {
+    sinon.stub(FeatureFlagClient.prototype, "listFeatureFlags").callsFake((listOptions) => {
+        if (customCallback) {
+            customCallback(listOptions);
+        }
+        return getMockedFeatureFlagIterator(pages, listOptions);
+    });
+}
+
 /**
  * Mocks the listConfigurationSettings method of AppConfigurationClient to return the provided pages of ConfigurationSetting.
  * E.g.
@@ -201,7 +312,7 @@ function getMockedHeadIterator(pages: ConfigurationSetting[][], listOptions: any
  */
 function mockAppConfigurationClientListConfigurationSettings(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
 
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -210,18 +321,19 @@ function mockAppConfigurationClientListConfigurationSettings(pages: Configuratio
         return getMockedIterator(pages, kvs, listOptions);
     });
 
-    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
 
         return getMockedHeadIterator(pages, listOptions);
     });
+
 }
 
 function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pages: ConfigurationSetting[][], customCallback?: (listOptions: any) => any) {
 
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -230,40 +342,52 @@ function mockAppConfigurationClientListConfigurationSettingsWithStringStatus(pag
         return getMockedIterator(pages, kvs, listOptions, true);
     });
 
-    sinon.stub(AppConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "checkConfigurationSettings").callsFake((listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
 
         return getMockedHeadIterator(pages, listOptions, true);
     });
+
 }
 
-function mockAppConfigurationClientLoadBalanceMode(pages: ConfigurationSetting[][], clientWrapper: ConfigurationClientWrapper, countObject: { count: number }) {
+function mockAppConfigurationClientLoadBalanceMode(
+    pages: ConfigurationSetting[][],
+    clientWrapper: AppConfigurationClientWrapper,
+    callCounts: { configurationSettings: number; enhancedFeatureFlags: number }
+) {
     sinon.stub(clientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
-        countObject.count += 1;
+        callCounts.configurationSettings += 1;
         const kvs = _filterKVs(pages.flat(), listOptions);
         return getMockedIterator(pages, kvs, listOptions);
     });
     sinon.stub(clientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
-        countObject.count += 1;
+        callCounts.configurationSettings += 1;
         return getMockedHeadIterator(pages, listOptions);
+    });
+    sinon.stub(clientWrapper.client, "listFeatureFlags").callsFake((listOptions) => {
+        callCounts.enhancedFeatureFlags += 1;
+        return getMockedFeatureFlagIterator([], listOptions);
     });
 }
 
-function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
+function mockConfigurationManagerGetClients(fakeClientWrappers: AppConfigurationClientWrapper[], isFailoverable: boolean, ...pages: ConfigurationSetting[][]) {
     // Stub the getClients method on the class prototype
-    sinon.stub(ConfigurationClientManager.prototype, "getClients").callsFake(async () => {
+    sinon.stub(AppConfigurationClientManager.prototype, "getClients").callsFake(async () => {
         if (fakeClientWrappers?.length > 0) {
             return fakeClientWrappers;
         }
-        const clients: ConfigurationClientWrapper[] = [];
+        const clients: AppConfigurationClientWrapper[] = [];
         const fakeEndpoint = createMockedEndpoint("fake");
-        const fakeStaticClientWrapper = new ConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
+        const fakeStaticClientWrapper = new AppConfigurationClientWrapper(fakeEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeEndpoint)));
         sinon.stub(fakeStaticClientWrapper.client, "listConfigurationSettings").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
         sinon.stub(fakeStaticClientWrapper.client, "checkConfigurationSettings").callsFake(() => {
+            throw new RestError("Internal Server Error", { statusCode: 500 });
+        });
+        sinon.stub(fakeStaticClientWrapper.client, "listFeatureFlags").callsFake(() => {
             throw new RestError("Internal Server Error", { statusCode: 500 });
         });
         clients.push(fakeStaticClientWrapper);
@@ -273,7 +397,7 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         }
 
         const fakeReplicaEndpoint = createMockedEndpoint("fake-replica");
-        const fakeDynamicClientWrapper = new ConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
+        const fakeDynamicClientWrapper = new AppConfigurationClientWrapper(fakeReplicaEndpoint, new AppConfigurationClient(createMockedConnectionString(fakeReplicaEndpoint)));
         clients.push(fakeDynamicClientWrapper);
         sinon.stub(fakeDynamicClientWrapper.client, "listConfigurationSettings").callsFake((listOptions) => {
             const kvs = _filterKVs(pages.flat(), listOptions);
@@ -282,12 +406,15 @@ function mockConfigurationManagerGetClients(fakeClientWrappers: ConfigurationCli
         sinon.stub(fakeDynamicClientWrapper.client, "checkConfigurationSettings").callsFake((listOptions) => {
             return getMockedHeadIterator(pages, listOptions);
         });
+        sinon.stub(fakeDynamicClientWrapper.client, "listFeatureFlags").callsFake((listOptions) => {
+            return getMockedFeatureFlagIterator([], listOptions);
+        });
         return clients;
     });
 }
 
 function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
+    sinon.stub(ConfigurationClient.prototype, "getConfigurationSetting").callsFake((settingId, options) => {
         if (customCallback) {
             customCallback(options);
         }
@@ -306,7 +433,7 @@ function mockAppConfigurationClientGetConfigurationSetting(kvList: any[], custom
 }
 
 function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, any>, customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
+    sinon.stub(ConfigurationClient.prototype, "getSnapshot").callsFake((name, options) => {
         if (customCallback) {
             customCallback(options);
         }
@@ -320,7 +447,7 @@ function mockAppConfigurationClientGetSnapshot(snapshotResponses: Map<string, an
 }
 
 function mockAppConfigurationClientListConfigurationSettingsForSnapshot(snapshotResponses: Map<string, ConfigurationSetting[][]>, customCallback?: (options: any) => any) {
-    sinon.stub(AppConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
+    sinon.stub(ConfigurationClient.prototype, "listConfigurationSettingsForSnapshot").callsFake((name, listOptions) => {
         if (customCallback) {
             customCallback(listOptions);
         }
@@ -431,6 +558,15 @@ const createMockedSnapshotReference = (key: string, snapshotName: string): Confi
     isReadOnly: false,
 });
 
+// Creates an enhanced feature flag as returned by the dedicated feature flag endpoint (FeatureFlagClient.listFeatureFlags).
+const createMockedEnhancedFeatureFlag = (name: string, props?: any) => Object.assign({
+    name,
+    enabled: true,
+    conditions: { filters: [] },
+    lastModified: new Date(),
+    etag: uuid.v4()
+}, props);
+
 class HttpRequestHeadersPolicy {
     headers: any;
     name: string;
@@ -449,6 +585,7 @@ export {
     sinon,
     mockAppConfigurationClientListConfigurationSettings,
     mockAppConfigurationClientListConfigurationSettingsWithStringStatus,
+    mockFeatureFlagClientListFeatureFlags,
     mockAppConfigurationClientGetConfigurationSetting,
     mockAppConfigurationClientGetSnapshot,
     mockAppConfigurationClientListConfigurationSettingsForSnapshot,
@@ -466,7 +603,9 @@ export {
     createMockedJsonKeyValue,
     createMockedKeyValue,
     createMockedFeatureFlag,
+    createMockedEnhancedFeatureFlag,
     createMockedSnapshotReference,
+    expectEnhancedFeatureFlagJsonError,
 
     sleepInMs,
     HttpRequestHeadersPolicy
