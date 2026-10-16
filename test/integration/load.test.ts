@@ -3,7 +3,7 @@
 
 import { assert } from "chai";
 import { DefaultAzureCredential } from "@azure/identity";
-import { LabelFilter, load } from "../../src/index.js";
+import { load } from "../../src/index.js";
 import { getIntegrationTestEndpoint, IntegrationTestContext } from "./helpers.js";
 
 describe("integration: load", function () {
