@@ -8,27 +8,9 @@ import type { PipelinePolicy } from "@azure/core-rest-pipeline";
 import type { TokenCredential } from "@azure/identity";
 import type { AzureAppConfiguration } from "../../src/index.js";
 
+export const INTEGRATION_TEST_ENDPOINT = "https://appconfig-jsprovider-integrationtest.azconfig.io";
 export const REFRESH_INTERVAL_IN_MS = 1_000;
 const REFRESH_TIMEOUT_IN_MS = 30_000;
-
-export function getIntegrationTestEndpoint(): string {
-    const endpoint = process.env.AZ_CONFIG_ENDPOINT?.trim();
-    if (!endpoint) {
-        throw new Error("Set AZ_CONFIG_ENDPOINT to an App Configuration test-store endpoint before running integration tests.");
-    }
-
-    const invalidEndpointMessage = "AZ_CONFIG_ENDPOINT must be an HTTPS App Configuration endpoint without a path, query, fragment, or embedded credentials.";
-    if (!URL.canParse(endpoint)) {
-        throw new Error(invalidEndpointMessage);
-    }
-
-    const url = new URL(endpoint);
-    if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username || url.password) {
-        throw new Error(invalidEndpointMessage);
-    }
-
-    return url.origin;
-}
 
 export async function refreshUntil(
     settings: Pick<AzureAppConfiguration, "refresh">,

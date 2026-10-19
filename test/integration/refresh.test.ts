@@ -5,15 +5,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { assert } from "chai";
 import { DefaultAzureCredential } from "@azure/identity";
 import { load } from "../../src/index.js";
-import { createNotModifiedResponseTracker, getIntegrationTestEndpoint, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./helpers.js";
+import { createNotModifiedResponseTracker, INTEGRATION_TEST_ENDPOINT as endpoint, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./helpers.js";
 
 describe("integration: refresh", function () {
-    let endpoint: string;
     let credential: DefaultAzureCredential;
     let context: IntegrationTestContext;
 
     before(() => {
-        endpoint = getIntegrationTestEndpoint();
         credential = new DefaultAzureCredential();
     });
 

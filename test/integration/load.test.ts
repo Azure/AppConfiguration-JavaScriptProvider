@@ -4,15 +4,13 @@
 import { assert } from "chai";
 import { DefaultAzureCredential } from "@azure/identity";
 import { load } from "../../src/index.js";
-import { getIntegrationTestEndpoint, IntegrationTestContext } from "./helpers.js";
+import { INTEGRATION_TEST_ENDPOINT as endpoint, IntegrationTestContext } from "./helpers.js";
 
 describe("integration: load", function () {
-    let endpoint: string;
     let credential: DefaultAzureCredential;
     let context: IntegrationTestContext;
 
     before(() => {
-        endpoint = getIntegrationTestEndpoint();
         credential = new DefaultAzureCredential();
     });
 

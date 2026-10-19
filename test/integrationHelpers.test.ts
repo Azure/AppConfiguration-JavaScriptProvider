@@ -8,48 +8,10 @@ import { AppConfigurationClient, featureFlagContentType } from "@azure/app-confi
 import { createHttpHeaders, createPipelineRequest } from "@azure/core-rest-pipeline";
 import type { PipelineRequest, PipelineResponse } from "@azure/core-rest-pipeline";
 import type { TokenCredential } from "@azure/identity";
-import { createNotModifiedResponseTracker, getIntegrationTestEndpoint, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./integration/helpers.js";
+import { createNotModifiedResponseTracker, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./integration/helpers.js";
 
 chai.use(chaiAsPromised);
 const assert = chai.assert;
-
-describe("integration test endpoint", function () {
-    const originalEndpoint = process.env.AZ_CONFIG_ENDPOINT;
-
-    afterEach(() => {
-        if (originalEndpoint === undefined) {
-            delete process.env.AZ_CONFIG_ENDPOINT;
-        } else {
-            process.env.AZ_CONFIG_ENDPOINT = originalEndpoint;
-        }
-    });
-
-    it("requires an explicitly configured endpoint", () => {
-        delete process.env.AZ_CONFIG_ENDPOINT;
-        assert.throws(getIntegrationTestEndpoint, /Set AZ_CONFIG_ENDPOINT/);
-    });
-
-    it("normalizes an HTTPS endpoint", () => {
-        process.env.AZ_CONFIG_ENDPOINT = " https://integration.azconfig.io/ ";
-        assert.equal(getIntegrationTestEndpoint(), "https://integration.azconfig.io");
-    });
-
-    it("rejects empty, malformed, or non-origin endpoints", () => {
-        for (const endpoint of [
-            "",
-            " ",
-            "not-a-url",
-            "http://integration.azconfig.io",
-            "https://integration.azconfig.io/kv",
-            "https://integration.azconfig.io?query=value",
-            "https://integration.azconfig.io#fragment",
-            "https://user:password@integration.azconfig.io"
-        ]) {
-            process.env.AZ_CONFIG_ENDPOINT = endpoint;
-            assert.throws(getIntegrationTestEndpoint, /AZ_CONFIG_ENDPOINT/, endpoint);
-        }
-    });
-});
 
 describe("integration test context", function () {
     const endpoint = "https://integration.azconfig.io";
