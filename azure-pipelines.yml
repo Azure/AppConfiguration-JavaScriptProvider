@@ -66,8 +66,16 @@ stages:
   condition: |
     and(
       succeeded(),
-      in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/preview'),
-      in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI', 'Manual')
+      or(
+        and(
+          eq(variables['Build.Reason'], 'Manual'),
+          startsWith(variables['Build.SourceBranch'], 'refs/heads/')
+        ),
+        and(
+          in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/preview'),
+          in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+        )
+      )
     )
   jobs:
   - job: LiveTests
