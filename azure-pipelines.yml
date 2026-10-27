@@ -1,16 +1,131 @@
 trigger:
-- main
-- preview
-- release/*
+  branches:
+    include:
+    - main
+    - preview
+    - release/*
 
 pr:
-- main
-- preview
-- release/*
+  branches:
+    include:
+    - main
+    - preview
+    - release/*
 
 pool:
-  vmImage: ubuntu-latest
+  # The current Playwright version does not support Chromium on Ubuntu 26.04.
+  vmImage: ubuntu-24.04
 
-steps:
-- script: echo "Hello from Azure Pipelines"
-  displayName: Hello world
+stages:
+- stage: Build
+  displayName: Build and offline tests
+  jobs:
+  - job: NodeTests
+    displayName: Node.js tests
+    strategy:
+      matrix:
+        Node20:
+          nodeVersion: 20.x
+        Node22:
+          nodeVersion: 22.x
+        Node24:
+          nodeVersion: 24.x
+    steps:
+    - checkout: self
+    - task: UseNode@1
+      displayName: Use Node.js $(nodeVersion)
+      inputs:
+        version: $(nodeVersion)
+    - script: npm ci
+      displayName: Install dependencies
+    - script: npm run lint
+      displayName: Lint
+    - script: npm run build
+      displayName: Build
+    - script: npm test -- --reporter xunit --reporter-option "output=$(Agent.TempDirectory)/test-results/unit-tests.xml"
+      displayName: Run Node.js unit tests
+    - script: npm run test-browser -- --reporter=default --reporter=junit --outputFile="$(Agent.TempDirectory)/test-results/browser-tests.xml"
+      displayName: Run browser tests
+    - task: PublishTestResults@2
+      displayName: Publish unit and browser test results
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: JUnit
+        testResultsFiles: |
+          unit-tests.xml
+          browser-tests.xml
+        searchFolder: $(Agent.TempDirectory)/test-results
+        mergeTestResults: true
+        failTaskOnFailedTests: true
+        failTaskOnFailureToPublishResults: true
+        failTaskOnMissingResultsFile: true
+        testRunTitle: Node.js $(nodeVersion) unit and browser tests
+
+- stage: Integration
+  displayName: Live integration tests
+  dependsOn: Build
+  jobs:
+  - job: LiveTests
+    displayName: Node.js live integration tests
+    timeoutInMinutes: '15'
+    steps:
+    - checkout: self
+    - task: UseNode@1
+      displayName: Use Node.js 24
+      inputs:
+        version: 24.x
+    - script: npm ci
+      displayName: Install dependencies
+    - task: AzureCLI@2
+      displayName: Run integration tests with the service principal
+      inputs:
+        azureSubscription: 'JS Provider GitHub PR Integration Test'
+        addSpnToEnvironment: true
+        visibleAzLogin: false
+        scriptType: pscore
+        scriptLocation: inlineScript
+        workingDirectory: $(Build.SourcesDirectory)
+        inlineScript: |
+          foreach ($name in @("servicePrincipalId", "tenantId", "idToken")) {
+              if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+                  throw "Missing $name. Configure the service connection with workload identity federation."
+              }
+          }
+          if ($env:AZURE_CLIENT_SECRET -or $env:AZURE_CLIENT_CERTIFICATE_PATH) {
+              throw "Do not configure client secrets or certificates for this federated test job."
+          }
+
+          $env:AZURE_CLIENT_ID = $env:servicePrincipalId
+          $env:AZURE_TENANT_ID = $env:tenantId
+          $tokenPath = Join-Path $env:AGENT_TEMPDIRECTORY "appconfig-federated-$([Guid]::NewGuid().ToString('N')).txt"
+
+          try {
+              Set-Content -LiteralPath $tokenPath -Value $env:idToken -NoNewline -Encoding utf8
+              $env:AZURE_FEDERATED_TOKEN_FILE = $tokenPath
+              $env:AZURE_SUBSCRIPTION_ID = az account show --query id --output tsv --only-show-errors
+              if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($env:AZURE_SUBSCRIPTION_ID)) {
+                  throw "Could not read the subscription selected by the service connection."
+              }
+
+              $resultsPath = Join-Path $env:AGENT_TEMPDIRECTORY "test-results/integration-tests.xml"
+              npm run test:integration -- --reporter xunit --reporter-option "output=$resultsPath"
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Integration tests failed with exit code $LASTEXITCODE."
+              }
+          } finally {
+              $env:AZURE_FEDERATED_TOKEN_FILE = $null
+              if (Test-Path -LiteralPath $tokenPath) {
+                  Remove-Item -LiteralPath $tokenPath -Force
+              }
+          }
+    - task: PublishTestResults@2
+      displayName: Publish integration test results
+      condition: succeededOrFailed()
+      inputs:
+        testResultsFormat: JUnit
+        testResultsFiles: integration-tests.xml
+        searchFolder: $(Agent.TempDirectory)/test-results
+        failTaskOnFailedTests: true
+        failTaskOnFailureToPublishResults: true
+        failTaskOnMissingResultsFile: true
+        testRunTitle: Node.js 24 live integration tests
