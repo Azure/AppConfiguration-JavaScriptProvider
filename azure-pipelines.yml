@@ -63,20 +63,6 @@ stages:
 - stage: Integration
   displayName: Live integration tests
   dependsOn: Build
-  condition: |
-    and(
-      succeeded(),
-      or(
-        and(
-          eq(variables['Build.Reason'], 'Manual'),
-          startsWith(variables['Build.SourceBranch'], 'refs/heads/')
-        ),
-        and(
-          in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/preview'),
-          in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
-        )
-      )
-    )
   jobs:
   - job: LiveTests
     displayName: Node.js live integration tests
