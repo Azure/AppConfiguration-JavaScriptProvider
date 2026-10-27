@@ -13,7 +13,8 @@ pr:
     - release/*
 
 pool:
-  vmImage: ubuntu-latest
+  # The current Playwright version does not support Chromium on Ubuntu 26.04.
+  vmImage: ubuntu-24.04
 
 stages:
 - stage: Build
