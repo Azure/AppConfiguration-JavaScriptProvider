@@ -32,6 +32,7 @@
     "lint": "eslint src/ test/ examples/ --ext .js,.ts,.mjs",
     "fix-lint": "eslint src/ test/ examples/ --fix --ext .js,.ts,.mjs",
     "test": "mocha out/esm/test/*.test.js out/commonjs/test/*.test.js --parallel --timeout 100000",
+    "test:integration": "npm run build-test-esm && mocha \"out/esm/test/integration/*.test.js\" --no-parallel --timeout 120000",
     "test-browser": "npx playwright install chromium && vitest --config vitest.browser.config.ts run"
   },
   "repository": {
@@ -56,7 +57,7 @@
     "cpy-cli": "^6.0.0",
     "dotenv": "^17.2.1",
     "eslint": "^9.34.0",
-    "mocha": "^11.7.6",
+    "mocha": "^12.0.0",
     "nock": "^14.0.10",
     "playwright": "^1.60.0",
     "rimraf": "^6.0.1",
