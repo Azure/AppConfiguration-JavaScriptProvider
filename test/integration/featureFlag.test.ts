@@ -5,27 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { assert } from "chai";
 import { DefaultAzureCredential } from "@azure/identity";
 import { load } from "../../src/index.js";
-import type { AzureAppConfiguration } from "../../src/index.js";
-import { createNotModifiedResponseTracker, INTEGRATION_TEST_ENDPOINT as endpoint, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./helpers.js";
-
-interface FeatureFlag {
-    id: string;
-    enabled: boolean;
-    conditions: {
-        client_filters: unknown[];
-        requirement_type: "Any" | "All";
-    };
-}
-
-function getFeatureFlags(settings: AzureAppConfiguration): FeatureFlag[] {
-    const featureManagement = settings.get<{ feature_flags: FeatureFlag[] }>("feature_management");
-    if (featureManagement === undefined) {
-        throw new Error("Expected the provider to return feature_management.feature_flags.");
-    }
-    assert.hasAllKeys(featureManagement, ["feature_flags"]);
-    assert.isArray(featureManagement.feature_flags);
-    return featureManagement.feature_flags;
-}
+import { createNotModifiedResponseTracker, getFeatureFlags, INTEGRATION_TEST_ENDPOINT as endpoint, IntegrationTestContext, REFRESH_INTERVAL_IN_MS, refreshUntil } from "./helpers.js";
 
 describe("integration: feature flags", function () {
     let credential: DefaultAzureCredential;

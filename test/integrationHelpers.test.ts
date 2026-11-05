@@ -4,7 +4,7 @@
 import * as chai from "chai";
 import chaiAsPromised from "chai-as-promised";
 import * as sinon from "sinon";
-import { AppConfigurationClient, featureFlagContentType } from "@azure/app-configuration";
+import { AppConfigurationClient, FeatureFlagClient, featureFlagContentType } from "@azure/app-configuration";
 import { createHttpHeaders, createPipelineRequest } from "@azure/core-rest-pipeline";
 import type { PipelineRequest, PipelineResponse } from "@azure/core-rest-pipeline";
 import type { TokenCredential } from "@azure/identity";
@@ -23,11 +23,15 @@ describe("integration test context", function () {
     const sandbox = sinon.createSandbox();
     let setSetting: sinon.SinonStubbedFunction<AppConfigurationClient["setConfigurationSetting"]>;
     let deleteSetting: sinon.SinonStubbedFunction<AppConfigurationClient["deleteConfigurationSetting"]>;
+    let setEnhancedFeatureFlag: sinon.SinonStubbedFunction<FeatureFlagClient["setFeatureFlag"]>;
+    let deleteEnhancedFeatureFlag: sinon.SinonStubbedFunction<FeatureFlagClient["deleteFeatureFlag"]>;
     let context: IntegrationTestContext;
 
     beforeEach(() => {
         setSetting = sandbox.stub(AppConfigurationClient.prototype, "setConfigurationSetting").resolves();
         deleteSetting = sandbox.stub(AppConfigurationClient.prototype, "deleteConfigurationSetting").resolves();
+        setEnhancedFeatureFlag = sandbox.stub(FeatureFlagClient.prototype, "setFeatureFlag").resolves();
+        deleteEnhancedFeatureFlag = sandbox.stub(FeatureFlagClient.prototype, "deleteFeatureFlag").resolves();
         context = new IntegrationTestContext(endpoint, credential);
     });
 
@@ -184,7 +188,7 @@ describe("integration test context", function () {
         await context.setSetting("second", "Second value");
         deleteSetting.onFirstCall().rejects(new Error("Delete failed"));
 
-        await assert.isRejected(context.cleanup(), AggregateError, "Failed to clean up integration test settings");
+        await assert.isRejected(context.cleanup(), AggregateError, "Failed to clean up integration test resources");
 
         sinon.assert.calledTwice(deleteSetting);
         sinon.assert.calledWithExactly(deleteSetting, { key: context.key("second"), label: undefined });
@@ -194,6 +198,120 @@ describe("integration test context", function () {
         await context.cleanup();
 
         sinon.assert.calledOnceWithExactly(deleteSetting, { key: context.key("first"), label: undefined });
+    });
+
+    it("writes enhanced flags through the dedicated API and tracks exact names and labels", async () => {
+        const listSettings = sandbox.spy(AppConfigurationClient.prototype, "listConfigurationSettings");
+        const listFlags = sandbox.spy(FeatureFlagClient.prototype, "listFeatureFlags");
+        await context.setEnhancedFeatureFlag("shared", true);
+        await context.setEnhancedFeatureFlag("shared", false, {
+            label: "production",
+            description: "Enhanced definition",
+            conditions: { requirementType: "All", filters: [] },
+            variants: [{ name: "Control", value: "{\"color\":\"blue\"}", contentType: "application/json" }]
+        });
+
+        sinon.assert.calledWithExactly(setEnhancedFeatureFlag, {
+            name: context.key("shared"),
+            enabled: true,
+            conditions: { filters: [], requirementType: "Any" }
+        });
+        sinon.assert.calledWithExactly(setEnhancedFeatureFlag, {
+            name: context.key("shared"),
+            enabled: false,
+            label: "production",
+            description: "Enhanced definition",
+            conditions: { requirementType: "All", filters: [] },
+            variants: [{ name: "Control", value: "{\"color\":\"blue\"}", contentType: "application/json" }]
+        });
+
+        await context.cleanup();
+
+        sinon.assert.calledTwice(deleteEnhancedFeatureFlag);
+        sinon.assert.calledWithExactly(deleteEnhancedFeatureFlag, { name: context.key("shared"), label: undefined });
+        sinon.assert.calledWithExactly(deleteEnhancedFeatureFlag, { name: context.key("shared"), label: "production" });
+        sinon.assert.notCalled(setSetting);
+        sinon.assert.notCalled(deleteSetting);
+        sinon.assert.notCalled(listSettings);
+        sinon.assert.notCalled(listFlags);
+    });
+
+    it("cleans up same-name classic and enhanced flags independently", async () => {
+        await context.setFeatureFlag("shared", true, { label: "production" });
+        await context.setEnhancedFeatureFlag("shared", false, { label: "production" });
+
+        await context.cleanup();
+
+        sinon.assert.calledOnceWithExactly(deleteSetting, { key: context.featureFlagKey("shared"), label: "production" });
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("shared"), label: "production" });
+    });
+
+    it("does not clean up another context's enhanced flags", async () => {
+        const otherContext = new IntegrationTestContext(endpoint, credential);
+        await context.setEnhancedFeatureFlag("shared", true);
+        await otherContext.setEnhancedFeatureFlag("shared", false);
+
+        await context.cleanup();
+
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("shared"), label: undefined });
+    });
+
+    it("deduplicates enhanced flag writes and allows cleanup to be repeated", async () => {
+        await context.setEnhancedFeatureFlag("updated", true);
+        await context.setEnhancedFeatureFlag("updated", false);
+
+        await context.cleanup();
+        await context.cleanup();
+
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("updated"), label: undefined });
+    });
+
+    it("scopes explicit enhanced flag deletions and retains them for final cleanup", async () => {
+        await context.setEnhancedFeatureFlag("removed", true, { label: "production" });
+        await context.deleteEnhancedFeatureFlag("removed", { label: "production" });
+
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("removed"), label: "production" });
+        sinon.assert.notCalled(deleteSetting);
+
+        deleteEnhancedFeatureFlag.resetHistory();
+        await context.cleanup();
+
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("removed"), label: "production" });
+    });
+
+    it("cleans up enhanced flag writes after partial setup failure", async () => {
+        await context.setEnhancedFeatureFlag("first", true);
+        setEnhancedFeatureFlag.onSecondCall().rejects(new Error("Enhanced flag write response was lost"));
+
+        await assert.isRejected(context.setEnhancedFeatureFlag("second", false), "Enhanced flag write response was lost");
+        await context.cleanup();
+
+        sinon.assert.calledTwice(deleteEnhancedFeatureFlag);
+        sinon.assert.calledWithExactly(deleteEnhancedFeatureFlag, { name: context.key("first"), label: undefined });
+        sinon.assert.calledWithExactly(deleteEnhancedFeatureFlag, { name: context.key("second"), label: undefined });
+    });
+
+    it("continues cleanup across both APIs and retries only failed resources", async () => {
+        await context.setFeatureFlag("classic", true);
+        await context.setEnhancedFeatureFlag("first", true);
+        await context.setEnhancedFeatureFlag("second", false);
+        deleteSetting.onFirstCall().rejects(new Error("Classic delete failed"));
+        deleteEnhancedFeatureFlag.onFirstCall().rejects(new Error("Enhanced delete failed"));
+
+        await assert.isRejected(context.cleanup(), AggregateError, "Failed to clean up integration test resources");
+
+        sinon.assert.calledOnce(deleteSetting);
+        sinon.assert.calledTwice(deleteEnhancedFeatureFlag);
+        sinon.assert.calledWithExactly(deleteEnhancedFeatureFlag, { name: context.key("second"), label: undefined });
+
+        deleteSetting.reset();
+        deleteSetting.resolves();
+        deleteEnhancedFeatureFlag.reset();
+        deleteEnhancedFeatureFlag.resolves();
+        await context.cleanup();
+
+        sinon.assert.calledOnceWithExactly(deleteSetting, { key: context.featureFlagKey("classic"), label: undefined });
+        sinon.assert.calledOnceWithExactly(deleteEnhancedFeatureFlag, { name: context.key("first"), label: undefined });
     });
 });
 
@@ -278,6 +396,26 @@ describe("integration response tracking", function () {
 
         next.rejects(new Error("Request failed"));
         await assert.isRejected(tracker.policy.sendRequest(request, next), "Request failed");
+        assert.equal(tracker.count, 1);
+    });
+
+    it("can restrict 304 observations to the enhanced flag collection endpoint", async () => {
+        const tracker = createNotModifiedResponseTracker("/ff");
+        for (const path of ["/kv", "/ff/shared"]) {
+            const request = createPipelineRequest({ url: `https://integration.azconfig.io${path}` });
+            const response = { request, headers: createHttpHeaders(), status: 304 };
+            const next = sinon.stub<[PipelineRequest], Promise<PipelineResponse>>().resolves(response);
+
+            assert.strictEqual(await tracker.policy.sendRequest(request, next), response);
+            assert.equal(tracker.count, 0);
+        }
+
+        const request = createPipelineRequest({ url: "https://integration.azconfig.io/ff?name=test*" });
+        const response = { request, headers: createHttpHeaders(), status: 304 };
+        const next = sinon.stub<[PipelineRequest], Promise<PipelineResponse>>().resolves(response);
+
+        assert.strictEqual(await tracker.policy.sendRequest(request, next), response);
+        sinon.assert.calledOnceWithExactly(next, request);
         assert.equal(tracker.count, 1);
     });
 });
